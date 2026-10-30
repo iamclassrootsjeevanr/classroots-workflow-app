@@ -41,7 +41,7 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 - Install: `npm install`, copy `.env.example` → `.env`
 - Dev: `npm run db:start` (terminal 1) · `npm run db:deploy && npm run db:seed` once · `npm run dev` (terminal 2) → http://localhost:3000
 - Test: `npm test` (Vitest, `tests/`)
-- Lint/format: `npm run typecheck` (`tsc --noEmit`); Prettier config in repo
+- Lint/format: `npm run typecheck` (`tsc --noEmit`); no linter or formatter is configured
 - Build: `npm run build` (runs `prisma generate` first; stop the dev server before building)
 - Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`, never commit it)
 
