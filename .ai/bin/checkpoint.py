@@ -4,6 +4,7 @@ Usage: python3 .ai/bin/checkpoint.py <tool> "<one-line summary>"
   tool: claude-code | claude-code-web | codex | codex-cloud | cursor | other
 Aborts if staged changes look like they contain secrets.
 """
+import json
 import re
 import subprocess
 import sys
@@ -36,6 +37,19 @@ def main():
     tool, summary = sys.argv[1], " ".join(sys.argv[2:]).replace("\n", " ").strip()
     branch, _ = git("rev-parse", "--abbrev-ref", "HEAD")
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+
+    try:
+        prot = json.loads((ROOT / ".ai" / "config.json").read_text(encoding="utf-8")).get("protected_branches", [])
+    except (OSError, ValueError):
+        prot = ["main", "master"]
+    if branch in prot or branch == "HEAD":
+        sys.exit(f"checkpoint: REFUSED — '{branch}' is a shared/protected branch. Nothing was committed.\n"
+                 "Create your own branch (your uncommitted work comes with you), then re-run:\n"
+                 "  git checkout -b <your-name>/<topic>")
+
+    state = ROOT / ".ai" / "state" / (branch.replace("/", "__") + ".md")
+    if not state.exists():
+        print(f"checkpoint: warning — {state.relative_to(ROOT).as_posix()} not found; next session starts without state.")
 
     with open(ROOT / ".ai" / "LOG.md", "a", encoding="utf-8") as f:
         f.write(f"- {ts} | {tool} | {branch} | {summary}\n")
