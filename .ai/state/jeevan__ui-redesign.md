@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-10-30T13:12:20Z · by: claude-code · owner: Jeevan
+Updated: 2026-10-30T13:15:04Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -20,12 +20,14 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - Design sweep: ui.tsx, items-table, charts (CSS-var colours), heatmap, filter-bar, sign-in, admin pages.
 - Tests: `tests/prefs.test.ts` (56 total passing); typecheck and `next build` clean. README section added.
 - All of the above is committed (ce8ab8e on main); this branch starts from main with no code diff.
+- README: new "Working with AI coding tools" section (ai-continuity-kit usage, `.ai/` files), TOC + structure updated,
+  Contributing branch naming aligned to `<name>/<topic>`. AGENTS.md Project section filled (stack, commands, layout, conventions).
 
 ## In progress
 Nothing mid-edit. Code is not broken.
 
 ## Next steps
-1. Open a PR from `jeevan/ui-redesign` only if further UI changes land here; otherwise the work is already on main.
+1. Open a PR from `jeevan/ui-redesign` into main (README + AGENTS.md docs are only on this branch).
 2. Optional polish: verify charts in dark mode on /reports with real data (screenshot caught them pre-measure once).
 3. Optional: add a "Reset to defaults" button to the Appearance card (`prefs-form.tsx`).
 
