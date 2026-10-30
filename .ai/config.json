@@ -1,0 +1,4 @@
+{
+  "_readme": "Branches where handoff checkpoints are refused. Work on your own branch and merge via pull request.",
+  "protected_branches": ["main", "master", "develop", "production", "release", "staging"]
+}

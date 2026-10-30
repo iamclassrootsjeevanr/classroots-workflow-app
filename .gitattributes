@@ -1,0 +1,3 @@
+# ai-continuity: shared append-only logs merge without conflicts on local merges
+.ai/LOG.md merge=union
+.ai/DECISIONS.md merge=union
