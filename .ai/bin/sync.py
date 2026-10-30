@@ -15,6 +15,13 @@ import shutil
 import sys
 from pathlib import Path
 
+
+for _s in (sys.stdout, sys.stderr):  # Windows consoles: never crash on non-ASCII
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parents[2]
 CANON = ROOT / ".ai" / "mcp.json"
 SKILLS_SRC = ROOT / ".agents" / "skills"
@@ -37,7 +44,8 @@ def load_json(p):
 
 def write_json(p, data):
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    with open(p, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
 # ---------- skills ----------
@@ -164,7 +172,8 @@ def write_codex(block):
         new = pre + block + (("\n" + post) if post else "")
     else:
         new = (existing.rstrip() + "\n\n" if existing.strip() else "") + block
-    CODEX_TOML.write_text(new, encoding="utf-8")
+    with open(CODEX_TOML, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(new)
 
 
 def merge_mcp_servers(path, servers):
