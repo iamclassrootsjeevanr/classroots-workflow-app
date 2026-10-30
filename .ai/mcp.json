@@ -1,0 +1,20 @@
+{
+  "_readme": "Single source for MCP servers. Run python3 .ai/bin/sync.py after editing. Keys starting with _ are ignored. Never put secret values here: list env var NAMES in env_passthrough / bearer_env.",
+  "servers": {
+    "context7": {
+      "enabled": false,
+      "_note": "Up-to-date library docs. Set enabled:true to use.",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "_example_http": {
+      "url": "https://mcp.example.com/mcp",
+      "bearer_env": "EXAMPLE_TOKEN"
+    },
+    "_example_stdio_with_env": {
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"],
+      "env_passthrough": ["SOME_API_KEY"]
+    }
+  }
+}

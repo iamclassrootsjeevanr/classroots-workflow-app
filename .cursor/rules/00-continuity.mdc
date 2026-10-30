@@ -1,0 +1,10 @@
+---
+description: Cross-tool session continuity protocol (shared with Claude Code and Codex)
+alwaysApply: true
+---
+
+This repo shares memory across Claude Code, Codex and Cursor through files in `.ai/`. Follow the "Session protocol" in `AGENTS.md`.
+
+- First action in a new chat: run `python3 .ai/bin/context.py --fetch` in the terminal and continue from STATE "Next steps".
+- On handoff/stop/switch: follow `.agents/skills/handoff/SKILL.md` (or `/handoff`), using tool name `cursor`.
+- MCP servers: edit `.ai/mcp.json`, then run `python3 .ai/bin/sync.py`. Never hand-edit `.cursor/mcp.json`.
