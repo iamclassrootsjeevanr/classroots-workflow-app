@@ -36,7 +36,8 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 15. [Deploy](#deploy)
 16. [Scripts reference](#scripts-reference)
 17. [Troubleshooting](#troubleshooting)
-18. [Contributing](#contributing)
+18. [Working with AI coding tools](#working-with-ai-coding-tools)
+19. [Contributing](#contributing)
 
 ---
 
@@ -252,6 +253,9 @@ src/
   components/                      UI components (tables, forms, charts, heatmap, nav)
 tests/                             Vitest unit tests
 legacy/                            The original single-page tracker (reference only)
+AGENTS.md                          Instructions for every AI coding agent (CLAUDE.md imports it)
+.ai/                               Shared AI memory: per-branch state, decisions, learnings, kit scripts
+.agents/skills/                    `handoff` and `resume` skills (mirrored into `.claude/skills/`)
 ```
 
 ---
@@ -539,9 +543,44 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 
 ---
 
+## Working with AI coding tools
+
+The repo carries its own memory for AI assistants, so Claude Code, Codex and Cursor (desktop or web) can pick up where another tool or teammate left off. This is managed by **ai-continuity-kit** (version in `.ai/.kit-version`). Nothing to install beyond Python 3.8+, which the kit scripts use.
+
+### Daily use
+
+| You want to… | Do this |
+| --- | --- |
+| Start work | `git checkout -b <your-name>/<topic>`, then type **`resume`** in your AI tool |
+| Stop, switch tool, or switch machine | Type **`handoff`**. The agent writes the state file, commits everything on your branch and pushes |
+| See where a branch stands without an agent | `python3 .ai/bin/context.py --pull` |
+| Ship | Open a pull request and squash-merge into `main` |
+
+`handoff` refuses to run on `main` and the other branches in `.ai/config.json`, so shared branches never get work-in-progress commits. It also blocks commits that look like they contain secrets.
+
+### What lives in `.ai/`
+
+| Path | Who edits it | What it is |
+| --- | --- | --- |
+| `state/<branch>.md` | the branch owner (via `handoff`) | Goal, what is done, what is half-finished, next steps. Overwritten each handoff, under 80 lines |
+| `DECISIONS.md` | everyone | Lasting choices (library, data shape, naming) and why. Append-only |
+| `LEARNINGS.md` | everyone | Gotchas and "how it really works here". Curated, not a log |
+| `log/<branch>.md` | `checkpoint.py` | One line per handoff on that branch |
+| `mcp.json` | everyone | MCP servers for all tools. After editing, run `python3 .ai/bin/sync.py`; never hand-edit `.mcp.json`, `.cursor/mcp.json` or `.codex/config.toml` |
+| `config.json` | everyone | Protected branches |
+| `bin/` | the kit | `context.py` (resume), `checkpoint.py` (handoff), `sync.py` (skills and MCP fan-out) |
+
+Project rules for agents live in [AGENTS.md](AGENTS.md). `CLAUDE.md` only imports it, so there is one place to edit. Files owned by the kit are overwritten when someone upgrades it with `aikit .`, so put repo-specific guidance in `AGENTS.md`, not in `.ai/bin/`.
+
+### Branch names in state and log files
+
+A `/` in the branch name becomes `__` in the file name: branch `jeevan/ui-redesign` has its state in `.ai/state/jeevan__ui-redesign.md`.
+
+---
+
 ## Contributing
 
-1. **Branch** from `main`: `feature/<short-name>` or `fix/<short-name>`.
+1. **Branch** from `main`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `main`).
 2. **Keep the layers:**
    - business rules go in `src/lib/` (pure and tested)
    - database access goes in `src/server/`
@@ -551,6 +590,7 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 4. **Before pushing:** run `npm run typecheck && npm test`.
 5. **Never commit secrets:** `.env`, copies of it, `.pgdata/` or tokens. Use `.env.example` for new settings, with an empty value and a comment.
 6. Open a pull request with a short description and screenshots for UI changes.
+7. **Using an AI tool?** Type `handoff` before you stop so the next session can `resume`. See [Working with AI coding tools](#working-with-ai-coding-tools).
 
 ---
 

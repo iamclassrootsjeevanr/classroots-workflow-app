@@ -33,21 +33,26 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 
 ## Project
 
-_Any section still marked TODO: inspect the repo and fill it in during your first session. Keep each short._
+**What this is:** Classroots Work — work tracking, review and analytics for Classroots teams. Items (Journey Applets, APK tests) move through per-work-type workflows; every step is timestamped and turned into dashboards. Optional two-way Google Sheet sync. Full docs in `README.md`.
 
-**What this is:** TODO
-
-**Stack:** TODO
+**Stack:** Next.js 15 App Router + React 19, TypeScript, Tailwind CSS v4 (CSS-first tokens), Prisma 6 on PostgreSQL (embedded local DB via `npm run db:start`), Auth.js v5 (Google, password, magic link), Recharts, lucide-react, Vitest.
 
 **Commands**
-- Install: TODO
-- Dev: TODO
-- Test: TODO
-- Lint/format: TODO
-- Build: TODO
+- Install: `npm install`, copy `.env.example` → `.env`
+- Dev: `npm run db:start` (terminal 1) · `npm run db:deploy && npm run db:seed` once · `npm run dev` (terminal 2) → http://localhost:3000
+- Test: `npm test` (Vitest, `tests/`)
+- Lint/format: `npm run typecheck` (`tsc --noEmit`); no linter or formatter is configured
+- Build: `npm run build` (runs `prisma generate` first; stop the dev server before building)
+- Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`, never commit it)
 
-**Layout:** TODO (key directories and what lives in each)
+**Layout:** `src/modules/` work-type definitions (statuses, transitions, fields, sheet mapping) · `src/lib/` pure logic, unit-tested, no DB · `src/server/` DB, auth, services, sync (`services/work-items.ts` is the only write path for items) · `src/app/` routes, `actions.ts` server actions · `src/components/` UI (`ui.tsx`, `form.tsx` primitives) · `prisma/` schema and hand-written SQL migrations · `scripts/` imports and local DB · `tests/` Vitest.
 
-**Conventions:** TODO (naming, structure, style rules agents keep getting wrong)
+**Conventions:**
+- Colours only via tokens from `src/app/globals.css` (`bg-surface`, `text-muted`, `bg-ok-soft`, `.status-chip` with `--status`). No raw Tailwind palette classes (`bg-white`, `text-emerald-700`) in `src/`.
+- Classes that get `@apply`'d must be `@utility`, not `@layer components` (Tailwind v4 build fails otherwise).
+- Business rules in `src/lib/` with a test; DB access in `src/server/`; never write items outside `services/work-items.ts`.
+- Schema change → new folder in `prisma/migrations/` + `npm run db:deploy`; commit the migration.
+- Form controls use `src/components/form.tsx` (Checkbox/Radio/Switch rows, Segmented); nav icons via `src/components/icons.tsx` string keys.
+- Verify UI in a browser at phone (375px) and desktop widths, light and dark, before calling it done.
 
-**Done means:** code runs, tests/lint pass, `.ai/STATE.md` updated, pushed.
+**Done means:** code runs, `npm run typecheck && npm test` pass, `.ai/state/<branch>.md` updated via `handoff`, pushed.
