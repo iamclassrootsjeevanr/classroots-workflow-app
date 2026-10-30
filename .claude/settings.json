@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && (python3 .ai/bin/context.py --fetch 2>/dev/null || python .ai/bin/context.py --fetch 2>/dev/null || true)"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && (python3 .ai/bin/context.py --fetch 2>/dev/null || py -3 .ai/bin/context.py --fetch 2>/dev/null || python .ai/bin/context.py --fetch 2>/dev/null || true)"
           }
         ]
       }

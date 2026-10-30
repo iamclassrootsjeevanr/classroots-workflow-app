@@ -12,12 +12,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+for _s in (sys.stdout, sys.stderr):  # Windows consoles: never crash on non-ASCII
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def git(*args, timeout=10):
     try:
-        r = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
         return (r.stdout if r.returncode == 0 else r.stderr).strip(), r.returncode
     except (OSError, subprocess.TimeoutExpired) as e:
         return f"(git unavailable: {e})", 1
@@ -44,7 +51,8 @@ def read(p):
 
 
 def main():
-    branch, _ = git("rev-parse", "--abbrev-ref", "HEAD")
+    branch, rc = git("symbolic-ref", "--short", "-q", "HEAD")
+    branch = branch if rc == 0 and branch else "HEAD (detached)"
     print("RESUME CONTEXT — follow the Session protocol in AGENTS.md. Continue from 'Next steps'.")
     print(f"Branch: {branch}")
 

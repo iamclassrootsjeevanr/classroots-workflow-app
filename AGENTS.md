@@ -7,17 +7,18 @@ Single source of truth for every coding agent on this repo (Claude Code, Codex, 
 ## Session protocol (mandatory, every tool, every session)
 
 The repo is the shared memory. Anything not written to `.ai/` and pushed is lost when the user switches tools.
-This is a shared repo: each branch has its own state file, so collaborators never overwrite each other.
+This is a shared repo: each branch has its own state and log file, so collaborators never overwrite each other. One person per branch.
+**Python command:** examples use `python3` (macOS/Linux). On Windows use `py -3` (or `python`).
 
 **On start**
-1. Run `python3 .ai/bin/context.py --pull` (use `python` if `python3` is missing). One call fast-forwards the branch, then prints this branch's state file, LEARNINGS, git status and recent commits. Claude Code gets a read-only version injected at session start; if it reports "behind remote", run the command above.
+1. Run `python3 .ai/bin/context.py --pull`. One call fast-forwards the branch, then prints this branch's state file, LEARNINGS, git status and recent commits. Claude Code gets a read-only version injected at session start; if it reports "behind remote", run the command above.
 2. Uncommitted changes you did not make are the previous session's work in progress — never discard or overwrite them.
 3. State in one line what you are resuming, then continue from "Next steps". Do not ask the user to re-explain anything that is in `.ai/`.
 
 **During work**
 - Decision with lasting effect (library, architecture, data shape, naming) → append to `.ai/DECISIONS.md` (shared by the team).
 - Gotcha, workaround, or "how it actually works here" → add to `.ai/LEARNINGS.md` (shared). Curate: edit existing lines instead of piling up duplicates.
-- `.ai/LOG.md` is append-only history. Read it only when you need history.
+- `.ai/log/<branch>.md` is this branch's append-only handoff history (written by `checkpoint.py`). Read it only when you need history.
 
 **On handoff** — user says stop, pause, handoff, switch, checkpoint, wrap up, or a long task finishes:
 run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
