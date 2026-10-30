@@ -269,14 +269,16 @@ Every change to an item goes through `src/server/services/work-items.ts`, whethe
 
 ```mermaid
 flowchart LR
-  UI[Button / select in UI] --> SA[Server action<br/>src/app/actions.ts]
-  SA --> SVC[work-items service]
-  SHEET[Google Sheet edit] --> SYNC[Sync engine] --> SVC
-  IMPORT[Excel import] --> SVC
-  SVC --> ITEM[(WorkItem)]
-  SVC --> EVT[(WorkItemEvent)]
-  SVC --> IV[(StageInterval)]
-  SVC --> OUT[(SyncOutbox)] --> SYNC
+  ui["Button or select in the UI"] --> action["Server action (actions.ts)"]
+  action --> svc["work-items service"]
+  sheet["Google Sheet edit"] --> sync["Sync engine"]
+  sync --> svc
+  xlsx["Excel import"] --> svc
+  svc --> item[("WorkItem")]
+  svc --> evt[("WorkItemEvent")]
+  svc --> iv[("StageInterval")]
+  svc --> outbox[("SyncOutbox")]
+  outbox --> sync
 ```
 
 ### Analytics come from the history
