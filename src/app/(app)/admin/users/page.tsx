@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { FilterBar } from '@/components/filter-bar';
 import { PeopleActions } from '@/components/people-actions';
-import { Card, PageHeader } from '@/components/ui';
+import { Card, PageHeader, ToneChip } from '@/components/ui';
 import { combineRoles, type RoleLite } from '@/lib/access-core';
 import { formatDateTime } from '@/lib/time';
 import { db } from '@/server/db';
@@ -14,7 +14,7 @@ export const metadata = { title: 'People & access' };
 type Search = { q?: string; wt?: string; role?: string; status?: string };
 
 function AccessChips({ isAdmin, memberships }: { isAdmin: boolean; memberships: { workTypeId: string; workType: { name: string }; roles: { role: RoleLite }[] }[] }) {
-  if (isAdmin) return <span className="chip bg-red-50 text-red-700">Admin · everything</span>;
+  if (isAdmin) return <ToneChip tone="bad">Admin · everything</ToneChip>;
   if (!memberships.length) return <span className="text-xs text-warn">No access yet</span>;
   return (
     <div className="flex flex-col gap-1">
@@ -107,13 +107,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <li key={u.id} className={`card ${u.active ? '' : 'opacity-60'}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <Link href={`/admin/users/${u.id}`} className="block truncate text-[15px] font-semibold hover:text-brand">
+                <Link href={`/admin/users/${u.id}`} className="block truncate text-md font-semibold hover:text-brand">
                   {u.name ?? '—'}
                   {u.id === me.id && <span className="ml-1 text-xs font-normal text-muted">(you)</span>}
                 </Link>
                 <div className="truncate text-xs text-muted">{u.email ?? 'no email'}</div>
               </div>
-              {!u.active && <span className="chip bg-red-50 text-red-700">deactivated</span>}
+              {!u.active && <ToneChip tone="bad">deactivated</ToneChip>}
             </div>
             <div className="mt-3">
               <AccessChips isAdmin={u.isAdmin} memberships={u.memberships} />

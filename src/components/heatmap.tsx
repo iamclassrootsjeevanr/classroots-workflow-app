@@ -1,11 +1,11 @@
 import { loadLevel, type LoadLevel } from '@/lib/analytics-core';
 
 const COLORS: Record<LoadLevel, string> = {
-  idle: '#f1f4f7',
-  low: '#c8e6c9',
-  normal: '#90caf9',
-  high: '#ffcc80',
-  overloaded: '#ef9a9a',
+  idle: 'var(--heat-idle)',
+  low: 'var(--heat-low)',
+  normal: 'var(--heat-normal)',
+  high: 'var(--heat-high)',
+  overloaded: 'var(--heat-over)',
 };
 
 /** Developer × day grid of items on each person's plate, coloured by load vs capacity. */
@@ -27,7 +27,7 @@ export function WorkloadHeatmap({
             {days.map(d => (
               <th key={d} className="w-7 text-center font-normal text-muted" title={d}>
                 <div>{weekday(d)}</div>
-                <div className="text-[10px]">{d.slice(8)}</div>
+                <div className="text-[0.625rem]">{d.slice(8)}</div>
               </th>
             ))}
           </tr>
@@ -41,8 +41,8 @@ export function WorkloadHeatmap({
                 return (
                   <td
                     key={days[i]}
-                    className="h-7 w-7 rounded text-center tabular-nums"
-                    style={{ background: COLORS[level], color: c ? '#1f2933' : '#b0bac5' }}
+                    className={`h-7 w-7 rounded-md text-center tabular-nums ${c ? 'text-ink' : 'text-muted/60'}`}
+                    style={{ background: COLORS[level] }}
                     title={`${r.name} · ${days[i]}: ${c} item(s), capacity ${r.capacity}`}
                   >
                     {c || ''}
@@ -53,7 +53,7 @@ export function WorkloadHeatmap({
           ))}
         </tbody>
       </table>
-      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted">
+      <div className="mt-2 flex flex-wrap gap-3 text-2xs text-muted">
         {(Object.keys(COLORS) as LoadLevel[]).map(l => (
           <span key={l} className="inline-flex items-center gap-1">
             <i className="h-2.5 w-2.5 rounded-sm" style={{ background: COLORS[l] }} />

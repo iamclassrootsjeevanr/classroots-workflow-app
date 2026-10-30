@@ -75,7 +75,7 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
         }
       />
       {wt.state === 'PAUSED' && (
-        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">This work type is paused. Items are read-only and sheet sync is stopped until an admin resumes it.</p>
+        <p className="note-warn mb-4">This work type is paused. Items are read-only and sheet sync is stopped until an admin resumes it.</p>
       )}
 
       <FilterBar

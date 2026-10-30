@@ -26,14 +26,14 @@ export function StageTimeline({ intervals, now, tz }: { intervals: TimelineInter
           return (
             <div
               key={idx}
-              className="h-full border-r border-white/70"
+              className="h-full border-r border-surface/70"
               style={{ width: `${Math.max(w, 0.8)}%`, background: iv.color, opacity: iv.exitedAt ? 0.85 : 1 }}
               title={`${iv.label}: ${formatDateTime(iv.enteredAt, tz)} → ${iv.exitedAt ? formatDateTime(iv.exitedAt, tz) : 'now'} (${formatDuration(iv.businessMinutes)} business)`}
             />
           );
         })}
       </div>
-      <div className="mt-1 flex justify-between text-[11px] text-muted">
+      <div className="mt-1 flex justify-between text-2xs text-muted">
         <span>{formatDateTime(intervals[0].enteredAt, tz)}</span>
         <span>now</span>
       </div>

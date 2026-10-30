@@ -24,7 +24,7 @@ export default async function RolesPage() {
       <div className="mb-5">
         <RoleForm />
       </div>
-      <div className="space-y-4">
+      <div className="space-y-5">
         {roles.map(r => (
           <RoleForm
             key={`${r.id}-${r.updatedAt.getTime()}`}

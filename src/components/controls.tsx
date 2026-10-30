@@ -1,5 +1,6 @@
 'use client';
 
+import { ExternalLink } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import {
   assignAction,
@@ -46,10 +47,10 @@ export function StatusSelect({
   compact?: boolean;
 }) {
   const { pending, result, exec } = useAction();
-  const style = { background: `${current.color}1a`, color: current.color, borderColor: `${current.color}55` };
+  const style = { '--status': current.color } as React.CSSProperties;
   if (!options.length) {
     return (
-      <span className="inline-flex rounded-md border px-2 py-1 text-xs font-semibold whitespace-nowrap" style={style}>
+      <span className="status-control inline-flex rounded-md border px-2 py-1 text-xs font-semibold whitespace-nowrap" style={style}>
         {current.label}
       </span>
     );
@@ -58,7 +59,7 @@ export function StatusSelect({
     <div>
       <select
         aria-label="Change status"
-        className={`cursor-pointer rounded-md border font-semibold outline-none ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
+        className={`status-control cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
         style={style}
         value={current.key}
         disabled={pending}
@@ -127,10 +128,10 @@ export function FieldsForm({ itemId, fields }: { itemId: string; fields: Editabl
               {f.label}
             </label>
             {!f.editable ? (
-              <div className="min-h-[34px] rounded-md bg-canvas px-3 py-1.5 text-sm break-all">
+              <div className="min-h-9 rounded-lg bg-surface-2 px-3 py-1.5 text-sm break-all">
                 {f.type === 'url' && f.value ? (
                   <a className="link" href={f.value} target="_blank" rel="noopener noreferrer">
-                    {f.linkLabel ?? 'Open'} ↗
+                    {f.linkLabel ?? 'Open'} <ExternalLink size={12} className="inline" aria-hidden="true" />
                   </a>
                 ) : (
                   f.value || <span className="text-muted">—</span>
@@ -150,7 +151,7 @@ export function FieldsForm({ itemId, fields }: { itemId: string; fields: Editabl
                 />
                 {f.type === 'url' && f.value && (
                   <a className="btn-ghost shrink-0" href={f.value} target="_blank" rel="noopener noreferrer" title={f.linkLabel}>
-                    ↗
+                    <ExternalLink size={15} aria-hidden="true" />
                   </a>
                 )}
               </div>

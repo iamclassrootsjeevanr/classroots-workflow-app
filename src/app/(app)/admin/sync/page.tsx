@@ -28,7 +28,7 @@ export default async function SyncPage() {
       <PageHeader title="Google Sheet sync" subtitle="The database is the source of truth. Changes made in the app are written to the sheet; edits made in the sheet are pulled in. If both change the same cell, the app wins and the conflict is logged." />
 
       {!configured && (
-        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+        <p className="note-warn mb-4">
           APPS_SCRIPT_URL is not set in .env, so sync can’t run.
         </p>
       )}

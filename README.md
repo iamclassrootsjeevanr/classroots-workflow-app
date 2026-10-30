@@ -28,14 +28,15 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 7. [Work types](#work-types)
 8. [People, roles and access](#people-roles-and-access)
 9. [Signing in (Google, password, email link)](#signing-in)
-10. [Google Sheet two-way sync](#google-sheet-two-way-sync)
-11. [Add a new kind of work](#add-a-new-kind-of-work)
-12. [Database and migrations](#database-and-migrations)
-13. [Tests and checks](#tests-and-checks)
-14. [Deploy](#deploy)
-15. [Scripts reference](#scripts-reference)
-16. [Troubleshooting](#troubleshooting)
-17. [Contributing](#contributing)
+10. [Appearance: theme, text size, density, sidebar](#appearance-theme-text-size-density-sidebar)
+11. [Google Sheet two-way sync](#google-sheet-two-way-sync)
+12. [Add a new kind of work](#add-a-new-kind-of-work)
+13. [Database and migrations](#database-and-migrations)
+14. [Tests and checks](#tests-and-checks)
+15. [Deploy](#deploy)
+16. [Scripts reference](#scripts-reference)
+17. [Troubleshooting](#troubleshooting)
+18. [Contributing](#contributing)
 
 ---
 
@@ -375,6 +376,28 @@ Set `EMAIL_SERVER` to an SMTP URL, for example `smtps://user:pass@smtp.example.c
 
 ---
 
+## Appearance: theme, text size, density, sidebar
+
+Every signed-in person has their own appearance settings under **My account → Appearance**:
+
+| Setting | Options | Notes |
+| --- | --- | --- |
+| Theme | Light · Dark · System | *System* follows the device and switches live. |
+| Text size | Small · Default · Large | Scales the whole UI, including tables and charts (everything is rem-based). |
+| Density | Comfortable · Compact | Compact tightens card padding and table rows. |
+
+Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so they follow the person to every device. A `cr_prefs` cookie mirrors them so the sign-in page and the very first paint already use them; a tiny inline script in `src/app/layout.tsx` resolves *System* before the page is painted, so there is no flash.
+
+- Colours live as CSS variables in `src/app/globals.css` (`:root` for light, `[data-theme='dark']` for dark) and are exposed to Tailwind through `@theme inline` as `bg-surface`, `text-muted`, `bg-ok-soft`, `text-brand` … Use those names in components; never raw palette classes like `bg-white` or `text-amber-700`.
+- Status colours defined by a work type (hex) are rendered with the `.status-chip` rule, which mixes them toward the text colour so they stay readable on both themes.
+- Charts (`src/components/charts.tsx`) read `var(--color-…)` strings, so they re-theme with no JavaScript.
+- Icons come from `lucide-react`; nav icons are looked up by key in `src/components/icons.tsx`.
+- Shared controls (`src/components/form.tsx`): `Checkbox`, `Radio`, `Switch` (one row each: control · label · help), `Segmented`, `OptionList`. Use them for every tick in the app.
+
+**Sidebar.** On screens 1024px and wider the sidebar collapses to an icon rail with the button at its top or the `[` key; the state is kept in the `cr_nav` cookie so the next page loads with the same width. Below 1024px the menu is a slide-over drawer (Escape closes it).
+
+---
+
 ## Google Sheet two-way sync
 
 Postgres is the source of truth. Sync is **off** until an admin turns it on, so nothing touches the live sheet by accident.
@@ -437,7 +460,7 @@ npx prisma migrate reset                  # ⚠ wipe the local DB, re-apply migr
 ## Tests and checks
 
 ```bash
-npm test             # Vitest: workflow rules, access, business hours, analytics, sync diff, groups, passwords
+npm test             # Vitest: workflow rules, access, business hours, analytics, sync diff, groups, passwords, preferences
 npm run typecheck    # TypeScript, no emit
 npm run build        # production build (also catches route and type errors)
 ```

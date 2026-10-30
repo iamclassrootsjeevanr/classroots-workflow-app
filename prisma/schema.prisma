@@ -67,6 +67,8 @@ model User {
   /// scrypt hash for email + password sign-in (null = SSO / magic link only)
   passwordHash      String?
   passwordUpdatedAt DateTime?
+  /// UI preferences (theme, text size, density) – see src/lib/prefs.ts
+  prefs             Json      @default("{}")
 
   accounts      Account[]
   sessions      Session[]

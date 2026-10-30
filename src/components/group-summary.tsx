@@ -1,10 +1,8 @@
 import { StackedByPerson } from '@/components/charts';
-import { Card } from '@/components/ui';
+import { Card, ToneChip } from '@/components/ui';
 import { groupRollup, groupSeries, type GroupableItem } from '@/lib/groups';
 import { formatDate, normalizeDate } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
-
-const TONE = { ok: 'bg-emerald-50 text-emerald-700', warn: 'bg-amber-50 text-amber-700', bad: 'bg-red-50 text-red-700', muted: 'bg-slate-100 text-slate-600' } as const;
 
 /** "By APK version"-style summary table plus a stacked bar per group. Renders nothing for work types without a groupSummary. */
 export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string }) {
@@ -35,13 +33,13 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
             <tbody>
               {rows.map(r => (
                 <tr key={r.group}>
-                  <td className="font-mono text-xs whitespace-nowrap">{r.group}</td>
+                  <td className="font-mono text-xs font-medium whitespace-nowrap">{r.group}</td>
                   {summary.columns.map(c => (
                     <td key={c.key} className="whitespace-nowrap tabular-nums">
                       {cell(c.key, r.cells[c.key] ?? '')}
                     </td>
                   ))}
-                  <td>{r.result && <span className={`chip ${TONE[r.result.tone]}`}>{r.result.label}</span>}</td>
+                  <td>{r.result && <ToneChip tone={r.result.tone}>{r.result.label}</ToneChip>}</td>
                 </tr>
               ))}
             </tbody>
@@ -49,7 +47,7 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
         </div>
       </Card>
       <Card title={`Status by ${summary.label}`} className="xl:col-span-2">
-        <StackedByPerson rows={chart.rows} series={chart.series} height={Math.max(220, rows.length * 26)} />
+        <StackedByPerson rows={chart.rows} series={chart.series} height={Math.max(220, rows.length * 26)} labelWidth={Math.min(170, 20 + Math.max(...rows.map(r => r.group.length)) * 7)} />
       </Card>
     </div>
   );

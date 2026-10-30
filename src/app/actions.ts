@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
 import type { WorkTypeState } from '@prisma/client';
 import { z } from 'zod';
 import { isUserError } from '@/server/errors';
@@ -13,6 +14,7 @@ import { syncWorkType } from '@/server/sync/google-sheet';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
+import { COOKIE_MAX_AGE, PREFS_COOKIE, PrefsSchema, serializePrefsCookie } from '@/lib/prefs';
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 
@@ -308,5 +310,16 @@ export async function changeMyPasswordAction(input: { current: string; next: str
     if (problem) throw new Error(problem);
     await db.user.update({ where: { id: me.id }, data: { passwordHash: await hashPassword(input.next), passwordUpdatedAt: new Date() } });
     return user.passwordHash ? 'Password changed' : 'Password set – you can now sign in with it';
+  });
+}
+
+/** Theme, text size and density – saved on the user so they follow them to every device, and mirrored in a cookie for the sign-in page. */
+export async function savePrefsAction(raw: unknown) {
+  return run(async () => {
+    const me = await requireUser();
+    const prefs = PrefsSchema.parse(raw);
+    await db.user.update({ where: { id: me.id }, data: { prefs } });
+    (await cookies()).set(PREFS_COOKIE, serializePrefsCookie(prefs), { path: '/', maxAge: COOKIE_MAX_AGE, sameSite: 'lax' });
+    return 'Saved';
   });
 }

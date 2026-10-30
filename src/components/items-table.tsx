@@ -1,3 +1,4 @@
+import { AlertTriangle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { getModule } from '@/modules/registry';
 import { formatDate } from '@/lib/time';
@@ -64,19 +65,19 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
           return (
             <li key={it.id}>
               {header && <div className="mt-3 mb-1.5 text-xs font-semibold text-brand first:mt-0">{g || 'No chapter'}</div>}
-              <div className="rounded-xl border border-line bg-white p-3.5 shadow-[var(--shadow-card)]">
+              <div className="rounded-xl border border-line bg-surface p-3.5 shadow-[var(--shadow-card)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-mono text-[11px] text-muted">
+                    <div className="font-mono text-2xs text-muted">
                       {it.externalKey}
                       {showWorkType && <span className="ml-1.5 font-sans">· {it.workTypeName}</span>}
                       {it.sheetMissing && (
-                        <span className="ml-1 text-warn" title="Not found in the Google Sheet on the last sync">
-                          ⚠
+                        <span className="ml-1 inline-flex align-middle text-warn" title="Not found in the Google Sheet on the last sync">
+                          <AlertTriangle size={12} aria-hidden="true" />
                         </span>
                       )}
                     </div>
-                    {title(it, 'mt-0.5 block text-[15px] leading-snug font-medium')}
+                    {title(it, 'mt-0.5 block text-md leading-snug font-medium text-ink')}
                   </div>
                   <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>
                 </div>
@@ -103,8 +104,8 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                 {(links.length > 0 || it.reviewRounds > 1) && (
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs">
                     {links.map(([k, label]) => (
-                      <a key={k} className="link" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                        {label} ↗
+                      <a key={k} className="link inline-flex items-center gap-1" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
+                        {label} <ExternalLink size={11} aria-hidden="true" />
                       </a>
                     ))}
                     {it.reviewRounds > 1 && <span className="text-muted">{it.reviewRounds} review rounds</span>}
@@ -117,7 +118,7 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
       </ul>
 
       {/* Wider screens: table */}
-      <div className="hidden max-h-[70vh] overflow-auto rounded-lg border border-line md:block">
+      <div className="hidden max-h-[70vh] overflow-auto rounded-xl border border-line bg-surface shadow-[var(--shadow-card)] md:block">
         <table className="table">
           <thead>
             <tr>
@@ -141,7 +142,7 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
               return [
                 header && (
                   <tr key={`g-${it.id}`}>
-                    <td colSpan={cols} className="bg-brand-soft/50 text-xs font-semibold text-brand">
+                    <td colSpan={cols} className="bg-surface-2 py-1.5 text-2xs font-semibold tracking-wide text-muted uppercase">
                       {g || 'No chapter'}
                     </td>
                   </tr>
@@ -157,14 +158,14 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                       it.externalKey
                     )}
                     {it.sheetMissing && (
-                      <span className="ml-1 text-[10px] text-warn" title="Not found in the Google Sheet on the last sync">
-                        ⚠ sheet
+                      <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[0.625rem] text-warn" title="Not found in the Google Sheet on the last sync">
+                        <AlertTriangle size={11} aria-hidden="true" /> sheet
                       </span>
                     )}
                   </td>
                   <td className="min-w-48">
-                    {title(it, '')}
-                    {it.reviewRounds > 1 && <span className="ml-1.5 text-[11px] text-muted">· {it.reviewRounds} review rounds</span>}
+                    {title(it, 'font-medium text-ink')}
+                    {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
                   </td>
                   <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>
                   {showAssignee && <td className="whitespace-nowrap">{assignee(it, true)}</td>}
@@ -174,8 +175,8 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                   <td className="whitespace-nowrap text-xs">
                     {links.length ? (
                       links.map(([k, label]) => (
-                        <a key={k} className="link mr-2" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                          {label}
+                        <a key={k} className="link mr-2 inline-flex items-center gap-0.5" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
+                          {label} <ExternalLink size={11} aria-hidden="true" />
                         </a>
                       ))
                     ) : (

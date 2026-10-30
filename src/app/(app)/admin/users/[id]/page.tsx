@@ -41,7 +41,7 @@ export default async function EditUserPage({ params, searchParams }: { params: P
         subtitle={`${user.active ? 'Active' : 'Deactivated'} · last sign-in ${user.lastLoginAt ? formatDateTime(user.lastLoginAt, tz) : 'never'}${user.accounts.length ? ` · linked: ${user.accounts.map(a => a.provider).join(', ')}` : ''} · ${user._count.assignedItems} assigned, ${user._count.ownedItems} owned`}
         actions={<PeopleActions userId={user.id} active={user.active} isSelf={user.id === admin.id} afterRemove="/admin/users" />}
       />
-      {added && <p className="mb-4 rounded-md bg-emerald-50 px-4 py-2 text-sm text-emerald-800">Added. They can sign in now if they have an email and a password (or use Google / an email link).</p>}
+      {added && <p className="note-ok mb-4">Added. They can sign in now if they have an email and a password (or use Google / an email link).</p>}
       <UserAccessForm {...data} isSelf={user.id === admin.id} key={`${user.updatedAt.getTime()}`} />
       <Card className="mt-5" title="Removing someone">
         <p className="text-sm text-muted">

@@ -47,20 +47,20 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const domains = env().ALLOWED_DOMAINS;
 
   return (
-    <main className="safe-bottom flex min-h-screen items-center justify-center p-4">
+    <main className="safe-bottom flex min-h-screen items-center justify-center bg-[radial-gradient(70%_45%_at_50%_0%,var(--brand-soft),transparent)] p-4">
       <div className="w-full max-w-md">
         <div className="mb-5 text-center">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-brand text-lg font-bold text-white">C</div>
           <h1 className="text-xl font-semibold">Classroots Work</h1>
         </div>
 
-        <div className="rounded-2xl border border-line bg-white px-5 py-6 shadow-[var(--shadow-card)] sm:px-8 sm:py-7">
-          <p className="mb-6 text-center text-[15px] text-muted">Sign in to your account</p>
-          {error && <p className="mb-5 rounded-md bg-red-50 px-3 py-2 text-sm text-bad">{ERRORS[error] ?? 'Sign-in failed. Try again.'}</p>}
+        <div className="rounded-2xl border border-line bg-surface px-5 py-6 shadow-[var(--shadow-card)] sm:px-8 sm:py-7">
+          <p className="mb-6 text-center text-md text-muted">Sign in to your account</p>
+          {error && <p className="note-bad mb-5">{ERRORS[error] ?? 'Sign-in failed. Try again.'}</p>}
 
           {/* Classroots staff: Google sign-in (first sign-in creates the account when the domain is allowed) */}
           <section>
-            <h2 className="mb-3 text-lg font-normal">Classroots Users</h2>
+            <h2 className="mb-3 text-md font-semibold">Classroots Users</h2>
             <form
               action={async () => {
                 'use server';
@@ -70,7 +70,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             >
               <button
                 type="submit"
-                className="flex w-full items-center justify-center gap-2.5 rounded border border-brand/50 bg-white py-2 text-sm font-medium tracking-wide text-brand uppercase hover:bg-brand-soft"
+                className="btn-ghost w-full gap-2.5 py-2.5"
               >
                 <GoogleIcon />
                 Sign in with Google
@@ -83,7 +83,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             </p>
           </section>
 
-          <div className="my-6 flex items-center gap-4 text-sm text-ink">
+          <div className="my-6 flex items-center gap-4 text-xs font-medium text-muted">
             <span className="h-px flex-1 bg-line" />
             OR
             <span className="h-px flex-1 bg-line" />
@@ -91,7 +91,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
 
           {/* Organizations & clients: email + password set by an admin */}
           <section>
-            <h2 className="mb-4 text-lg font-normal">Organizations &amp; Clients</h2>
+            <h2 className="mb-4 text-md font-semibold">Organizations &amp; Clients</h2>
             <form
               className="space-y-4"
               action={async (formData: FormData) => {
@@ -112,10 +112,10 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
               </div>
               <PasswordField id="password" name="password" />
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 accent-brand" />
+                <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 rounded accent-brand" />
                 Remember me
               </label>
-              <button className="w-full rounded bg-brand py-2.5 text-sm font-medium tracking-wide text-white uppercase shadow-sm hover:bg-brand-dark" type="submit">
+              <button className="btn-primary w-full py-2.5" type="submit">
                 Sign in
               </button>
             </form>

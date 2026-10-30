@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { saveUserAction, type ActionResult, type UserInput } from '@/app/actions';
 import { CAPABILITY_LABELS, PAGE_LABELS, combineRoles, type Capability, type DataScope, type PageKey, type RoleLite } from '@/lib/access-core';
 import { ActionMessage } from './controls';
+import { Checkbox, GroupLabel, OptionList, Switch } from './form';
 
 export type WorkTypeOption = { id: string; name: string; state: string };
 export type RoleOption = { id: string; name: string; description: string | null; color: string; capabilities: Capability[]; dataScope: DataScope; canEdit: boolean; pages: PageKey[] };
@@ -40,24 +41,12 @@ function Section({ n, title, help, children }: { n: number; title: string; help?
       <div className="mb-4 flex items-start gap-3">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-semibold text-white">{n}</span>
         <div>
-          <h2 className="text-[15px] font-semibold">{title}</h2>
+          <h2 className="text-md font-semibold">{title}</h2>
           {help && <p className="text-xs text-muted">{help}</p>}
         </div>
       </div>
       {children}
     </section>
-  );
-}
-
-function Tick({ checked, onChange, label, help, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode; help?: string; disabled?: boolean }) {
-  return (
-    <label className={`flex items-start gap-2 text-sm ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-      <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-brand" checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
-      <span>
-        {label}
-        {help && <span className="block text-xs text-muted">{help}</span>}
-      </span>
-    </label>
   );
 }
 
@@ -166,10 +155,10 @@ export function UserAccessForm({
             <input className="input" type="number" min={1} max={20} value={v.capacity} onChange={e => set({ capacity: Number(e.target.value) || 1 })} />
           </label>
         </div>
-        <div className="mt-4 flex flex-wrap gap-6">
-          <Tick checked={v.active} disabled={isSelf} onChange={active => set({ active })} label="Active" help="Unticked = can’t sign in; history is kept." />
-          <Tick checked={v.isAdmin} disabled={isSelf} onChange={isAdmin => set({ isAdmin })} label={<b>Admin</b>} help="Full access to every work type, plus People, Roles, Work types and Sync." />
-        </div>
+        <OptionList className="mt-4">
+          <Switch checked={v.active} disabled={isSelf} onChange={active => set({ active })} label="Active" help="Off = can’t sign in; history is kept" />
+          <Switch checked={v.isAdmin} disabled={isSelf} onChange={isAdmin => set({ isAdmin })} label="Admin" help="Full access everywhere, plus People, Roles, Work types and Sync" />
+        </OptionList>
       </Section>
 
       <Section n={2} title="How they sign in" help="Organizations & clients use email + password. Classroots staff can use Google. Anyone can request an email link.">
@@ -189,7 +178,7 @@ export function UserAccessForm({
         title="What they can access"
         help="Tick each work type they work in and give one or more roles. Each role brings its own data scope, edit right and pages; several roles add up."
       >
-        {v.isAdmin && <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">Admins already have full access everywhere. The settings below apply only if Admin is unticked later.</p>}
+        {v.isAdmin && <p className="note-warn mb-3 text-xs">Admins already have full access everywhere. The settings below apply only if Admin is switched off later.</p>}
         {copySources.length > 0 && (
           <label className="mb-4 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted">Copy access from</span>
@@ -208,46 +197,47 @@ export function UserAccessForm({
           {workTypes.map(wt => {
             const a = v.access.find(x => x.workTypeId === wt.id)!;
             return (
-              <div key={wt.id} className={`rounded-xl border p-4 transition-colors ${a.enabled ? 'border-brand/40 bg-brand-soft/30' : 'border-line'}`}>
-                <Tick
+              <div key={wt.id} className={`overflow-hidden rounded-xl border transition-colors ${a.enabled ? 'border-brand/40' : 'border-line'}`}>
+                <Switch
                   checked={a.enabled}
                   onChange={enabled => setAccess(wt.id, { enabled })}
-                  label={
-                    <span className="font-semibold">
-                      {wt.name} {wt.state !== 'ACTIVE' && <span className="text-xs font-normal text-warn">({wt.state.toLowerCase()})</span>}
-                    </span>
-                  }
+                  label={<span className="text-md">{wt.name}</span>}
+                  help={wt.state !== 'ACTIVE' ? <span className="text-warn">{wt.state.toLowerCase()}</span> : a.enabled ? 'has access' : 'no access'}
                 />
                 {a.enabled && (
-                  <div className="mt-4 grid gap-5 lg:grid-cols-[3fr_2fr]">
+                  <div className="grid gap-5 border-t border-line bg-surface-2/40 p-4 lg:grid-cols-[3fr_2fr]">
                     <div>
-                      <div className="label">Roles (tick one or more)</div>
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <GroupLabel note={`${a.roleIds.length} picked`}>Roles (one or more)</GroupLabel>
+                      <OptionList>
                         {roles.map(r => {
                           const on = a.roleIds.includes(r.id);
                           return (
-                            <label key={r.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border bg-white p-2.5 text-sm transition-colors ${on ? 'border-brand/50' : 'border-line hover:border-brand/30'}`}>
-                              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-brand" checked={on} onChange={e => setAccess(wt.id, { roleIds: e.target.checked ? [...a.roleIds, r.id] : a.roleIds.filter(id => id !== r.id) })} />
-                              <span className="min-w-0">
-                                <span className="inline-flex items-center gap-1.5 font-medium">
+                            <Checkbox
+                              key={r.id}
+                              checked={on}
+                              onChange={checked => setAccess(wt.id, { roleIds: checked ? [...a.roleIds, r.id] : a.roleIds.filter(id => id !== r.id) })}
+                              label={
+                                <span className="inline-flex items-center gap-1.5">
                                   <span className="h-2 w-2 rounded-full" style={{ background: r.color }} />
                                   {r.name}
                                 </span>
-                                {r.description && <span className="block text-xs text-muted">{r.description}</span>}
-                                <span className="mt-1 flex flex-wrap gap-1">
+                              }
+                              help={r.description ?? undefined}
+                              end={
+                                <span className="hidden shrink-0 flex-wrap justify-end gap-1 sm:flex">
                                   {r.capabilities.map(c => (
-                                    <span key={c} className="rounded bg-canvas px-1.5 text-[10px] text-muted ring-1 ring-line">
+                                    <span key={c} className="rounded-md bg-surface px-1.5 text-2xs text-muted ring-1 ring-line">
                                       {CAPABILITY_LABELS[c].label}
                                     </span>
                                   ))}
-                                  <span className="rounded bg-canvas px-1.5 text-[10px] text-muted ring-1 ring-line">{r.dataScope === 'ALL' ? 'all data' : 'own data'}</span>
-                                  {!r.canEdit && <span className="rounded bg-canvas px-1.5 text-[10px] text-muted ring-1 ring-line">view only</span>}
+                                  <span className="rounded-md bg-surface px-1.5 text-2xs text-muted ring-1 ring-line">{r.dataScope === 'ALL' ? 'all data' : 'own data'}</span>
+                                  {!r.canEdit && <span className="rounded-md bg-surface px-1.5 text-2xs text-muted ring-1 ring-line">view only</span>}
                                 </span>
-                              </span>
-                            </label>
+                              }
+                            />
                           );
                         })}
-                      </div>
+                      </OptionList>
                       <p className="mt-2 text-xs text-muted">
                         Change what a role brings under{' '}
                         <Link href="/admin/roles" className="link">
@@ -256,8 +246,8 @@ export function UserAccessForm({
                         .
                       </p>
                     </div>
-                    <div className="rounded-lg bg-white p-3 text-sm ring-1 ring-line">
-                      <div className="label">Adds up to</div>
+                    <div className="h-fit rounded-xl border border-line bg-surface p-3 text-sm">
+                      <GroupLabel>Adds up to</GroupLabel>
                       <CombinedSummary roles={rolesOf(a)} />
                     </div>
                   </div>
@@ -278,7 +268,7 @@ export function UserAccessForm({
             {v.access
               .filter(a => a.enabled)
               .map(a => (
-                <li key={a.workTypeId} className="rounded-md bg-canvas px-3 py-2">
+                <li key={a.workTypeId} className="rounded-lg bg-surface-2 px-3 py-2">
                   <span className="font-semibold">{workTypes.find(w => w.id === a.workTypeId)?.name}:</span> <CombinedSummary roles={rolesOf(a)} />
                 </li>
               ))}

@@ -1,5 +1,7 @@
 import { ChangePasswordForm } from '@/components/account-forms';
+import { PrefsForm } from '@/components/prefs-form';
 import { Card, PageHeader } from '@/components/ui';
+import { normalizePrefs } from '@/lib/prefs';
 import { formatDateTime } from '@/lib/time';
 import { db } from '@/server/db';
 import { googleEnabled } from '@/server/env';
@@ -16,7 +18,7 @@ export default async function AccountPage() {
   const tz = appTz();
   const user = await db.user.findUniqueOrThrow({
     where: { id: me.id },
-    select: { name: true, email: true, isAdmin: true, capacity: true, passwordHash: true, passwordUpdatedAt: true, lastLoginAt: true, accounts: { select: { provider: true } } },
+    select: { name: true, email: true, isAdmin: true, capacity: true, passwordHash: true, passwordUpdatedAt: true, lastLoginAt: true, prefs: true, accounts: { select: { provider: true } } },
   });
   const hasPassword = Boolean(user.passwordHash);
   const access = await getAccess(me);
@@ -55,6 +57,10 @@ export default async function AccountPage() {
             <dd>{user.lastLoginAt ? formatDateTime(user.lastLoginAt, tz) : '—'}</dd>
           </dl>
           <p className="mt-3 text-xs text-muted">Ask an admin to change your name, access or capacity.</p>
+        </Card>
+
+        <Card title="Appearance" description="Saved to your account, so it applies on every device you sign in on.">
+          <PrefsForm initial={normalizePrefs(user.prefs)} />
         </Card>
 
         <Card title="Ways to sign in">

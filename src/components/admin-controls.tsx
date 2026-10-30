@@ -11,6 +11,7 @@ import {
   type ActionResult,
 } from '@/app/actions';
 import { ActionMessage, type PersonOption } from './controls';
+import { Switch } from './form';
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -149,10 +150,9 @@ export function SyncSettings({ id, enabled, tab, spreadsheetId, configured }: { 
         exec(() => updateSyncAction(id, v));
       }}
     >
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={v.enabled} disabled={!configured} onChange={e => setV({ ...v, enabled: e.target.checked })} />
-        Two-way sync with Google Sheet
-      </label>
+      <div className="w-full overflow-hidden rounded-xl border border-line">
+        <Switch checked={v.enabled} disabled={!configured} onChange={enabled => setV({ ...v, enabled })} label="Two-way sync with Google Sheet" help={configured ? undefined : 'Set APPS_SCRIPT_URL and SYNC_TOKEN first'} />
+      </div>
       <label className="min-w-56">
         <span className="label">Sheet tab</span>
         <input className="input" value={v.tab} onChange={e => setV({ ...v, tab: e.target.value })} />

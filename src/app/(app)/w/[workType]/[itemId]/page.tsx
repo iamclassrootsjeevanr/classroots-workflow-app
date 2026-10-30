@@ -117,7 +117,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             {[item.groupKey, item.chapter?.title ?? (data.chapterTitle as string | undefined), item.chapter?.grade ? `Grade ${item.chapter.grade}` : null].filter(Boolean).join(' · ')}
             {item.owner?.name && <> · SME {item.owner.name}</>}
           </p>
-          {item.sheetMissing && <p className="mt-1 text-xs text-warn">⚠ Not found in the Google Sheet on the last sync.</p>}
+          {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -134,7 +134,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 lg:grid-cols-8">
         {milestones.map(([name, at]) => (
           <div key={name} className="card px-3 py-2.5">
-            <div className="text-[11px] font-medium text-muted">{name}</div>
+            <div className="text-2xs font-medium text-muted">{name}</div>
             <div className={`mt-0.5 text-xs tabular-nums ${at ? 'text-ink' : 'text-muted'}`}>{at ? formatDateTime(at, tz) : '—'}</div>
           </div>
         ))}
@@ -159,11 +159,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             {item.feedback.length ? (
               <ul className="space-y-3">
                 {item.feedback.map(f => (
-                  <li key={f.id} className={`rounded-md border p-3 ${f.resolvedAt ? 'border-line bg-canvas' : 'border-red-100 bg-red-50/40'}`}>
+                  <li key={f.id} className={`rounded-md border p-3 ${f.resolvedAt ? 'border-line bg-surface-2/60' : 'border-bad/20 bg-bad-soft/60'}`}>
                     <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                       <b className="text-ink">{f.author?.name ?? 'Reviewer'}</b>· round {f.round} · {formatDateTime(f.createdAt, tz)}
-                      {f.category && <span className="rounded bg-white px-1.5">{f.category}</span>}
-                      {f.severity && <span className={`rounded px-1.5 ${f.severity === 'Blocker' ? 'bg-red-100 text-bad' : 'bg-white'}`}>{f.severity}</span>}
+                      {f.category && <span className="rounded-md bg-surface px-1.5 ring-1 ring-line">{f.category}</span>}
+                      {f.severity && <span className={`rounded-md px-1.5 ring-1 ${f.severity === 'Blocker' ? 'bg-bad-soft text-bad ring-bad/20' : 'bg-surface ring-line'}`}>{f.severity}</span>}
                       {f.resolvedAt && <span className="text-ok">resolved {formatDateTime(f.resolvedAt, tz)}</span>}
                       <span className="ml-auto">{(ctx.isAssignee || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
                     </div>
@@ -230,7 +230,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                       </>
                     )}
                     {e.note && <p className="mt-0.5 text-sm whitespace-pre-wrap text-ink/90">{e.note}</p>}
-                    {e.source === 'SHEET' && e.type !== 'IMPORTED' && <span className="ml-1 rounded bg-emerald-50 px-1 text-[10px] text-emerald-700">from sheet</span>}
+                    {e.source === 'SHEET' && e.type !== 'IMPORTED' && <span className="ml-1 rounded-md bg-ok-soft px-1 text-[0.625rem] text-ok">from sheet</span>}
                   </div>
                 </li>
               ))}
