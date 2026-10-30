@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@500&display=swap">
+<title>Journey Tracker</title>
+<style>
+  :root{
+    --header:#1976d2; --bg:#f4f6f8; --card:#fff; --text:#212121; --muted:#757575;
+    --line:#e0e0e0; --accent:#1976d2; --ok:#2e7d32; --warn:#ef6c00; --bad:#c62828;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text)}
+  header{
+    background:var(--header);color:#fff;padding:14px 28px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    box-shadow:0 2px 4px rgba(0,0,0,.15);
+  }
+  h1{
+    margin:0;
+    font-family:Roboto,Helvetica,Arial,sans-serif;
+    font-weight:500;
+    font-size:1.25rem;
+    line-height:1.6;
+    letter-spacing:0.0075em;
+    -webkit-box-flex:1;
+    flex-grow:1;
+  }
+  .status{display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.92)}
+  .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.7)}
+  .dot.live{background:#69f0ae;box-shadow:0 0 0 4px rgba(105,240,174,.25)}
+  .dot.error{background:#ff8a80}
+  .dot.snapshot{background:#fff59d}
+  main{max-width:1200px;margin:0 auto;padding:28px 24px 60px}
+  .dash-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+  h2{font-weight:normal}
+  .page-title{margin:0;font-size:28px;font-weight:normal;color:#333}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:18px 20px;margin-bottom:18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .panel h2{margin:0 0 12px;font-size:16px;font-weight:normal;color:#424242}
+  select,button{font-family:inherit}
+  select{
+    background:#fff;color:var(--text);border:1px solid #bdbdbd;border-radius:4px;
+    padding:9px 12px;font-size:14px;outline:none;
+  }
+  select:focus{border-color:var(--accent)}
+  .dev-pick{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .dev-pick span{font-size:14px;color:#424242;font-weight:500}
+  #developer{min-width:200px;font-size:15px;padding:8px 12px}
+  .status-chart{max-width:640px}
+  .pie-wrap{display:flex;flex-direction:column;align-items:center;padding:12px 0 6px}
+  .pie{width:min(420px,100%);height:auto}
+  .legend{display:flex;flex-wrap:wrap;justify-content:center;gap:14px 22px;margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:#1565c0}
+  .legend i{width:12px;height:12px;border-radius:2px;display:inline-block}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:18px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:4px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .card .k{font-size:14px;color:#616161}
+  .card .v{font-size:32px;font-weight:500;margin-top:8px;color:#212121}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:12px 10px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+  th{color:#757575;font-weight:500;font-size:13px;background:#fff;position:sticky;top:0}
+  tr:hover td{background:#f7fbff}
+  select.status-edit{padding:4px 8px;font-size:12px;font-weight:600;border-radius:4px;min-width:150px}
+  select.status-edit:disabled{opacity:.6;cursor:wait}
+  .b-done{background:#e8f5e9;color:#1b5e20;border-color:#a5d6a7}
+  .b-wip{background:#fff8e1;color:#e65100;border-color:#ffe082}
+  .b-review{background:#ede7f6;color:#4527a0;border-color:#d1c4e9}
+  .b-yts{background:#eceff1;color:#455a64;border-color:#cfd8dc}
+  .b-corr{background:#ffebee;color:#b71c1c;border-color:#ffcdd2}
+  .b-none{background:#fafafa;color:#757575;border-color:#e0e0e0}
+  a{color:var(--accent);text-decoration:none;font-weight:600}
+  a:hover{text-decoration:underline}
+  .muted{color:var(--muted)}
+  .empty{padding:28px;text-align:center;color:var(--muted)}
+  .chapter-group{font-weight:600;color:var(--accent);background:#f7fbff}
+  .tablewrap{overflow:auto;max-height:70vh}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<header>
+  <h1>Journey Tracker</h1>
+  <div class="status"><span id="dot" class="dot"></span><span id="statusText">Loading…</span></div>
+</header>
+
+<main>
+  <div class="dash-head">
+    <h2 class="page-title">Developer Dashboard</h2>
+    <label class="dev-pick">
+      <span>Developers</span>
+      <select id="developer">
+        <option value="">Select developer</option>
+        <option value="Jeevan">Jeevan</option>
+        <option value="Swathi">Swathi</option>
+      </select>
+    </label>
+  </div>
+
+  <section class="panel status-chart" id="statusChart" hidden>
+    <h2>My journey by status</h2>
+    <div class="pie-wrap" id="pieWrap"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section id="journeyPanel" hidden>
+    <section class="panel">
+      <h2 id="tableTitle">My journeys</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="empty" hidden>No journeys for this developer.</div>
+    </section>
+  </section>
+</main>
+
+<script src="data.js"></script>
+<script>
+const SHOW_COLS = [
+  'GxxCxxJxx', 'Chapter', 'Journey Name', 'Owner', 'Developers', 'Applet Status',
+  'Expected Completion Date', 'Completion Date', 'Delay by!!!',
+  'UAT CMS journey ID', 'AI Tutor English Link'
+];
+const LINK_COLS = { 'UAT CMS journey ID': 'Open CMS', 'AI Tutor English Link': 'Open AI Tutor' };
+const EDIT_COLS = {
+  'Applet Status': ['YTS', 'WIP', 'Ready for Review', 'Reviewed', 'Corrections in Progress', 'Done'],
+};
+const KNOWN_DEVS = ['Jeevan', 'Swathi'];
+const DEFAULT_TAB = 'Journeys in Chapters';
+const POLL_MS = 15000;
+
+let rows = [];
+let timer = null;
+let lastGood = null;
+let selectedDev = '';
+
+const $ = id => document.getElementById(id);
+const norm = s => String(s ?? '').trim().toLowerCase();
+
+function loadSnapshot() {
+  const snap = window.TRACKER_DATA?.sheets?.['Journeys in Chapters'];
+  if (!snap?.rows?.length) return false;
+  rows = snap.rows.map(r => {
+    const out = {};
+    for (const k in r) out[String(k).trim()] = r[k] == null ? '' : r[k];
+    return out;
+  }).filter(r => String(r['Developers'] || '').trim());
+  setStatus('snapshot', `Ready · ${rows.length} journeys · last snapshot ${window.TRACKER_DATA.source || ''}`);
+  document.title = `Journey Tracker · ${rows.length} journeys`;
+  render();
+  return true;
+}
+
+let inFlight = false;
+async function fetchSheet(fresh = false) {
+  if (inFlight && !fresh) return;
+  inFlight = true;
+  if (fresh || !lastGood) setStatus('loading', 'Syncing from Google Sheet…');
+  try {
+    const res = await fetch('/api/live?tab=' + encodeURIComponent(DEFAULT_TAB) + '&_=' + Date.now());
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+    rows = data.rows || [];
+    lastGood = new Date();
+    setStatus('live', `Live · Google Sheet · ${rows.length} rows · updated ${lastGood.toLocaleTimeString()}`);
+    document.title = `Journey Tracker · ${rows.length} live`;
+    render();
+  } catch (e) {
+    if (rows.length) {
+      setStatus('snapshot', `Live read failed (${e.message}) · showing last known data`);
+    } else if (!loadSnapshot()) {
+      setStatus('error', `Could not read sheet: ${e.message}`);
+      render();
+    }
+  } finally {
+    inFlight = false;
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  fetchSheet(true);
+  timer = setInterval(() => fetchSheet(false), POLL_MS);
+}
+function stopPolling() { if (timer) clearInterval(timer); timer = null; }
+
+function setStatus(kind, text) {
+  $('dot').className = 'dot' + (kind === 'live' ? ' live' : kind === 'error' ? ' error' : kind === 'snapshot' ? ' snapshot' : '');
+  $('statusText').textContent = text;
+}
+
+function fmtDate(v) {
+  if (!v) return '';
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], m[2] - 1, +m[3]).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  return v;
+}
+function badgeClass(v) {
+  const s = norm(v);
+  return !s ? 'b-none' : s === 'done' || s === 'reviewed' ? 'b-done'
+    : s === 'wip' ? 'b-wip' : s.includes('review') ? 'b-review'
+    : s === 'yts' ? 'b-yts' : s.includes('correction') ? 'b-corr' : 'b-none';
+}
+function statusSelect(r, field, v) {
+  const key = r['GxxCxxJxx'] || '';
+  const opts = EDIT_COLS[field].slice();
+  if (v && !opts.includes(v)) opts.unshift(v);
+  return `<select class="status-edit ${badgeClass(v)}" data-key="${esc(key)}" data-field="${esc(field)}" data-prev="${esc(v)}">`
+    + opts.map(o => `<option value="${esc(o)}" ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')
+    + '</select>';
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function developerNames() {
+  const found = new Map();
+  KNOWN_DEVS.forEach(name => found.set(norm(name), name));
+  rows.forEach(r => {
+    const d = String(r['Developers'] || '').trim();
+    if (d && !found.has(norm(d))) found.set(norm(d), d);
+  });
+  return [...found.values()];
+}
+
+function devRows() {
+  if (!selectedDev) return [];
+  return rows.filter(r => norm(r['Developers']) === norm(selectedDev));
+}
+
+function fillDevelopers() {
+  const names = developerNames();
+  const sel = $('developer');
+  const markup = '<option value="">Select developer</option>'
+    + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  if (sel.dataset.markup !== markup) {
+    sel.innerHTML = markup;
+    sel.dataset.markup = markup;
+  }
+  const match = names.find(n => norm(n) === norm(selectedDev)) || '';
+  selectedDev = match;
+  sel.value = match;
+}
+
+const STATUS_COLORS = {
+  complete: '#1e88e5',
+  reviewed: '#43a047',
+  'ready for review': '#7e57c2',
+  wip: '#fb8c00',
+  yts: '#90a4ae',
+  'corrections in progress': '#e53935',
+};
+const FALLBACK_COLORS = ['#00897b', '#6d4c41', '#5c6bc0', '#d81b60', '#fdd835'];
+
+function statusLabel(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return 'Other';
+  return norm(s) === 'done' ? 'Complete' : s;
+}
+
+function statusSlices(mine) {
+  const counts = new Map();
+  mine.forEach(r => {
+    const name = statusLabel(r['Applet Status']);
+    counts.set(name, (counts.get(name) || 0) + 1);
+  });
+  const rank = name => {
+    const n = norm(name);
+    if (n === 'complete') return 0;
+    if (n === 'reviewed') return 1;
+    return 2;
+  };
+  let extra = 0;
+  return [...counts.entries()]
+    .sort((a, b) => rank(a[0]) - rank(b[0]) || b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([name, count]) => {
+      const color = STATUS_COLORS[norm(name)] || FALLBACK_COLORS[extra++ % FALLBACK_COLORS.length];
+      return { name, count, color };
+    });
+}
+
+function pieMarkup(slices) {
+  const total = slices.reduce((s, x) => s + x.count, 0) || 1;
+  const cx = 160, cy = 118, r = 72;
+  let angle = -Math.PI / 2;
+  const paths = [];
+  const labels = [];
+  slices.forEach(sl => {
+    const sweep = (sl.count / total) * Math.PI * 2;
+    const start = angle;
+    const end = angle + sweep;
+    angle = end;
+    if (slices.length === 1 || sweep >= Math.PI * 2 - 0.001) {
+      paths.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${sl.color}"></circle>`);
+    } else {
+      const large = sweep > Math.PI ? 1 : 0;
+      const x1 = cx + r * Math.cos(start);
+      const y1 = cy + r * Math.sin(start);
+      const x2 = cx + r * Math.cos(end);
+      const y2 = cy + r * Math.sin(end);
+      paths.push(`<path d="M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z" fill="${sl.color}"></path>`);
+    }
+    const mid = start + sweep / 2;
+    const lx = cx + (r + 36) * Math.cos(mid);
+    const ly = cy + (r + 22) * Math.sin(mid);
+    const ix = cx + (r - 2) * Math.cos(mid);
+    const iy = cy + (r - 2) * Math.sin(mid);
+    labels.push(
+      `<line x1="${ix.toFixed(1)}" y1="${iy.toFixed(1)}" x2="${lx.toFixed(1)}" y2="${ly.toFixed(1)}" stroke="#90caf9"></line>`
+      + `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${Math.cos(mid) < -0.2 ? 'end' : Math.cos(mid) > 0.2 ? 'start' : 'middle'}" dominant-baseline="middle" fill="#1e88e5" font-size="14">${sl.count}</text>`
+    );
+  });
+  return `<svg class="pie" viewBox="0 0 320 240" role="img" aria-label="Journey status chart">${paths.join('')}${labels.join('')}</svg>`;
+}
+
+function render() {
+  fillDevelopers();
+  const mine = devRows();
+  const hash = selectedDev ? `#dev=${encodeURIComponent(selectedDev)}` : '';
+  if (location.hash !== hash) history.replaceState(null, '', location.pathname + hash);
+
+  const chart = $('statusChart');
+  const panel = $('journeyPanel');
+  chart.hidden = !selectedDev;
+  panel.hidden = !selectedDev;
+  if (!selectedDev) return;
+
+  const slices = statusSlices(mine);
+  if (!slices.length) {
+    $('pieWrap').innerHTML = '<div class="empty">No journeys for this developer.</div>';
+    $('legend').innerHTML = '';
+  } else {
+    $('pieWrap').innerHTML = pieMarkup(slices);
+    $('legend').innerHTML = slices.map(sl =>
+      `<span><i style="background:${sl.color}"></i>${esc(sl.name)} ${sl.count}</span>`
+    ).join('');
+  }
+
+  const cols = SHOW_COLS.filter(c => rows.some(r => c in r) || mine.some(r => c in r));
+  $('thead').innerHTML = cols.map(c => `<th>${esc(c)}</th>`).join('');
+  $('tableTitle').textContent = `My journeys · ${selectedDev}`;
+
+  let html = '', lastChapter = null;
+  for (const r of mine) {
+    const ch = `${r['GxxCxx'] || ''} ${r['Chapter'] || ''}`.trim();
+    if (ch !== lastChapter) {
+      html += `<tr><td colspan="${cols.length}" class="chapter-group">${esc(ch)}</td></tr>`;
+      lastChapter = ch;
+    }
+    html += '<tr>' + cols.map(c => {
+      const v = r[c] ?? '';
+      if (c in LINK_COLS) return `<td>${v ? `<a href="${esc(v)}" target="_blank" rel="noopener">${LINK_COLS[c]}</a>` : '<span class="muted">—</span>'}</td>`;
+      if (c in EDIT_COLS) return `<td>${statusSelect(r, c, v)}</td>`;
+      if (/date/i.test(c)) return `<td>${esc(fmtDate(v))}</td>`;
+      return `<td>${esc(v)}</td>`;
+    }).join('') + '</tr>';
+  }
+  $('tbody').innerHTML = html;
+  $('empty').hidden = mine.length > 0;
+  $('thead').parentElement.hidden = mine.length === 0;
+}
+
+$('developer').addEventListener('change', () => {
+  selectedDev = $('developer').value;
+  render();
+});
+
+$('tbody').addEventListener('change', async e => {
+  const sel = e.target.closest('select.status-edit');
+  if (!sel) return;
+  const key = sel.dataset.key;
+  const field = sel.dataset.field;
+  const value = sel.value;
+  const prev = sel.dataset.prev;
+  if (!key) { setStatus('error', 'Missing GxxCxxJxx — cannot write to sheet'); return; }
+  sel.disabled = true;
+  setStatus('loading', `Saving ${field} for ${key}…`);
+  try {
+    const res = await fetch('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tab: DEFAULT_TAB, key, field, value }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+    const row = rows.find(r => r['GxxCxxJxx'] === key);
+    if (row) row[field] = value;
+    sel.dataset.prev = value;
+    sel.className = 'status-edit ' + badgeClass(value);
+    setStatus('live', `Saved ${field} = ${value} on ${key} · ${lastGood ? lastGood.toLocaleTimeString() : ''}`);
+    render();
+  } catch (err) {
+    sel.value = prev;
+    setStatus('error', `Sheet write failed: ${err.message}. Redeploy Apps Script after updating Code.gs.`);
+  } finally {
+    sel.disabled = false;
+  }
+});
+
+document.addEventListener('visibilitychange', () => { if (!document.hidden && timer) fetchSheet(false); });
+
+(function init() {
+  const h = new URLSearchParams(location.hash.slice(1)).get('dev');
+  if (h) selectedDev = h;
+  loadSnapshot();
+  startPolling();
+})();
+</script>
+</body>
+</html>

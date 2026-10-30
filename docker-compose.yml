@@ -1,0 +1,46 @@
+# Self-hosted stack: Postgres + app + scheduler (sheet sync & workload snapshots every 5 minutes).
+#   cp .env.example .env   # fill in secrets; DATABASE_URL is overridden below
+#   docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: classroots
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: classroots_work
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U classroots -d classroots_work']
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://classroots:${POSTGRES_PASSWORD:-change-me}@db:5432/classroots_work
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    image: node:22-alpine
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./scripts/scheduler.ts:/app/scheduler.ts:ro
+    environment:
+      APP_URL: http://app:3000
+      CRON_SECRET: ${CRON_SECRET}
+      SYNC_INTERVAL_MINUTES: '5'
+    command: ['node', '--experimental-strip-types', 'scheduler.ts']
+    depends_on:
+      - app
+
+volumes:
+  pgdata:

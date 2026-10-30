@@ -1,0 +1,107 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand: #1565c0;
+  --color-brand-dark: #0d47a1;
+  --color-brand-soft: #e8f1fb;
+  --color-ink: #1b2430;
+  --color-muted: #66717f;
+  --color-line: #e4e8ee;
+  --color-canvas: #f5f7fa;
+  --color-ok: #2e7d32;
+  --color-warn: #ef6c00;
+  --color-bad: #c62828;
+  --font-sans: 'Figtree', 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-pop: 0 12px 32px rgba(16, 24, 40, 0.16);
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Native controls match the brand */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2366717f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  padding-right: 1.9rem !important;
+}
+
+@utility btn {
+  @apply inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-transparent px-3.5 py-1.5 text-sm font-medium whitespace-nowrap transition-[background-color,border-color,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-brand text-white shadow-sm hover:bg-brand-dark;
+}
+@utility btn-ghost {
+  @apply btn border-line bg-white text-ink hover:border-brand/40 hover:bg-brand-soft/40;
+}
+@utility btn-danger {
+  @apply btn border-red-200 bg-white text-bad hover:bg-red-50;
+}
+
+@layer components {
+  .card {
+    /* min-w-0 lets a card inside a grid shrink so its tables scroll instead of widening the page */
+    @apply min-w-0 rounded-xl border border-line bg-white p-4 shadow-[var(--shadow-card)] sm:p-5;
+  }
+  .card-title {
+    @apply mb-3 text-[15px] font-semibold text-ink;
+  }
+  .input {
+    @apply min-h-9 w-full rounded-lg border border-line bg-white px-3 py-1.5 text-sm text-ink transition-[border-color,box-shadow] outline-none placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:bg-canvas disabled:text-muted;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table th {
+    @apply sticky top-0 z-10 border-b border-line bg-white px-3 py-2 text-left text-[11px] font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
+  }
+  .table td {
+    @apply border-b border-line/70 px-3 py-2.5 align-middle;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table tbody tr:hover td {
+    @apply bg-brand-soft/30;
+  }
+  .table-wrap {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+  }
+  .link {
+    @apply font-medium text-brand hover:underline;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+}
+
+/* Breathing room above the phone's home indicator */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

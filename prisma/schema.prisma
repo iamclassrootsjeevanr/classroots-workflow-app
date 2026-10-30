@@ -1,0 +1,396 @@
+// Classroots Work Platform – database schema.
+// Postgres is the source of truth; Google Sheet is kept in two-way sync per work type.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Which items a member sees inside a work type.
+enum DataScope {
+  /// assigned to them, owned by them (SME) or created by them
+  OWN
+  ALL
+}
+
+enum WorkTypeState {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum EventType {
+  CREATED
+  IMPORTED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  FIELD_CHANGED
+  FEEDBACK
+  COMMENTED
+  SYNC_CONFLICT
+}
+
+enum EventSource {
+  APP
+  SHEET
+  IMPORT
+  SYSTEM
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─── People & auth ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  /// Full access to everything, including People, Roles, Work types and Sync.
+  isAdmin       Boolean   @default(false)
+  active        Boolean   @default(true)
+  /// Concurrent items this person can comfortably carry (workload level = open / capacity).
+  capacity      Int       @default(3)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  /// scrypt hash for email + password sign-in (null = SSO / magic link only)
+  passwordHash      String?
+  passwordUpdatedAt DateTime?
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   WorkTypeMember[]
+  assignedItems WorkItem[]         @relation("assignee")
+  ownedItems    WorkItem[]         @relation("owner")
+  events        WorkItemEvent[]
+  feedback      Feedback[]
+  intervals     WorkItemStageInterval[]
+  snapshots     WorkloadSnapshot[]
+  createdItems  WorkItem[]         @relation("creator")
+
+  @@index([isAdmin, active])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ─── Work types (pluggable modules) ─────────────────────────────
+
+model WorkType {
+  id          String        @id @default(cuid())
+  /// Matches a module key in src/modules/registry.ts
+  key         String        @unique
+  name        String
+  description String?
+  state       WorkTypeState @default(ACTIVE)
+  /// { sync: { enabled, tab } , ... }
+  config      Json          @default("{}")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  pausedAt    DateTime?
+  archivedAt  DateTime?
+
+  members   WorkTypeMember[]
+  items     WorkItem[]
+  syncState SyncState?
+}
+
+/// Admin-managed role: a named set of capabilities, given to people per work type.
+model AccessRole {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  name            String
+  description     String?
+  color           String   @default("#1976d2")
+  /// Seeded roles can be edited but not deleted.
+  isSystem        Boolean  @default(false)
+  /// Can be assigned work, start, submit and re-submit it.
+  capWork         Boolean  @default(false)
+  /// Can approve, request corrections and give feedback.
+  capReview       Boolean  @default(false)
+  /// Can assign or reassign people.
+  capAssign       Boolean  @default(false)
+  /// Can add new items.
+  capCreate       Boolean  @default(false)
+  /// Can edit owner-side fields (due date, SME details).
+  capManageFields Boolean  @default(false)
+  /// Which items people with this role see; a person with several roles gets the widest.
+  dataScope       DataScope @default(OWN)
+  /// False = view only. A person can edit if any of their roles can.
+  canEdit         Boolean  @default(true)
+  pageDashboard   Boolean  @default(true)
+  pageItems       Boolean  @default(true)
+  pageReports     Boolean  @default(false)
+  pageExport      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  members         WorkTypeMemberRole[]
+}
+
+/// A person's access to one work type = the roles they hold there. Data scope, edit right and pages come from the roles.
+model WorkTypeMember {
+  workTypeId    String
+  userId        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  workType      WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles         WorkTypeMemberRole[]
+
+  @@id([workTypeId, userId])
+  @@index([userId])
+}
+
+model WorkTypeMemberRole {
+  workTypeId String
+  userId     String
+  roleId     String
+  member     WorkTypeMember @relation(fields: [workTypeId, userId], references: [workTypeId, userId], onDelete: Cascade)
+  role       AccessRole     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([workTypeId, userId, roleId])
+  @@index([roleId])
+}
+
+// ─── Reference data ─────────────────────────────────────────────
+
+model Chapter {
+  id                 String    @id @default(cuid())
+  /// e.g. G04C01
+  code               String    @unique
+  grade              Int?
+  book               String?
+  part               String?
+  chapterNo          Int?
+  title              String
+  teachingMonths     String?
+  ncertUrl           String?
+  creator            String?
+  expectedCompletion DateTime?
+  items              WorkItem[]
+}
+
+// ─── Work items & history ───────────────────────────────────────
+
+model WorkItem {
+  id          String   @id @default(cuid())
+  workTypeId  String
+  /// Business key, e.g. GxxCxxJxx – unique within a work type, used for sheet sync.
+  externalKey String
+  title       String
+  /// Module-defined status key (see the module definition).
+  status      String
+  assigneeId  String?
+  createdById String?
+  ownerId     String?
+  chapterId   String?
+  /// Grouping key for lists (e.g. G07C04).
+  groupKey    String?
+  sortOrder   Int      @default(0)
+  dueAt       DateTime?
+
+  // Stage timestamps (denormalized from events for fast lists/analytics)
+  receivedAt      DateTime  @default(now())
+  assignedAt      DateTime?
+  firstStartedAt  DateTime?
+  lastSubmittedAt DateTime?
+  firstReviewAt   DateTime?
+  lastFeedbackAt  DateTime?
+  approvedAt      DateTime?
+  completedAt     DateTime?
+
+  reviewRounds  Int @default(0)
+  feedbackCount Int @default(0)
+  reopenCount   Int @default(0)
+
+  /// Module-specific fields (validated by the module's zod schema).
+  data          Json     @default("{}")
+  /// Last values seen in the sheet, by sheet column – base for the 3-way sync diff.
+  sheetSnapshot Json?
+  sheetMissing  Boolean  @default(false)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  archivedAt    DateTime?
+
+  workType  WorkType                @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  assignee  User?                   @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  owner     User?                   @relation("owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy User?                   @relation("creator", fields: [createdById], references: [id], onDelete: SetNull)
+  chapter   Chapter?                @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  events    WorkItemEvent[]
+  intervals WorkItemStageInterval[]
+  feedback  Feedback[]
+  outbox    SyncOutbox[]
+
+  @@unique([workTypeId, externalKey])
+  @@index([workTypeId, status])
+  @@index([assigneeId, status])
+  @@index([ownerId])
+  @@index([dueAt])
+  @@index([completedAt])
+}
+
+/// Immutable audit log – every change with who / when / from → to.
+model WorkItemEvent {
+  id        String      @id @default(cuid())
+  itemId    String
+  actorId   String?
+  type      EventType
+  field     String?
+  fromValue String?
+  toValue   String?
+  source    EventSource @default(APP)
+  note      String?
+  meta      Json?
+  at        DateTime    @default(now())
+
+  item  WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  actor User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, at])
+  @@index([at])
+  @@index([actorId, at])
+  @@index([type, at])
+}
+
+/// One row per stay of an item in a status – powers time-in-stage and workload analytics.
+model WorkItemStageInterval {
+  id              String    @id @default(cuid())
+  itemId          String
+  status          String
+  assigneeId      String?
+  enteredAt       DateTime
+  exitedAt        DateTime?
+  durationMinutes Int?
+  businessMinutes Int?
+  /// 1 for the first stay in this status, 2 for the second (e.g. 2nd review round)…
+  round           Int       @default(1)
+
+  item     WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  assignee User?    @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, enteredAt])
+  @@index([assigneeId, enteredAt])
+  @@index([status, enteredAt])
+}
+
+model Feedback {
+  id         String    @id @default(cuid())
+  itemId     String
+  round      Int       @default(1)
+  authorId   String?
+  body       String
+  category   String?
+  severity   String?
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  item   WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([itemId, createdAt])
+}
+
+/// Daily per-person load, kept for long-range workload history.
+model WorkloadSnapshot {
+  id         String   @id @default(cuid())
+  date       DateTime @db.Date
+  userId     String
+  open       Int
+  inProgress Int
+  inReview   Int
+  overdue    Int
+  dueNext7d  Int
+  capacity   Int
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([date, userId])
+}
+
+model Holiday {
+  date DateTime @id @db.Date
+  name String
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Google Sheet sync ──────────────────────────────────────────
+
+model SyncState {
+  workTypeId    String    @id
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  pulled        Int       @default(0)
+  created       Int       @default(0)
+  pushed        Int       @default(0)
+  conflicts     Int       @default(0)
+  missing       Int       @default(0)
+  workType      WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+}
+
+model SyncOutbox {
+  id        String       @id @default(cuid())
+  itemId    String
+  /// Sheet column header
+  column    String
+  value     String
+  status    OutboxStatus @default(PENDING)
+  attempts  Int          @default(0)
+  lastError String?
+  createdAt DateTime     @default(now())
+  sentAt    DateTime?
+  item      WorkItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+}
