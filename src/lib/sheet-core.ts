@@ -148,6 +148,7 @@ export function diffRow(sheet: SheetValues, snapshot: SheetValues | null, app: R
 export type LinkedItem = { title: string; groupKey: string | null; assigneeName: string | null; data: Record<string, unknown> };
 
 export type LinkedPayload =
+  | { kind: 'summary'; tab: string; keyHeader: string; totalLabel: string; values: string[] }
   | { kind: 'values'; tab: string; column: string; values: string[] }
   | { kind: 'rows'; tab: string; keyHeader: string; mode: 'fill' | 'update'; rows: { key: string; values: Record<string, string> }[] };
 
@@ -163,7 +164,10 @@ const sourceValue = (src: LinkedSource, it: LinkedItem): string => {
 export function linkedPayloads(mod: WorkTypeDefinition, items: LinkedItem[]): LinkedPayload[] {
   const out: LinkedPayload[] = [];
   for (const l of mod.sheet?.linked ?? []) {
-    if (l.kind === 'values') {
+    if (l.kind === 'summary') {
+      const values = [...new Set(items.map(i => sourceValue(l.from, i)).filter(Boolean))];
+      if (values.length) out.push({ kind: 'summary', tab: l.tab, keyHeader: l.keyHeader, totalLabel: l.totalLabel, values });
+    } else if (l.kind === 'values') {
       const values = [...new Set(items.map(i => sourceValue(l.from, i)).filter(Boolean))];
       if (values.length) out.push({ kind: 'values', tab: l.tab, column: l.column, values });
     } else {

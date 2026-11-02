@@ -172,7 +172,7 @@ export const apkTesting: WorkTypeDefinition = {
     updatedAtColumn: 'App Updated At',
     // The tracker's tabs are linked: Test Execution picks its version, case and tester from these. Update them first, in this order.
     linked: [
-      { tab: 'Lists', kind: 'values', column: 'APK Versions', from: 'group' },
+      // Lists → APK Versions is a formula that lists every row of APK Releases, so it fills itself once the release row exists.
       { tab: 'Lists', kind: 'values', column: 'Tested By', from: 'assignee' },
       {
         tab: 'Test Cases',
@@ -200,6 +200,8 @@ export const apkTesting: WorkTypeDefinition = {
           { header: 'Notes', from: { field: 'releaseNotes' } },
         ],
       },
+      // Version Summary is a fixed table with one formula row per release and a Total row: a new build gets a row of its own.
+      { tab: 'Version Summary', kind: 'summary', keyHeader: 'APK Version', totalLabel: 'Total', from: 'group' },
     ],
     columns: [
       { column: 'APK Version', kind: 'key' },

@@ -82,14 +82,14 @@ describe('linked tabs (lists, reference tables) are updated first', () => {
       { title: 'Home', groupKey: 'v2', assigneeName: 'Asha', data: { testCaseId: 'TC_2' } },
     ];
     const p = linkedPayloads(apkTesting, items);
-    expect(p.map(x => `${x.tab}:${x.kind}`)).toEqual(['Lists:values', 'Lists:values', 'Test Cases:rows', 'APK Releases:rows']);
-    expect(p[0]).toMatchObject({ column: 'APK Versions', values: ['v2'] });
-    expect(p[1]).toMatchObject({ column: 'Tested By', values: ['Asha'] });
-    const cases = p[2];
+    expect(p.map(x => `${x.tab}:${x.kind}`)).toEqual(['Lists:values', 'Test Cases:rows', 'APK Releases:rows', 'Version Summary:summary']);
+    expect(p[0]).toMatchObject({ column: 'Tested By', values: ['Asha'] });
+    const cases = p[1];
     expect(cases.kind === 'rows' && cases.rows.map(r => r.key)).toEqual(['TC_1', 'TC_2']);
     expect(cases.kind === 'rows' && cases.rows[0].values).toMatchObject({ 'Feature / Module': 'Login', 'Test Scenario': 'Sign in', 'Default Priority': 'High' });
-    const rel = p[3];
+    const rel = p[2];
     expect(rel.kind === 'rows' && rel.rows).toEqual([{ key: 'v2', values: { 'Release Date': '2026-11-02', 'APK Link': 'https://x/a.apk', Notes: 'new' } }]);
+    expect(p[3]).toMatchObject({ kind: 'summary', values: ['v2'], totalLabel: 'Total' });
   });
   it('skips empty values', async () => {
     const { linkedPayloads } = await import('@/lib/sheet-core');

@@ -16,3 +16,4 @@
 - Adding a role to a module definition is enough: Admin → Roles (or the user form) creates it. A flow capability with no role granting it fails `tests/roles.test.ts`.
 - Sheet sync: the Apps Script (apps-script/Code.gs) locates a tab by name across the owner's Google Sheets, so work types need no Spreadsheet ID. It must be redeployed (new version) after edits.
 - Sheet push order matters for linked trackers: `sheet.linked` tabs (Lists → Test Cases → APK Releases) are ensured before Test Execution rows (Code.gs ensureValues / ensureRows, located via the main tab so same-named tabs elsewhere are ignored).
+- Sheet gotcha: Lists!D (APK Versions) is a FILTER formula over APK Releases; typing into it collapses the spill (#REF!). Code.gs ensureValues skips formula columns. Version Summary is a fixed table (row per release + Total); ensureSummary copies the last row and widens the Total ranges.

@@ -80,6 +80,8 @@ export async function ensureLinked(payload: LinkedPayload, sibling: string, spre
   const data =
     payload.kind === 'values'
       ? await postJson({ action: 'ensureValues', tab: payload.tab, column: payload.column, values: payload.values, ...base })
-      : await postJson({ action: 'ensureRows', tab: payload.tab, keyHeader: payload.keyHeader, mode: payload.mode, rows: payload.rows, ...base });
+      : payload.kind === 'summary'
+        ? await postJson({ action: 'ensureSummary', tab: payload.tab, keyHeader: payload.keyHeader, totalLabel: payload.totalLabel, values: payload.values, ...base })
+        : await postJson({ action: 'ensureRows', tab: payload.tab, keyHeader: payload.keyHeader, mode: payload.mode, rows: payload.rows, ...base });
   return { added: Number(data.added ?? 0), updated: Number(data.updated ?? 0) };
 }

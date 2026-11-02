@@ -46,6 +46,7 @@ function doPost(e) {
     if (body.action === 'batchUpdate') return out_(batchUpdate_(body));
     if (body.action === 'ensureValues') return out_(ensureValues_(body));
     if (body.action === 'ensureRows') return out_(ensureRows_(body));
+    if (body.action === 'ensureSummary') return out_(ensureSummary_(body));
     return out_({ error: 'Unknown action: ' + body.action });
   } catch (err) {
     return out_({ error: String(err && err.message || err) });
@@ -250,6 +251,8 @@ function ensureValues_(body) {
     var headers = values[0].map(function (h) { return String(h).trim(); });
     var col = headers.indexOf(String(body.column).trim());
     if (col < 0) throw new Error('Column not found: ' + body.column);
+    // A column filled by a formula (e.g. FILTER over another tab) fills itself; typing into it would break the formula.
+    if (sh.getRange(2, col + 1).getFormula()) return { ok: true, added: 0, updated: 0, skipped: 'column is a formula' };
     var have = {};
     for (var i = 1; i < values.length; i++) have[String(values[i][col]).trim()] = true;
     var row = lastFilled_(values, col), added = 0;
@@ -309,6 +312,67 @@ function ensureRows_(body) {
     });
     SpreadsheetApp.flush();
     return { ok: true, added: added, updated: updated };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Linked tab, step 3: a summary table with one formula row per release and a Total row underneath (Version Summary).
+ * A build with no row yet gets a copy of the last row (formulas move down by one, so it points at the next release) and the
+ * Total row's ranges grow by one. Nothing else in the sheet is touched.
+ */
+function ensureSummary_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = locate_(body.tab, body.sheetId, body.sibling).sh;
+    var display = sh.getDataRange().getDisplayValues();
+    var hr = -1, kc = -1;
+    for (var r = 0; r < display.length && hr < 0; r++) {
+      for (var c = 0; c < display[r].length; c++) {
+        if (String(display[r][c]).trim() === String(body.keyHeader).trim()) { hr = r; kc = c; break; }
+      }
+    }
+    if (hr < 0) throw new Error('Column not found: ' + body.keyHeader);
+    var covered = {}, last = hr, total = -1, spare = false;
+    for (var i = hr + 1; i < display.length; i++) {
+      var v = String(display[i][kc]).trim();
+      if (v === String(body.totalLabel).trim()) { total = i; break; }
+      if (v === '') { spare = true; continue; }
+      covered[v] = true;
+      last = i;
+    }
+    if (last === hr) return { ok: true, added: 0, updated: 0, skipped: 'no rows to copy' };
+    var added = 0;
+    (body.values || []).forEach(function (version) {
+      version = String(version).trim();
+      if (!version || covered[version]) return;
+      if (spare) return; // the table already has an empty prepared row for it
+      var lastRow = last + 1;                       // 1-based
+      var cols = sh.getLastColumn();
+      sh.insertRowAfter(lastRow);
+      sh.getRange(lastRow, 1, 1, cols).copyTo(sh.getRange(lastRow + 1, 1, 1, cols));
+      if (total >= 0) {
+        var totalRow = total + 2;                   // shifted down by the insert
+        var range = sh.getRange(totalRow, 1, 1, cols);
+        var formulas = range.getFormulas();
+        for (var k = 0; k < cols; k++) {
+          var f = formulas[0][k];
+          if (!f) continue;
+          formulas[0][k] = f.replace(/(\$?[A-Z]{1,3}\$?)(\d+):(\$?[A-Z]{1,3}\$?)(\d+)/g, function (m, a, b, c2, d) {
+            return Number(d) === lastRow ? a + b + ':' + c2 + (lastRow + 1) : m;
+          });
+        }
+        range.setFormulas(formulas);
+        total++;
+      }
+      last++;
+      covered[version] = true;
+      added++;
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, added: added, updated: 0 };
   } finally {
     lock.releaseLock();
   }

@@ -65,7 +65,11 @@ export type LinkedTab =
   /** A column of allowed values (e.g. the "Lists" tab): values from the items are appended when missing. */
   | { tab: string; kind: 'values'; column: string; from: 'group' | 'assignee' }
   /** A reference table keyed by one column: a row per distinct key. `fill` only fills empty cells, `update` keeps cells in step with the app. */
+  | LinkedSummary
   | { tab: string; kind: 'rows'; key: LinkedSource; mode: 'fill' | 'update'; keyHeader: string; columns: { header: string; from: LinkedSource }[] };
+
+/** (continued) A summary table with one formula row per entry of another tab, above a Total row: new keys get a copy of the last row. */
+export type LinkedSummary = { tab: string; kind: 'summary'; keyHeader: string; totalLabel: string; from: 'group' };
 
 export type LinkedSource = 'group' | 'title' | 'assignee' | { field: string };
 
