@@ -307,9 +307,9 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
     return result;
   } catch (e) {
     let message = e instanceof Error ? e.message : String(e);
-    if (/^Tab not found/i.test(message)) {
-      // The usual cause: this work type's tracker is a different Google Sheet than the one the Apps Script opens by default.
-      message = `The tab “${tab}” is not in ${spreadsheetId ? 'that spreadsheet' : 'the Apps Script’s default spreadsheet'}. In Admin → Sheet sync, set this work type’s Spreadsheet ID to the sheet that has the tab (and the exact tab name), or turn its sync off.`;
+    if (/^Tab not found/i.test(message) && !/Share the sheet/.test(message)) {
+      // The deployed Apps Script is the old one: it only looks in its default spreadsheet.
+      message = `The tab “${tab}” was not found. Paste the latest apps-script/Code.gs into Apps Script and deploy a new version: it finds the tab in any Google Sheet the script owner can open, so no spreadsheet ID is needed.`;
     }
     await db.syncState.update({ where: { workTypeId }, data: { lastError: message } });
     throw e instanceof Error ? Object.assign(e, { message }) : new Error(message);

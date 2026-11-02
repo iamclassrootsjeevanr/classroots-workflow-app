@@ -456,6 +456,8 @@ Every item row has **Edit** (opens that item's fields) and **Delete** (asks firs
 
 ## Google Sheet two-way sync
 
+> **No spreadsheet ID needed.** `apps-script/Code.gs` finds a work type's tab by name: first in the default tracker, then in any Google Sheet the script owner can open (it remembers where it found it). After pasting a new `Code.gs`, deploy a new version and approve the Drive permission once. To pin a tab to one sheet, add the script property `TAB_SHEET::<tab name>` with the sheet's ID.
+
 Postgres is the source of truth. Sync is **off** until an admin turns it on, so nothing touches the live sheet by accident.
 
 ### Setup (once)

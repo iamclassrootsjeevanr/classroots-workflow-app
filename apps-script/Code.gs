@@ -9,7 +9,11 @@
  *                                                 → { ok, updated, appended, failed:[{key, column, error}] }
  * GET  ?action=update&tab&key&field&value&token  → { ok }   (single cell, kept for older app versions)
  *
- * sheetId: optional spreadsheet id, so one deployment can serve several trackers (the script owner must have access).
+ * Finding the tab: no spreadsheet id needed. The script looks for the tab in the default tracker (SHEET_ID below); if it is not
+ * there it searches the Google Sheets the script owner can open, remembers the one that has it, and uses it from then on.
+ * (First run after updating asks you to review permissions: it needs Google Drive access to search.)
+ * To pin a tab to a sheet yourself: Script properties → add  TAB_SHEET::<tab name>  =  <spreadsheet id>.
+ * sheetId: optional spreadsheet id; when sent it wins over everything above (kept for older app settings).
  * keyColumns: one or more header names; several make a composite key joined with " | " (same as the app).
  */
 var SHEET_ID = '1ePpG1_BcsAKehoWnscpqQ8R2r9itzBRDSET9Ox-prjs';
@@ -49,14 +53,47 @@ function checkToken_(token) {
   if (expected && token !== expected) throw new Error('Unauthorized');
 }
 
-function spreadsheet_(sheetId) {
-  return SpreadsheetApp.openById(sheetId || SHEET_ID);
-}
+/** The spreadsheet and sheet that hold a tab: explicit id, else the default tracker, else a remembered or discovered one. */
+function locate_(tab, sheetId) {
+  var name = tab || DEFAULT_TAB;
+  if (sheetId) {
+    var given = SpreadsheetApp.openById(sheetId);
+    var shGiven = given.getSheetByName(name);
+    if (!shGiven) throw new Error('Tab not found: ' + name);
+    return { ss: given, sh: shGiven };
+  }
+  var props = PropertiesService.getScriptProperties();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sh = ss.getSheetByName(name);
+  if (sh) return { ss: ss, sh: sh };
 
-function sheet_(tab, sheetId) {
-  var sh = spreadsheet_(sheetId).getSheetByName(tab || DEFAULT_TAB);
-  if (!sh) throw new Error('Tab not found: ' + tab);
-  return sh;
+  var memo = 'TAB_SHEET::' + name;
+  var known = props.getProperty(memo);
+  if (known) {
+    try {
+      var remembered = SpreadsheetApp.openById(known);
+      var shKnown = remembered.getSheetByName(name);
+      if (shKnown) return { ss: remembered, sh: shKnown };
+    } catch (err) { /* lost access or deleted: search again */ }
+    props.deleteProperty(memo);
+  }
+
+  var files = DriveApp.getFilesByType(MimeType.GOOGLE_SHEETS);
+  var looked = 0;
+  while (files.hasNext() && looked < 150) {
+    var f = files.next();
+    if (f.getId() === SHEET_ID) continue;
+    looked++;
+    try {
+      var other = SpreadsheetApp.openById(f.getId());
+      var shOther = other.getSheetByName(name);
+      if (shOther) {
+        props.setProperty(memo, f.getId());
+        return { ss: other, sh: shOther };
+      }
+    } catch (err2) { /* not readable: skip */ }
+  }
+  throw new Error('Tab not found: ' + name + '. It is not in the default spreadsheet or in any Google Sheet this script can open. Share the sheet with the script owner, or add the script property ' + memo + ' = <spreadsheet id>.');
 }
 
 /** Composite key of one row: the key columns' trimmed values joined with " | "; '' when any part is blank. */
@@ -81,11 +118,12 @@ function cellValue_(raw, display, tz) {
 }
 
 function readRows_(tab, sheetId) {
-  var sh = sheet_(tab, sheetId);
+  var loc = locate_(tab, sheetId);
+  var sh = loc.sh;
   var range = sh.getDataRange();
   var raw = range.getValues();
   var display = range.getDisplayValues();
-  var tz = spreadsheet_(sheetId).getSpreadsheetTimeZone();
+  var tz = loc.ss.getSpreadsheetTimeZone();
   if (!raw.length) return { tab: tab, headers: [], rows: [], all: true };
   var headers = display[0].map(function (h) { return String(h).trim(); });
   var rows = [];
@@ -107,7 +145,8 @@ function batchUpdate_(body) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var sh = sheet_(body.tab, body.sheetId);
+    var loc = locate_(body.tab, body.sheetId);
+    var sh = loc.sh;
     var values = sh.getDataRange().getDisplayValues();
     var headers = values[0].map(function (h) { return String(h).trim(); });
     var keyColumns = body.keyColumns && body.keyColumns.length ? body.keyColumns : [body.keyColumn || DEFAULT_KEY_COL];
@@ -129,7 +168,7 @@ function batchUpdate_(body) {
     }
 
     var updated = 0, appended = 0, failed = [];
-    var stamp = Utilities.formatDate(new Date(), spreadsheet_(body.sheetId).getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    var stamp = Utilities.formatDate(new Date(), loc.ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
     (body.updates || []).forEach(function (u) {
       var key = String(u.key || '').trim();
       var col = headers.indexOf(String(u.column || '').trim());
