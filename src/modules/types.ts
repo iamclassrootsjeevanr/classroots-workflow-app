@@ -113,6 +113,8 @@ export type WorkTypeDefinition = {
   groupSummary?: GroupSummary;
   /** Item list columns: hide default ones, add data fields. */
   table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
+  /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
+  pages?: { groups?: string; items?: string; cases?: string };
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */
   versions?: boolean;
   /** Item pages show a time log (status changes, bug and remark edits, time per status). */

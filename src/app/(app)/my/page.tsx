@@ -19,6 +19,9 @@ import type { Access } from '@/lib/access-core';
 
 export const metadata = { title: 'My dashboard' };
 
+/** A dashboard section: analytics first, item tables shown after every section's analytics. */
+type Part = { top: React.ReactNode; items: React.ReactNode };
+
 const keys = (types: WorkTypeAccess[]) => types.map(t => t.workTypeKey);
 /** Work types whose item pages this person may open (the "Items list & pages" tick). */
 const openable = (types: WorkTypeAccess[]) => new Set(types.filter(t => t.pages.has('items')).map(t => t.workTypeKey));
@@ -50,7 +53,8 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const single = types.length === 1 ? getModule(types[0].workTypeKey) : undefined;
   const lbl = (cat: 'queue' | 'active' | 'feedback' | 'review' | 'done', dflt: string) => single?.categoryLabels?.[cat] ?? dflt;
 
-  return (
+  return {
+    top: (
     <section className="mb-8">
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
         My work <LoadBadge level={load.level} /> <span className="text-xs font-normal text-muted">{load.active}/{user.capacity} active</span>
@@ -115,11 +119,14 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
           )}
         </Card>
       </div>
+    </section>
+    ),
+    items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
         <ItemsTables items={mine} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
       </Card>
-    </section>
-  );
+    ),
+  } satisfies Part;
 }
 
 /** Section: submissions waiting for my review (people with the "review" capability; OWN = items I own as SME). */
@@ -138,7 +145,8 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
   const oldest = toReview.reduce<Date | null>((m, i) => (i.lastSubmittedAt && (!m || i.lastSubmittedAt < m) ? i.lastSubmittedAt : m), null);
   const monthAgo = addDays(now, -30);
 
-  return (
+  return {
+    top: (
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">Waiting for my review</h2>
       <KpiGrid>
@@ -147,11 +155,14 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
         <Kpi label="Approved / done (30 days)" value={scoped.filter(i => (i.approvedAt && i.approvedAt >= monthAgo) || (i.completedAt && i.completedAt >= monthAgo)).length} tone="ok" />
         <Kpi label="Avg review time" value={formatDuration(avgReview)} hint="submitted → reviewed" />
       </KpiGrid>
-      <Card actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
+    </section>
+    ),
+    items: (
+      <Card title="Waiting for my review" actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
         <ItemsTables items={toReview} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
       </Card>
-    </section>
-  );
+    ),
+  } satisfies Part;
 }
 
 /** Section: team overview for work types where the person sees all data. */
@@ -159,7 +170,8 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
   const d = await dashboard({ workTypeKeys: keys(types), where: scopeWhere(access, types), from: addDays(new Date(), -7 * 12) }, { weeks: 12, heatmapDays: 14 });
   const series = d.statusSlices.map(s => ({ label: s.label, color: s.color, count: s.count }));
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
-  return (
+  return {
+    top: (
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">Team overview</h2>
       <KpiGrid>
@@ -193,26 +205,37 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
       </div>
       <p className="mt-2 text-xs text-muted">Times in business hours ({tz}).</p>
     </section>
-  );
+    ),
+    items: null,
+  } satisfies Part;
 }
 
 /** Fallback: no work/review capability and only own data – list what they can see. */
 async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentUser; access: Access; types: WorkTypeAccess[]; tz: string }) {
   const items: ItemRow[] = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
   const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, items), editableFieldsFor(user, items, tz), deletableItemsFor(user, items)]);
-  return (
-    <section className="mb-8">
-      <h2 className="mb-3 text-lg font-semibold">My items</h2>
-      <div className="mb-5 grid gap-5 lg:grid-cols-3">
-        <Card title="By status">
-          <StatusPie slices={statusSlices(items)} />
-        </Card>
-        <Card title="Items" className="lg:col-span-2">
-          <ItemsTables items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="No items yet." />
-        </Card>
-      </div>
-    </section>
-  );
+  return {
+    top: (
+      <section className="mb-8">
+        <h2 className="mb-3 text-lg font-semibold">My items</h2>
+        <KpiGrid>
+          <Kpi label="Items" value={items.length} />
+          <Kpi label="Done" value={items.filter(i => i.category === 'done').length} tone="ok" />
+          <Kpi label="Open" value={items.filter(i => i.category !== 'done').length} />
+        </KpiGrid>
+        <div className="mb-5 grid gap-5 lg:grid-cols-3">
+          <Card title="By status">
+            <StatusPie slices={statusSlices(items)} />
+          </Card>
+        </div>
+      </section>
+    ),
+    items: (
+      <Card title="Items">
+        <ItemsTables items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="No items yet." />
+      </Card>
+    ),
+  } satisfies Part;
 }
 
 export default async function MyDashboard({ searchParams }: { searchParams: Promise<{ wt?: string }> }) {
@@ -226,6 +249,14 @@ export default async function MyDashboard({ searchParams }: { searchParams: Prom
   const teamTypes = types.filter(t => t.dataScope === 'ALL');
   const nothingElse = !workTypes.length && !reviewTypes.length && !teamTypes.length;
 
+  const results: (Part | null)[] = await Promise.all([
+    workTypes.length > 0 ? MyWorkSection({ user, types: workTypes, tz }) : null,
+    reviewTypes.length > 0 ? ReviewSection({ user, access, types: reviewTypes, tz }) : null,
+    teamTypes.length > 0 ? TeamSection({ access, types: teamTypes, tz }) : null,
+    nothingElse ? VisibleItemsSection({ user, access, types, tz }) : null,
+  ]);
+  const parts = results.filter((x): x is Part => x !== null);
+
   return (
     <>
       <PageHeader
@@ -233,10 +264,15 @@ export default async function MyDashboard({ searchParams }: { searchParams: Prom
         subtitle={types.map(t => `${t.workTypeName}: ${t.roles.map(r => r.name).join(' + ')} · ${t.dataScope === 'ALL' ? 'all data' : 'own data'}${t.canEdit ? '' : ' · view only'}`).join('   |   ')}
       />
       {allTypes.length > 1 && <FilterBar filters={[{ name: 'wt', label: 'Work type', options: allTypes.map(t => ({ value: t.workTypeKey, label: t.workTypeName })) }]} />}
-      {workTypes.length > 0 && <MyWorkSection user={user} types={workTypes} tz={tz} />}
-      {reviewTypes.length > 0 && <ReviewSection user={user} access={access} types={reviewTypes} tz={tz} />}
-      {teamTypes.length > 0 && <TeamSection access={access} types={teamTypes} tz={tz} />}
-      {nothingElse && <VisibleItemsSection user={user} access={access} types={types} tz={tz} />}
+      {parts.map((p, i) => (
+        <div key={i}>{p.top}</div>
+      ))}
+      {parts.some(p => p.items) && (
+        <section className="mb-8 space-y-5">
+          <h2 className="text-lg font-semibold">Items</h2>
+          {parts.map((p, i) => p.items && <div key={i}>{p.items}</div>)}
+        </section>
+      )}
     </>
   );
 }

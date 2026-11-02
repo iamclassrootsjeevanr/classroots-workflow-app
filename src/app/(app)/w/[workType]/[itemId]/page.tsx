@@ -128,6 +128,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
         <Link href={`/w/${key}`} className="link">
           {mod.name}
         </Link>{' '}
+        /{' '}
+        <Link href={`/w/${key}/items`} className="link">
+          {mod.pages?.items ?? 'Items'}
+        </Link>{' '}
         / <span className="font-mono">{item.externalKey}</span>
       </nav>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -150,7 +154,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           </div>
           {editable && canDeleteItem(ctx) && (
             <div className="sm:ml-3 sm:border-l sm:border-line sm:pl-4">
-              <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}`} />
+              <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}/items`} />
             </div>
           )}
         </div>

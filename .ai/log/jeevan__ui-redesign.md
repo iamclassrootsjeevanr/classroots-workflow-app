@@ -11,3 +11,4 @@
 - 2026-11-02T08:02Z | claude-code | Fix overlaps: portal edit dialog, isolate table layers, card selects, tooltips
 - 2026-11-02T10:07Z | claude-code | APK Testing: new versions, lean columns, bug/remarks cards, time log
 - 2026-11-02T10:33Z | claude-code | Dashboard: separate item table per work type with its own columns
+- 2026-11-02T10:50Z | claude-code | Work type tab pages (overview, versions, items, cases); analytics-first dashboard

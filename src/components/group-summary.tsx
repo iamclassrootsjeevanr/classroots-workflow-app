@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { GroupTrendChart } from '@/components/charts';
 import { LinkButton } from '@/components/controls';
 import { EditApkVersionButton } from '@/components/new-apk-version';
@@ -8,7 +9,7 @@ import { formatDate, normalizeDate } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 
 /** "By APK version"-style summary table plus a stacked bar per group. Renders nothing for work types without a groupSummary. */
-export function GroupSummaryCard({ mod, items, tz, title, versionEdit }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string } }) {
+export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string }; /** Makes each group name a link (e.g. to the item list filtered to it). */ groupHref?: (group: string) => string }) {
   const summary = mod.groupSummary;
   if (!summary) return null;
   const rows = groupRollup(mod, items);
@@ -48,7 +49,7 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit }: { mod: 
             <tbody>
               {rows.map(r => (
                 <tr key={r.group}>
-                  <td className="pin font-mono text-xs font-medium">{r.group}</td>
+                  <td className="pin font-mono text-xs font-medium">{groupHref ? <Link className="link" href={groupHref(r.group)}>{r.group}</Link> : r.group}</td>
                   {summary.columns.map(c => (
                     <td key={c.key} className="whitespace-nowrap tabular-nums">
                       {cell(c.key, r.cells[c.key] ?? '')}

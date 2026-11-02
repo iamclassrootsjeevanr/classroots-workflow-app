@@ -35,6 +35,7 @@ export const apkTesting: WorkTypeDefinition = {
       { field: 'developerRemarks', label: 'Developer remarks' },
     ],
   },
+  pages: { groups: 'APK versions', items: 'Test execution', cases: 'Test cases' },
   versions: true,
   timeLog: true,
   importRoles: { assignee: 'tester', owner: 'app-developer' },
@@ -73,10 +74,10 @@ export const apkTesting: WorkTypeDefinition = {
 
   fields: [
     { key: 'testCaseId', label: 'Test case', type: 'text', source: 'data', editableBy: [] },
-    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'priority', label: 'Priority', type: 'text', source: 'data', editableBy: ['ASSIGNEE', 'manageFields'] },
+    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
+    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
+    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
+    { key: 'priority', label: 'Priority', type: 'text', source: 'data', editableBy: ['ASSIGNEE', 'manageFields', 'create'] },
     { key: 'comments', label: 'Tester comments', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'bug', label: 'Bug / issue', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'developerRemarks', label: 'Developer remarks', type: 'longtext', source: 'data', editableBy: ['review'] },

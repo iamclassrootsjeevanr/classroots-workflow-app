@@ -110,7 +110,7 @@ export function Empty({ children, icon, action }: { children: React.ReactNode; i
 
 export function Tabs({ items, active }: { items: { href: string; label: string }[]; active: string }) {
   return (
-    <nav className="-mx-4 mb-5 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0" aria-label="Sections">
+    <nav className="-mx-4 mb-5 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line px-4 sm:mx-0 sm:px-0" aria-label="Sections">
       {items.map(t => {
         const on = t.href === active;
         return (

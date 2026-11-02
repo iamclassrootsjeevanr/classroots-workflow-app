@@ -57,6 +57,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   text when marking Fail (bug is edited in its card), light theme check, testing as a real Tester login.
 - Dashboard (/my) lists with several work types now render one table per work type (`ItemsTables` in items-table.tsx), each with its own
   columns/labels (APK: no SME/Expected/Delay).
+- Work type pages split into tabs (Overview, APK versions, Test execution, Test cases; Journey: Overview + Items) under `w/[workType]/(tabs)/`,
+  `src/server/work-type-page.ts`, `PathTabs`, `src/lib/test-cases.ts`, `CasesTable`. /my renders all analytics before item tables. 79 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

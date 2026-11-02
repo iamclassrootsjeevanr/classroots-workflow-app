@@ -410,6 +410,19 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 On the APK Testing list, the dashboards and Reports, the per-version summary is a full-width chart with the table underneath. Versions run left to right in release order. Each column stacks that build's test results (Pass, Fail, Pending retest, Not tested, Other). A line on the right-hand 0 to 100% axis shows the pass rate per build, with dashed lines at the tracker's Good (80%) and Stable (90%) cut-offs, so improving or regressing builds stand out at a glance. Hover a column for the full version name and every count. A work type opts in through `groupSummary` (`successSeries`, `rateLines`) in its module definition; the data comes from `groupTrend` in `src/lib/groups.ts`.
 
+### Work type pages
+
+Each work type has its own pages, shown as tabs under its name (code: `src/app/(app)/w/[workType]/(tabs)/`):
+
+| Page | Content | APK Testing name |
+|---|---|---|
+| Overview | Metrics and graphs only: KPIs, status, work per person, weekly flow, needs attention | Overview |
+| Groups (if the module has a group summary) | Full-width chart, then the table; versions are added and edited here | APK versions |
+| Items | Filters and the item table; single items are added here | Test execution |
+| Cases (if the module has `versions`) | One row per test case across versions; edit a case here | Test cases |
+
+Tab names come from `pages` in the module definition. Item pages open without tabs. Old links like `/w/apk-testing?status=fail` redirect to the Items page. On My dashboard every section's metrics and graphs come first and the item tables follow, one table per work type.
+
 ### APK Testing: versions, bugs and the time log
 
 - **Add a version.** Testers (the Tester role has "Add new items") and admins press **New APK version**: version name, APK link, release date and notes, then pick an earlier version to copy test cases from (untick any, add extra cases). The tests start as Not Tested, with bug, comments and remarks empty, and the creator is the tester unless an assigner picks someone else. **Add test case** adds one test to an existing version. The pencil in the By APK version table edits the link, date and notes of every test in that version. Code: `src/lib/apk-versions.ts` (pure planner), `src/server/services/apk-versions.ts`, `src/components/new-apk-version.tsx`.
