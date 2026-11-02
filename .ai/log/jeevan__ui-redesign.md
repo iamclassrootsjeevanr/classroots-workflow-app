@@ -13,3 +13,4 @@
 - 2026-11-02T10:33Z | claude-code | Dashboard: separate item table per work type with its own columns
 - 2026-11-02T10:50Z | claude-code | Work type tab pages (overview, versions, items, cases); analytics-first dashboard
 - 2026-11-02T11:26Z | claude-code | Overview redesign, clickable analytics, own-data comparison, sidebar dropdown pages
+- 2026-11-02T11:26Z | claude-code | Trim state file

@@ -68,7 +68,6 @@ Nothing mid-edit. Code is not broken.
 
 ## Next steps
 1. PR #3 (jeevan/ui-redesign → main) carries field-row edit/delete, list-row edit dialog and the roles redesign; review and merge it.
-2. Optional polish: verify charts in dark mode on /reports with real data (screenshot caught them pre-measure once).
 3. Optional: add a "Reset to defaults" button to the Appearance card (`prefs-form.tsx`).
 
 ## Blockers / open questions
