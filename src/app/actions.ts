@@ -4,14 +4,17 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import type { WorkTypeState } from '@prisma/client';
 import { z } from 'zod';
+import type { EditableField } from '@/components/controls';
 import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, restoreItem, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
 import { createApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
+import { editFieldsForItem } from '@/server/view';
+import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
@@ -59,6 +62,25 @@ export async function deleteItemAction(itemId: string) {
   return run(async () => {
     await deleteItem(await itemActor(itemId), itemId);
     return 'Deleted';
+  });
+}
+
+/** Fields of one item for the list Edit dialog (loaded on open so list pages stay small). */
+export async function loadEditFieldsAction(itemId: string): Promise<{ ok: true; fields: EditableField[] } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser();
+    await itemActorContext(user, itemId);
+    return { ok: true, fields: await editFieldsForItem(user, itemId, appTz()) };
+  } catch (e) {
+    return { ok: false, error: isUserError(e) ? e.message : 'Could not load the details.' };
+  }
+}
+
+/** Undo a delete (allowed for 30 minutes). */
+export async function restoreItemAction(itemId: string) {
+  return run(async () => {
+    await restoreItem(await itemActor(itemId), itemId);
+    return 'Restored';
   });
 }
 

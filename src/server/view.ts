@@ -30,25 +30,35 @@ export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Pro
   return out;
 }
 
-/** Per item, the fields the viewer may edit from a list row (items with none are left out). */
-export async function editableFieldsFor(user: CurrentUser, items: ItemRow[], tz: string): Promise<Map<string, EditableField[]>> {
+/** Ids of the items on which the viewer may edit at least one field (these rows get an Edit button). */
+export async function editableItemsFor(user: CurrentUser, items: ItemRow[]): Promise<Set<string>> {
   const access = await getAccess(user);
-  const out = new Map<string, EditableField[]>();
+  const out = new Set<string>();
   for (const it of items) {
     const mod = getModule(it.workTypeKey);
     if (!mod) continue;
     const ctx = actorContextFor(access, it.workTypeKey, it);
-    const fields: EditableField[] = mod.fields.map(f => ({
-      key: f.key,
-      label: f.label,
-      type: f.type,
-      linkLabel: f.linkLabel,
-      value: f.key === 'dueAt' ? instantToDateKey(it.dueAt, tz) : it.data[f.key] == null ? '' : String(it.data[f.key]),
-      editable: canEditField(f, ctx),
-    }));
-    if (fields.some(f => f.editable)) out.set(it.id, fields);
+    if (mod.fields.some(f => canEditField(f, ctx))) out.add(it.id);
   }
   return out;
+}
+
+/** The fields of one item with the viewer's edit rights; loaded when the Edit dialog opens, not for every row. */
+export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: string): Promise<EditableField[]> {
+  const access = await getAccess(user);
+  const item = await db.workItem.findUniqueOrThrow({ where: { id: itemId }, include: { workType: { select: { key: true } } } });
+  const mod = getModule(item.workType.key);
+  if (!mod) return [];
+  const ctx = actorContextFor(access, item.workType.key, item);
+  const data = (item.data ?? {}) as Record<string, unknown>;
+  return mod.fields.map(f => ({
+    key: f.key,
+    label: f.label,
+    type: f.type,
+    linkLabel: f.linkLabel,
+    value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
+    editable: canEditField(f, ctx),
+  }));
 }
 
 /** Ids of the items the viewer may delete. */

@@ -124,3 +124,13 @@ describe('deleting items', () => {
     expect(canDeleteItem(ctx({ capabilities: new Set(['manageFields']), canEdit: false }))).toBe(false);
   });
 });
+
+describe('undoing a delete', () => {
+  it('works for 30 minutes and not after', async () => {
+    const { canUndoDelete } = await import('@/lib/workflow');
+    const at = new Date('2026-11-02T10:00:00Z');
+    expect(canUndoDelete(at, new Date('2026-11-02T10:29:59Z'))).toBe(true);
+    expect(canUndoDelete(at, new Date('2026-11-02T10:30:01Z'))).toBe(false);
+    expect(canUndoDelete(null)).toBe(false);
+  });
+});

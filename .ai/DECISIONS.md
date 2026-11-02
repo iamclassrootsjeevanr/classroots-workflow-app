@@ -35,3 +35,8 @@ By: claude-code
 Decision: for `dataScope = OWN` non-admins the Overview replaces the per-person chart with `compareWithTeam` (aggregates only). By status and per-person bars exclude `done`-category slices; Done stays a KPI tile. Charts navigate with `router.push` to `/w/<key>/items?...`; KPI tiles are `<Link>`s.
 Why: colleagues' names must not leak to own-data roles; Done dominated the charts and hid open work. Rejected: hiding the chart entirely (loses comparison).
 By: claude-code
+
+## 2026-11-02 — Delete can be undone for 30 minutes
+Decision: delete still archives; `restoreItem` clears `archivedAt` within `UNDO_DELETE_MINUTES` (30) for anyone who may delete, logged as a FIELD_CHANGED 'Restored' event. UI: app-wide toast (localStorage) plus a Recently deleted card on the Items page.
+Why: accidental row deletes; archive already kept the data. Rejected: server-side trash with auto-purge (no purge job needed yet).
+By: claude-code

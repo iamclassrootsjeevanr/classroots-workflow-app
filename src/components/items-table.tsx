@@ -1,10 +1,12 @@
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { getModule } from '@/modules/registry';
+import { itemsUrl, type ItemsFilter } from '@/lib/items-url';
+import { PAGE_SIZE } from '@/lib/paging';
 import { formatDate, formatDateTime } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { ItemRow } from '@/server/services/analytics';
-import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type EditableField, type PersonOption, type StatusOption } from './controls';
+import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
 import { Sheet } from './sheet';
 import { Delay, Empty, StatusBadge } from './ui';
 
@@ -12,7 +14,7 @@ type Props = {
   items: ItemRow[];
   statusOptions?: Map<string, StatusOption[]>;
   /** Per item, the fields the viewer may edit; rows with an entry get an Edit button. */
-  fieldEdits?: Map<string, EditableField[]>;
+  fieldEdits?: ReadonlySet<string>;
   /** Ids of items the viewer may delete; those rows get a Delete button. */
   deletable?: ReadonlySet<string>;
   people?: PersonOption[];
@@ -46,12 +48,12 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
   const cols = 4 + (showOwner ? 1 : 0) + (showExpected ? 1 : 0) + (showDelay ? 1 : 0) + extra.length + (showUpdated ? 1 : 0) + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyActions ? 1 : 0);
   const text = (it: ItemRow, field: string) => (it.data[field] == null ? '' : String(it.data[field]));
   const rowActions = (it: ItemRow, compact: boolean) => {
-    const f = fieldEdits?.get(it.id);
+    const f = fieldEdits?.has(it.id);
     const canDelete = deletable?.has(it.id);
     if (!f && !canDelete) return null;
     return (
       <span className={compact ? 'row-actions' : 'inline-flex items-center gap-1.5'}>
-        {f && <EditItemButton itemId={it.id} itemKey={it.externalKey} title={it.title} fields={f} compact={compact} />}
+        {f && <EditItemButton itemId={it.id} itemKey={it.externalKey} title={it.title} compact={compact} />}
         {canDelete && <DeleteItemButton itemId={it.id} itemKey={it.externalKey} compact={compact} />}
       </span>
     );
@@ -258,13 +260,26 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
 }
 
 /** Mixed lists: one table per work type, each with that work type's own columns and labels. A single type renders one plain table. */
-export function ItemsTables({ items, empty, ...rest }: Omit<Props, 'labels' | 'table' | 'showWorkType'>) {
+export function ItemsTables({ items, empty, moreFilter, ...rest }: Omit<Props, 'labels' | 'table' | 'showWorkType'> & { /** Filter for the "open all" link when a list is cut short. */ moreFilter?: ItemsFilter }) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const byType = new Map<string, ItemRow[]>();
   for (const it of items) byType.set(it.workTypeKey, [...(byType.get(it.workTypeKey) ?? []), it]);
   const render = (key: string, list: ItemRow[]) => {
     const mod = getModule(key);
-    return <ItemsTable {...rest} items={list} labels={mod?.labels} table={mod?.table} showWorkType={false} empty={empty} />;
+    const shown = list.slice(0, PAGE_SIZE);
+    return (
+      <>
+        <ItemsTable {...rest} items={shown} labels={mod?.labels} table={mod?.table} showWorkType={false} empty={empty} />
+        {list.length > shown.length && (
+          <p className="mt-2 text-xs text-muted">
+            Showing the first {shown.length} of {list.length}.{' '}
+            <Link className="link" href={itemsUrl(key, moreFilter)}>
+              Open all {list.length}
+            </Link>
+          </p>
+        )}
+      </>
+    );
   };
   if (byType.size === 1) {
     const [[key, list]] = [...byType];

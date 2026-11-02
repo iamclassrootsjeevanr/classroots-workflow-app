@@ -440,6 +440,10 @@ Tab names come from `pages` in the module definition. Item pages open without ta
 
 The item lists, the per-group summary (for example By APK version) and the report tables share one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). It has no gridlines; it behaves like a spreadsheet instead. Columns keep their natural width and the grid scrolls sideways with always-visible scrollbars and a fade at the right edge. The header row, the first column and the Actions column stay pinned. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, and put `className="pin"` on the first column's cells (and `pin-end` on an actions column).
 
+**Undo.** After a delete, a toast (bottom left, on every page) offers Undo for 30 minutes, and the Items page lists "Recently deleted" rows with Undo. After 30 minutes a row can no longer be restored from the app (`UNDO_DELETE_MINUTES` in `src/lib/workflow.ts`).
+
+**Speed.** Item tables are paged (50 per page on the Items page; the first 50 per work type on My dashboard, with an Open all link). The Edit dialog loads a row's fields only when opened, and status and assignee selects update instantly while the save finishes. Dev mode (`npm run dev`) is slower than the real thing; check speed with `npm run build && npm start`.
+
 Every item row has **Edit** (opens that item's fields) and **Delete** (asks first). Delete is for admins and anyone who can edit item details. It archives the item: it leaves every list, report and dashboard and its page returns 404, but its history stays in the database. The Google Sheet row is not touched and will not bring the item back.
 
 ---

@@ -3,14 +3,18 @@ import { FilterBar } from '@/components/filter-bar';
 import { ItemsTable } from '@/components/items-table';
 import { AddTestCaseButton, type VersionOption } from '@/components/new-apk-version';
 import { Card } from '@/components/ui';
+import { UndoButton } from '@/components/undo-toasts';
+import { UNDO_DELETE_MINUTES } from '@/lib/workflow';
+import { Pager } from '@/components/pager';
+import { pageOf } from '@/lib/paging';
 import { inList } from '@/lib/items-url';
 import { versionOptions } from '@/lib/test-cases';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import { loadWorkTypePage } from '@/server/work-type-page';
-import { assignablePeople, deletableItemsFor, editableFieldsFor, statusOptionsFor } from '@/server/view';
+import { assignablePeople, deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
 
-type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string; group?: string; cat?: string };
+type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string; group?: string; cat?: string; page?: string };
 
 export async function generateMetadata({ params }: { params: Promise<{ workType: string }> }) {
   const { workType } = await params;
@@ -39,10 +43,11 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     items = items.filter(i => i.externalKey.toLowerCase().includes(q) || i.title.toLowerCase().includes(q) || (i.chapterTitle ?? '').toLowerCase().includes(q));
   }
 
+  const shown = pageOf(items, Number(sp.page));
   const [options, edits, deletable, people, owners, grades] = await Promise.all([
-    editable ? statusOptionsFor(user, items) : Promise.resolve(undefined),
-    editable ? editableFieldsFor(user, items, tz) : Promise.resolve(undefined),
-    editable ? deletableItemsFor(user, items) : Promise.resolve(undefined),
+    editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
+    editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
+    editable ? deletableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     can('assign') && editable ? assignablePeople(all, [key]) : Promise.resolve(undefined),
     db.user.findMany({ where: { ownedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.chapter.findMany({ where: { grade: { not: null } }, distinct: ['grade'], select: { grade: true }, orderBy: { grade: 'asc' } }),
@@ -57,6 +62,16 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   const groups = [...new Set(all.map(i => i.groupKey).filter((g): g is string => Boolean(g)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   const STAGE_NAMES: Record<string, string> = { queue: 'To start', active: 'In progress', feedback: 'In corrections', review: 'In review', approved: 'Approved', done: 'Done', hold: 'On hold' };
   const stages = [...new Set(mod.statuses.map(s => s.category))].map(c => ({ value: c, label: mod.categoryLabels?.[c] ?? STAGE_NAMES[c] ?? c }));
+  // Rows deleted in the last 30 minutes can still be restored.
+  const deleted =
+    editable && can('manageFields')
+      ? await db.workItem.findMany({
+          where: { workTypeId: wt.id, archivedAt: { gte: new Date(Date.now() - UNDO_DELETE_MINUTES * 60_000) } },
+          select: { id: true, externalKey: true, title: true, archivedAt: true },
+          orderBy: { archivedAt: 'desc' },
+          take: 20,
+        })
+      : [];
   const canTest = access.isAdmin || access.byKey.get(key)?.capabilities.has('work');
 
   return (
@@ -85,11 +100,26 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       />
 
       <Card>
-        <ItemsTable items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
-        <p className="mt-2 text-xs text-muted">
-          Showing {items.length} of {all.length}
-        </p>
+        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
+        <Pager basePath={`/w/${key}/items`} params={sp} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
+      {deleted.length > 0 && (
+        <Card title="Recently deleted" description={`Undo is possible for ${UNDO_DELETE_MINUTES} minutes after deleting.`} className="mt-5">
+          <ul className="divide-y divide-line text-sm">
+            {deleted.map(d => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                <span className="min-w-0 truncate">
+                  <span className="font-mono text-xs text-muted">{d.externalKey.split(' | ').pop()}</span> {d.title}
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="text-xs text-muted">{Math.max(1, UNDO_DELETE_MINUTES - Math.floor((Date.now() - d.archivedAt!.getTime()) / 60_000))} min left</span>
+                  <UndoButton itemId={d.id} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </>
   );
 }

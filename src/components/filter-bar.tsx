@@ -15,6 +15,7 @@ export function FilterBar({ filters }: { filters: FilterDef[] }) {
     const next = new URLSearchParams(params.toString());
     if (value) next.set(name, value);
     else next.delete(name);
+    next.delete('page');
     router.replace(`${pathname}${next.size ? `?${next}` : ''}`, { scroll: false });
   };
   const active = filters.some(f => params.get(f.name));

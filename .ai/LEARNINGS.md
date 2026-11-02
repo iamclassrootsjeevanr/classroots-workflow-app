@@ -11,3 +11,4 @@
 - Overlays: a `position: fixed` dialog inside a sticky/positioned table cell is trapped in that cell's stacking layer and paints under sticky headers. Render dialogs with `createPortal(..., document.body)`. `.sheet-wrap` uses `isolation: isolate` so table z-indexes stay below the phone top bar (z-30), drawer (z-40) and dialogs (z-50). Avoid `data-tip` tooltips inside tables or scrolling dialogs (they open sideways and get clipped); use `title`.
 - Don't run `npx prettier` on files here: there is no project config, so it reformats the whole file with default quotes.
 
+- Speed: don't pass per-row field values or option lists for hundreds of rows into client components (Items page was 7 MB / 6 s). Page lists (`pageOf`, `capPerType`) and load edit fields on demand (`loadEditFieldsAction`). `next dev` also inflates the RSC payload; judge speed on a production build.

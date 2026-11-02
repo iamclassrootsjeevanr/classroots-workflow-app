@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { workTypesWith } from '@/lib/access-core';
 import { NAV_COOKIE, normalizePrefs, PREFS_COOKIE } from '@/lib/prefs';
 import { MobileNav, type NavGroup } from '@/components/mobile-nav';
+import { UndoToasts } from '@/components/undo-toasts';
 import { PrefsSync } from '@/components/prefs-sync';
 import { Sidebar, SignOutButton, WhenExpanded } from '@/components/sidebar';
 import { getAccess } from '@/server/access';
@@ -93,6 +94,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
+      <UndoToasts />
       <PrefsSync prefs={normalizePrefs(user.prefs)} cookie={jar.get(PREFS_COOKIE)?.value} />
       <Sidebar initialCollapsed={collapsed} brand={brand} footer={footer}>
         {groups.map((g, i) => (

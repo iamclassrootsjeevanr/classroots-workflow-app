@@ -3,7 +3,7 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dueDateToInstant, minutesBetween, normalizeDate, type WorkCalendar } from '@/lib/time';
-import { canDeleteItem, canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
+import { canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
@@ -228,6 +228,22 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
     await tx.syncOutbox.deleteMany({ where: { itemId, status: 'PENDING' } });
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
+    });
+  });
+}
+
+/** Bring back a deleted row, within the undo window (30 minutes). */
+export async function restoreItem(actor: ChangeActor, itemId: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t restore items in this work type.');
+    if (!item.archivedAt) return;
+    if (!canUndoDelete(item.archivedAt)) throw new Error(`Undo is only possible for ${UNDO_DELETE_MINUTES} minutes after deleting.`);
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: null });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt.toISOString(), toValue: null, source: actor.source, note: 'Restored', at: now },
     });
   });
 }

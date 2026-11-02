@@ -4,12 +4,14 @@ import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useEffect, useState, useTransition } from 'react';
+import { rememberDeletion } from './undo-toasts';
 import {
   assignAction,
   changeStatusAction,
   deleteItemAction,
   commentAction,
   feedbackAction,
+  loadEditFieldsAction,
   resolveFeedbackAction,
   updateFieldsAction,
   type ActionResult,
@@ -50,6 +52,11 @@ export function StatusSelect({
   compact?: boolean;
 }) {
   const { pending, result, exec } = useAction();
+  // Show the chosen status at once; the server round trip finishes in the background.
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) setNext(null);
+  }, [pending]);
   const style = { '--status': current.color } as React.CSSProperties;
   if (!options.length) {
     return (
@@ -64,10 +71,11 @@ export function StatusSelect({
         aria-label="Change status"
         className={`status-control max-w-full cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
         style={style}
-        value={current.key}
+        value={next ?? current.key}
         disabled={pending}
         onChange={e => {
           const to = e.target.value;
+          setNext(to);
           exec(() => changeStatusAction(itemId, to, version));
         }}
       >
@@ -87,14 +95,21 @@ export type PersonOption = { id: string; name: string; hint?: string };
 
 export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean }) {
   const { pending, result, exec } = useAction();
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) setNext(null);
+  }, [pending]);
   return (
     <div className="min-w-0">
       <select
         aria-label="Assign developer"
         className={`input ${compact ? 'w-auto py-1 text-xs' : ''}`}
-        value={assigneeId ?? ''}
+        value={next ?? assigneeId ?? ''}
         disabled={pending}
-        onChange={e => exec(() => assignAction(itemId, e.target.value || null))}
+        onChange={e => {
+          setNext(e.target.value);
+          exec(() => assignAction(itemId, e.target.value || null));
+        }}
       >
         <option value="">Unassigned</option>
         {people.map(p => (
@@ -288,7 +303,16 @@ export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { ite
           type="button"
           className="btn-danger min-h-7 px-2.5 py-0.5 text-xs"
           disabled={pending}
-          onClick={() => exec(() => deleteItemAction(itemId), () => (redirectTo ? router.push(redirectTo) : setConfirming(false)))}
+          onClick={() =>
+            exec(
+              () => deleteItemAction(itemId),
+              () => {
+                rememberDeletion(itemId, itemKey);
+                if (redirectTo) router.push(redirectTo);
+                else setConfirming(false);
+              },
+            )
+          }
         >
           {pending ? 'Deleting…' : 'Delete'}
         </button>
@@ -316,20 +340,30 @@ export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { ite
   );
 }
 
-/** Pencil on a list row: opens a panel with that item's fields (same Edit / Delete rows as the item page). */
-export function EditItemButton({ itemId, itemKey, title, fields, compact }: { itemId: string; itemKey: string; title: string; fields: EditableField[]; compact?: boolean }) {
+/** Pencil on a list row: opens a panel with that item's fields (same Edit / Delete rows as the item page). Fields load on open. */
+export function EditItemButton({ itemId, itemKey, title, compact }: { itemId: string; itemKey: string; title: string; compact?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState<EditableField[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
+    let live = true;
+    setError(null);
+    loadEditFieldsAction(itemId).then(r => {
+      if (!live) return;
+      if (r.ok) setFields(r.fields);
+      else setError(r.error);
+    });
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
+      live = false;
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [open]);
-  const editable = fields.filter(f => f.editable).length;
+  }, [open, itemId]);
+  const editable = fields?.filter(f => f.editable).length ?? 0;
   return (
     <>
       <button
@@ -345,29 +379,31 @@ export function EditItemButton({ itemId, itemKey, title, fields, compact }: { it
       {open &&
         createPortal(
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 text-left backdrop-blur-[2px] sm:items-center sm:p-6" onClick={() => setOpen(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`edit-${itemId}`}
-            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)] sm:rounded-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-mono text-2xs text-muted">{itemKey}</div>
-                <h2 id={`edit-${itemId}`} className="text-md leading-snug font-semibold text-ink">
-                  {title}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {editable} of {fields.length} details editable by you · each row saves on its own
-                </p>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`edit-${itemId}`}
+              className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)] sm:rounded-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-2xs text-muted">{itemKey}</div>
+                  <h2 id={`edit-${itemId}`} className="text-md leading-snug font-semibold text-ink">
+                    {title}
+                  </h2>
+                  {fields && (
+                    <p className="mt-0.5 text-xs text-muted">
+                      {editable} of {fields.length} details editable by you · each row saves on its own
+                    </p>
+                  )}
+                </div>
+                <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
+                  <X size={16} aria-hidden="true" />
+                </button>
               </div>
-              <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
-                <X size={16} aria-hidden="true" />
-              </button>
+              {error ? <p className="text-sm text-bad">{error}</p> : fields ? <FieldsForm itemId={itemId} fields={fields} /> : <p className="py-6 text-center text-sm text-muted">Loading…</p>}
             </div>
-            <FieldsForm itemId={itemId} fields={fields} />
-          </div>
           </div>,
           document.body,
         )}

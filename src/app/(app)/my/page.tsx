@@ -4,6 +4,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { getModule } from '@/modules/registry';
 import { WorkloadHeatmap } from '@/components/heatmap';
+import { capPerType } from '@/lib/paging';
 import { itemsUrl } from '@/lib/items-url';
 import { ItemsTables } from '@/components/items-table';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct } from '@/components/ui';
@@ -15,7 +16,7 @@ import { db } from '@/server/db';
 import type { CurrentUser } from '@/server/rbac';
 import { appTz, workCalendar } from '@/server/settings';
 import { dashboard, loadItems, stageTimesFor, statusSlices, type ItemRow } from '@/server/services/analytics';
-import { deletableItemsFor, editableFieldsFor, statusOptionsFor } from '@/server/view';
+import { deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
 import type { Access } from '@/lib/access-core';
 
 export const metadata = { title: 'My dashboard' };
@@ -34,9 +35,9 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const mine = await loadItems({ workTypeKeys: keys(types), assigneeId: user.id }, { includePausedTypes: false });
   const open = mine.filter(i => i.category !== 'done');
   const [options, edits, deletable, meVsTeam, recent] = await Promise.all([
-    statusOptionsFor(user, mine),
-    editableFieldsFor(user, mine, tz),
-    deletableItemsFor(user, mine),
+    statusOptionsFor(user, capPerType(mine)),
+    editableItemsFor(user, capPerType(mine)),
+    deletableItemsFor(user, capPerType(mine)),
     stageTimesFor(user.id, { workTypeKeys: keys(types) }),
     db.workItemEvent.findMany({
       where: { item: { archivedAt: null, assigneeId: user.id, workType: { key: { in: keys(types) } } }, type: { in: ['STATUS_CHANGED', 'FEEDBACK', 'ASSIGNED', 'COMMENTED'] } },
@@ -138,7 +139,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
     ),
     items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
-        <ItemsTables items={mine} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
+        <ItemsTables items={mine} moreFilter={{ dev: user.id }} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
       </Card>
     ),
   } satisfies Part;
@@ -150,7 +151,7 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
   const now = new Date();
   const scoped = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
   const toReview = scoped.filter(i => i.category === 'review');
-  const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, toReview), editableFieldsFor(user, toReview, tz), deletableItemsFor(user, toReview)]);
+  const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, capPerType(toReview)), editableItemsFor(user, capPerType(toReview)), deletableItemsFor(user, capPerType(toReview))]);
   const intervals = await db.workItemStageInterval.findMany({
     where: { itemId: { in: scoped.map(i => i.id) }, exitedAt: { not: null, gte: addDays(now, -90) } },
     select: { status: true, enteredAt: true, exitedAt: true, item: { select: { workType: { select: { key: true } } } } },
@@ -176,7 +177,7 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
     others: null,
     items: (
       <Card title="Waiting for my review" actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
-        <ItemsTables items={toReview} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
+        <ItemsTables items={toReview} moreFilter={{ scope: 'review' }} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
       </Card>
     ),
   } satisfies Part;
@@ -244,7 +245,7 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
 /** Fallback: no work/review capability and only own data – list what they can see. */
 async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentUser; access: Access; types: WorkTypeAccess[]; tz: string }) {
   const items: ItemRow[] = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
-  const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, items), editableFieldsFor(user, items, tz), deletableItemsFor(user, items)]);
+  const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, capPerType(items)), editableItemsFor(user, capPerType(items)), deletableItemsFor(user, capPerType(items))]);
   return {
     cards: (
       <section>

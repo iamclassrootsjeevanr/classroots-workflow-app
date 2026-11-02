@@ -47,6 +47,14 @@ export function canDeleteItem(ctx: ActorContext | null): boolean {
   return !ctx || ctx.isAdmin || hasCap(ctx, 'manageFields');
 }
 
+/** A deleted item can be brought back for this long. */
+export const UNDO_DELETE_MINUTES = 30;
+
+/** True while a deleted item may still be restored. */
+export function canUndoDelete(archivedAt: Date | null | undefined, now: Date = new Date()): boolean {
+  return Boolean(archivedAt) && now.getTime() - archivedAt!.getTime() <= UNDO_DELETE_MINUTES * 60_000;
+}
+
 export type StageState = {
   status: string;
   assignedAt: Date | null;

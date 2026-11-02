@@ -65,6 +65,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - Click-through everywhere: `itemsUrl` (src/lib/items-url.ts), version chart segments open group+status, dashboard/admin KPI tiles link when one work type
   is in view, `seriesStatuses` on groupSummary (test enforces it for new modules; rule in AGENTS.md). 86 tests.
 - Dashboard order for every role: cards, then analytics/graphs, then tables and lists (version table, due, activity), then item tables (/my sections return {cards, analytics, others, items}); admin overview puts both KPI rows first.
+- Speed + undo: Items page paged (50), /my capped per type, Edit dialog loads fields on open, optimistic status/assign selects (Items page 7 MB/6 s -> 1.4 MB/1.2 s in dev).
+  Delete is undoable for 30 min (toast + Recently deleted card, `restoreItem`). 89 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.
@@ -78,4 +80,3 @@ Nothing mid-edit. Code is not broken.
 ## Key files
 - `src/app/globals.css` — all colour/size/density tokens; add new colours here, never raw Tailwind palette classes.
 - `src/lib/prefs.ts`, `src/app/layout.tsx` — preference model and first-paint theme attributes.
-- `src/components/sidebar.tsx`, `src/app/(app)/layout.tsx` — shell and nav groups.
