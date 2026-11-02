@@ -68,7 +68,6 @@ Nothing mid-edit. Code is not broken.
 
 ## Next steps
 1. PR #3 (jeevan/ui-redesign → main) carries field-row edit/delete, list-row edit dialog and the roles redesign; review and merge it.
-3. Optional: add a "Reset to defaults" button to the Appearance card (`prefs-form.tsx`).
 
 ## Blockers / open questions
 - None.
@@ -78,4 +77,3 @@ Nothing mid-edit. Code is not broken.
 - `src/lib/prefs.ts`, `src/app/layout.tsx` — preference model and first-paint theme attributes.
 - `src/components/sidebar.tsx`, `src/app/(app)/layout.tsx` — shell and nav groups.
 - `src/components/form.tsx`, `src/components/ui.tsx` — shared primitives.
-- `README.md` § "Appearance: theme, text size, density, sidebar".
