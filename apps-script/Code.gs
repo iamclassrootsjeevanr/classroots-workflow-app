@@ -179,24 +179,38 @@ function batchUpdate_(body) {
       var col = headers.indexOf(String(u.column || '').trim());
       if (!key) { failed.push({ key: key, column: u.column, error: 'missing key' }); return; }
       if (col < 0) { failed.push({ key: key, column: u.column, error: 'column not found' }); return; }
-      var row = rowByKey[key];
-      if (!row) {
-        // New row from the app: write each key part into its column.
-        row = sh.getLastRow() + 1;
-        var parts = key.split(KEY_SEPARATOR);
-        for (var kc = 0; kc < keyIdxs.length; kc++) sh.getRange(row, keyIdxs[kc] + 1).setValue(parts[kc] || '');
-        rowByKey[key] = row;
-        appended++;
+      try {
+        var row = rowByKey[key];
+        if (!row) {
+          // New row from the app: write each key part into its column.
+          row = sh.getLastRow() + 1;
+          var parts = key.split(KEY_SEPARATOR);
+          for (var kc = 0; kc < keyIdxs.length; kc++) setCell_(sh.getRange(row, keyIdxs[kc] + 1), parts[kc] || '');
+          rowByKey[key] = row;
+          appended++;
+        }
+        setCell_(sh.getRange(row, col + 1), u.value == null ? '' : String(u.value));
+        if (updatedAtIdx >= 0) setCell_(sh.getRange(row, updatedAtIdx + 1), stamp);
+        updated++;
+      } catch (err) {
+        failed.push({ key: key, column: u.column, error: String(err && err.message || err) });
       }
-      sh.getRange(row, col + 1).setValue(u.value == null ? '' : String(u.value));
-      if (updatedAtIdx >= 0) sh.getRange(row, updatedAtIdx + 1).setValue(stamp);
-      updated++;
     });
     SpreadsheetApp.flush();
     return { ok: failed.length === 0, updated: updated, appended: appended, failed: failed };
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Write a cell. A dropdown (data validation) that does not list the value, e.g. a brand-new APK version typed by the app,
+ * would reject it ("violates the data validation rules"), so the cell's rule is kept but set to only warn.
+ */
+function setCell_(range, value) {
+  var rule = range.getDataValidation();
+  if (rule && !rule.getAllowInvalid()) range.setDataValidation(rule.copy().setAllowInvalid(true).build());
+  range.setValue(value);
 }
 
 function out_(obj) {

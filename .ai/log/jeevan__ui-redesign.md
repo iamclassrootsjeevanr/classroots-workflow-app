@@ -27,3 +27,4 @@
 - 2026-11-02T12:50Z | claude-code | Apps Script finds the sheet tab without a spreadsheet ID
 - 2026-11-02T13:01Z | claude-code | Apps Script: fall back when a sheet has no time zone
 - 2026-11-02T13:11Z | claude-code | Delete APK version with Undo; remove test version
+- 2026-11-02T13:25Z | claude-code | Apps Script: allow values outside a cell's dropdown rules
