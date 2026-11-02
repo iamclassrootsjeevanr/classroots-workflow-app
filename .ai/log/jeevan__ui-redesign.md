@@ -7,3 +7,4 @@
 - 2026-11-02T06:55Z | claude-code | Roles editor: plain choices + live workflow preview; Edit dialog on list rows
 - 2026-11-02T07:01Z | claude-code | Spreadsheet-style data grids: horizontal scroll, pinned columns, cell navigation
 - 2026-11-02T07:11Z | claude-code | Modern data grid (no gridlines), row Delete with edit, archive-on-delete
+- 2026-11-02T07:50Z | claude-code | APK version summary: full-width trend chart above the table

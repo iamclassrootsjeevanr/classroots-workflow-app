@@ -138,6 +138,11 @@ export const apkTesting: WorkTypeDefinition = {
       };
     },
     seriesColors: { Pass: '#43a047', Fail: '#e53935', 'Pending retest': '#fdd835', 'Not tested': '#90a4ae', Other: '#8d6e63' },
+    successSeries: 'Pass',
+    rateLines: [
+      { label: `Good ${APK_RESULT_RULES.goodAtLeast * 100}%`, at: APK_RESULT_RULES.goodAtLeast * 100 },
+      { label: `Stable ${APK_RESULT_RULES.stableAtLeast * 100}%`, at: APK_RESULT_RULES.stableAtLeast * 100 },
+    ],
   },
 
   sheet: {

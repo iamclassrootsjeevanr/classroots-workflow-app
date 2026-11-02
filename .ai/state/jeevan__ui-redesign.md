@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-02T07:11:20Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-02T07:50:42Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -37,6 +37,10 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   `deleteItem` (archives: sets `archivedAt`, FIELD_CHANGED event note "Deleted", drops pending outbox) in work-items.ts,
   `deleteItemAction`, `canDeleteItem` in lib/workflow.ts (admin or manageFields), `deletableItemsFor` in view.ts,
   `DeleteItemButton` in controls.tsx (inline confirm), also on the item page; archived item pages 404. 63 tests.
+- APK version summary: `GroupSummaryCard` now shows a full-width `GroupTrendChart` (stacked result columns per build in
+  release order + pass-rate line on 0-100% axis + Good 80% / Stable 90% reference lines) above the By-version table.
+  New `groupTrend` / `shortLabels` in lib/groups.ts, `successSeries` / `rateLines` on `GroupSummary` (APK module sets them).
+  Applies everywhere the card is used (work list, overview, my dashboard, reports). 65 tests.
 - Data tables spreadsheet behaviour: `src/components/sheet.tsx` (`<Sheet>`: visible scrollbars, right fade, pinned-column
   shadow, click + arrow-key cell nav, Ctrl/Cmd+C copy) and `.sheet*` CSS; applied to items-table, group-summary, reports.
   Root cause of "can't scroll": tables were `w-full` so columns squeezed instead of overflowing, and macOS hid scrollbars.

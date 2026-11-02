@@ -1,7 +1,7 @@
-import { StackedByPerson } from '@/components/charts';
+import { GroupTrendChart } from '@/components/charts';
 import { Sheet } from '@/components/sheet';
 import { Card, ToneChip } from '@/components/ui';
-import { groupRollup, groupSeries, type GroupableItem } from '@/lib/groups';
+import { groupRollup, groupTrend, type GroupableItem } from '@/lib/groups';
 import { formatDate, normalizeDate } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 
@@ -11,15 +11,19 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
   if (!summary) return null;
   const rows = groupRollup(mod, items);
   if (!rows.length) return null;
-  const chart = groupSeries(mod, rows);
+  const trend = groupTrend(mod, rows);
   const cell = (key: string, v: string | number) => {
     if (typeof v === 'string' && /date/i.test(key) && normalizeDate(v)) return formatDate(new Date(normalizeDate(v)), tz);
     return v === '' ? '—' : v;
   };
 
+  const chartTitle = trend.successLabel ? `${trend.successLabel} rate and results by ${summary.label}` : `Results by ${summary.label}`;
   return (
-    <div className="mb-5 grid gap-5 xl:grid-cols-5">
-      <Card title={title ?? `By ${summary.label}`} className="xl:col-span-3">
+    <div className="mb-5 space-y-5">
+      <Card title={chartTitle} description={`One column per ${summary.label}, oldest to newest. The line is the share of tests that ${trend.successLabel?.toLowerCase() ?? 'succeeded'}.`}>
+        <GroupTrendChart rows={trend.points} series={trend.series} successLabel={trend.successLabel} rateLines={trend.rateLines} />
+      </Card>
+      <Card title={title ?? `By ${summary.label}`}>
         <Sheet maxHeight="60vh">
           <table className="sheet">
             <thead>
@@ -46,9 +50,6 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
             </tbody>
           </table>
         </Sheet>
-      </Card>
-      <Card title={`Status by ${summary.label}`} className="xl:col-span-2">
-        <StackedByPerson rows={chart.rows} series={chart.series} height={Math.max(220, rows.length * 26)} labelWidth={Math.min(170, 20 + Math.max(...rows.map(r => r.group.length)) * 7)} />
       </Card>
     </div>
   );

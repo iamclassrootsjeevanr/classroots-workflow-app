@@ -406,6 +406,10 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 ---
 
+### APK version chart and table
+
+On the APK Testing list, the dashboards and Reports, the per-version summary is a full-width chart with the table underneath. Versions run left to right in release order. Each column stacks that build's test results (Pass, Fail, Pending retest, Not tested, Other). A line on the right-hand 0 to 100% axis shows the pass rate per build, with dashed lines at the tracker's Good (80%) and Stable (90%) cut-offs, so improving or regressing builds stand out at a glance. Hover a column for the full version name and every count. A work type opts in through `groupSummary` (`successSeries`, `rateLines`) in its module definition; the data comes from `groupTrend` in `src/lib/groups.ts`.
+
 ### Data grids (spreadsheet feel, modern look)
 
 The item lists, the per-group summary (for example By APK version) and the report tables share one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). It has no gridlines; it behaves like a spreadsheet instead. Columns keep their natural width and the grid scrolls sideways with always-visible scrollbars and a fade at the right edge. The header row, the first column and the Actions column stay pinned. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, and put `className="pin"` on the first column's cells (and `pin-end` on an actions column).

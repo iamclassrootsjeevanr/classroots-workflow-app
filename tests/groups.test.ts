@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { apkTesting, apkVersionResult } from '@/modules/apk-testing/definition';
 import { journeyApplet } from '@/modules/journey-applet/definition';
-import { groupRollup, groupSeries, type GroupableItem } from '@/lib/groups';
+import { groupRollup, groupSeries, groupTrend, shortLabels, type GroupableItem } from '@/lib/groups';
 import { rowKey } from '@/lib/sheet-core';
 
 const item = (groupKey: string, status: string, data: Record<string, unknown> = {}): GroupableItem => ({
@@ -53,6 +53,33 @@ describe('group rollup', () => {
 
   it('is empty for work types without a group summary', () => {
     expect(groupRollup(journeyApplet, items)).toEqual([]);
+  });
+});
+
+describe('group trend chart data', () => {
+  it('drops the prefix every version shares', () => {
+    expect(shortLabels(['2.0.1.14_2026-09-04', '2.0.1.14_2026-10-26'])).toEqual(['09-04', '10-26']);
+    expect(shortLabels(['2.0.1.14_2026-12-30', '2.0.1.14_2027-01-05'])).toEqual(['2026-12-30', '2027-01-05']);
+    expect(shortLabels(['2.0.1.14_2026-10-15_01', '2.0.1.14_2026-10-15_02'])).toEqual(['01', '02']);
+    expect(shortLabels(['only-one'])).toEqual(['only-one']);
+    expect(shortLabels(['A1', 'B2'])).toEqual(['A1', 'B2']);
+  });
+
+  it('adds the pass rate per version and the tracker thresholds', () => {
+    const items = [
+      item('2.0.1.14_2026-09-04', 'pass'),
+      item('2.0.1.14_2026-09-04', 'fail'),
+      item('2.0.1.14_2026-09-04', 'not_tested'),
+      item('2.0.1.14_2026-10-26', 'pass'),
+      item('2.0.1.14_2026-10-26', 'pass'),
+    ];
+    const t = groupTrend(apkTesting, groupRollup(apkTesting, items));
+    expect(t.points.map(p => [p.short, p.total, p.rate])).toEqual([
+      ['09-04', 3, 33.3],
+      ['10-26', 2, 100],
+    ]);
+    expect(t.successLabel).toBe('Pass');
+    expect(t.rateLines.map(l => l.at)).toEqual([80, 90]);
   });
 });
 

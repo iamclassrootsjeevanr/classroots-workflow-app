@@ -5,11 +5,13 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -170,6 +172,59 @@ export function FunnelBars({ rows, height = 240 }: { rows: { stage: string; coun
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+export type TrendRow = Record<string, string | number | null> & { name: string; short: string; total: number; rate: number | null };
+
+/**
+ * Results per build over time: one stacked column per group (counts), left to right in order,
+ * with the success rate as a line on a 0–100% axis and optional threshold lines.
+ */
+export function GroupTrendChart({
+  rows,
+  series,
+  successLabel,
+  rateLines = [],
+  height = 380,
+}: {
+  rows: TrendRow[];
+  series: Slice[];
+  successLabel: string | null;
+  rateLines?: { label: string; at: number }[];
+  height?: number;
+}) {
+  if (!rows.length) return <p className="py-10 text-center text-sm text-muted">No data yet.</p>;
+  const rate = successLabel ? `${successLabel} %` : null;
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ minWidth: rows.length * 40 + 100 }}>
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={rows} margin={{ top: 12, right: 8, bottom: 4, left: 0 }}>
+        <CartesianGrid vertical={false} stroke={GRID} />
+        <XAxis dataKey="short" tick={{ ...AXIS, fontSize: 11 }} interval={0} angle={rows.length > 8 ? -35 : 0} textAnchor={rows.length > 8 ? 'end' : 'middle'} height={rows.length > 8 ? 64 : 30} tickMargin={6} />
+        <YAxis yAxisId="count" allowDecimals={false} tick={AXIS} width={36} label={{ value: 'Tests', angle: -90, position: 'insideLeft', fill: 'var(--color-muted)', fontSize: 11, offset: 12 }} />
+        {rate && <YAxis yAxisId="rate" orientation="right" domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} tick={AXIS} width={44} />}
+        <Tooltip
+          {...TOOLTIP}
+          labelFormatter={(_, payload) => (payload?.[0]?.payload as TrendRow | undefined)?.name ?? ''}
+          formatter={(v: number, n: string) => [n === rate ? `${v}%` : v, n]}
+        />
+        <Legend wrapperStyle={LEGEND} />
+        {series.map(s => (
+          <Bar key={s.label} yAxisId="count" dataKey={s.label} stackId="a" fill={s.color} maxBarSize={44} isAnimationActive={false} />
+        ))}
+        {rate &&
+          rateLines.map(l => (
+            <ReferenceLine key={l.label} yAxisId="rate" y={l.at} stroke="var(--color-muted)" strokeDasharray="4 4" label={{ value: l.label, position: 'insideTopLeft', fill: 'var(--color-muted)', fontSize: 11 }} />
+          ))}
+        {rate && (
+          <Line yAxisId="rate" type="monotone" dataKey="rate" name={rate} stroke="var(--color-ink)" strokeWidth={2.5} dot={{ r: 3.5, fill: 'var(--color-surface)', stroke: 'var(--color-ink)', strokeWidth: 2 }} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />
+        )}
+      </ComposedChart>
+    </ResponsiveContainer>
+      </div>
     </div>
   );
 }

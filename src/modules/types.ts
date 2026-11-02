@@ -77,6 +77,10 @@ export type GroupSummary = {
   columns: TableColumn[];
   compute: (items: GroupSummaryItem[]) => GroupSummaryRow;
   seriesColors?: Record<string, string>;
+  /** Series that counts as success; drives the trend line (share of items) in the group chart. */
+  successSeries?: string;
+  /** Threshold lines on the trend chart, in percent (e.g. the tracker's Good / Stable cut-offs). */
+  rateLines?: { label: string; at: number }[];
 };
 
 export type WorkTypeDefinition = {
