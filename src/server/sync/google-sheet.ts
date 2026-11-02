@@ -39,7 +39,7 @@ export class PeopleDirectory {
   async load() {
     const [users, roles] = await Promise.all([
       this.tx.user.findMany({ select: { id: true, name: true } }),
-      this.tx.accessRole.findMany({ select: { id: true, key: true } }),
+      this.tx.accessRole.findMany({ where: { workTypeId: this.workTypeId }, select: { id: true, key: true } }),
     ]);
     for (const u of users) if (u.name) this.byName.set(norm(u.name), u.id);
     for (const r of roles) this.roleIds.set(r.key, r.id);

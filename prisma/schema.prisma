@@ -138,6 +138,7 @@ model WorkType {
   archivedAt  DateTime?
 
   members   WorkTypeMember[]
+  roles     AccessRole[]
   items     WorkItem[]
   syncState SyncState?
 }
@@ -145,7 +146,9 @@ model WorkType {
 /// Admin-managed role: a named set of capabilities, given to people per work type.
 model AccessRole {
   id              String   @id @default(cuid())
-  key             String   @unique
+  /// The work type whose flow this role belongs to. A work type has many roles; a role belongs to one work type.
+  workTypeId      String
+  key             String
   name            String
   description     String?
   color           String   @default("#1976d2")
@@ -172,6 +175,9 @@ model AccessRole {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   members         WorkTypeMemberRole[]
+  workType        WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([workTypeId, key])
 }
 
 /// A person's access to one work type = the roles they hold there. Data scope, edit right and pages come from the roles.

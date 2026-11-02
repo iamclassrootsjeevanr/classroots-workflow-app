@@ -56,16 +56,12 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   columns/labels (APK: no SME/Expected/Delay).
 - Work type pages split into tabs (Overview, APK versions, Test execution, Test cases; Journey: Overview + Items) under `w/[workType]/(tabs)/`,
   `src/server/work-type-page.ts`, `PathTabs`, `src/lib/test-cases.ts`, `CasesTable`. /my renders all analytics before item tables. 79 tests.
-- Overview redesign: icon/accent KPI tiles (links), Latest-versions cards with result bar, pass-rate graph at the bottom, no Unassigned, Done
-  removed from status charts; every tile/slice/bar/column opens Items filtered (cat/status/dev/group/overdue). Own-data roles get You vs team
-  average (`compareWithTeam`). Sidebar: per-work-type icon + dropdown pages (`NavGroupLink`), phone drawer nests pages. Journey tab = 'Journey chapters'. 84 tests.
-- Click-through everywhere: `itemsUrl` (src/lib/items-url.ts), version chart segments open group+status, dashboard/admin KPI tiles link when one work type
-  is in view, `seriesStatuses` on groupSummary (test enforces it for new modules; rule in AGENTS.md). 86 tests.
-- Dashboard order for every role: cards, then analytics/graphs, then tables and lists (version table, due, activity), then item tables (/my sections return {cards, analytics, others, items}); admin overview puts both KPI rows first.
+- Overview/dashboards: clickable analytics (`itemsUrl`), order cards > graphs > tables > items, own-data 'You vs team', sidebar icons + dropdown pages.
 - Speed + undo: Items page paged (50), /my capped per type, Edit dialog loads fields on open, optimistic status/assign selects (Items page 7 MB/6 s -> 1.4 MB/1.2 s in dev).
   Delete is undoable for 30 min (toast + Recently deleted card, `restoreItem`). 89 tests.
 - Inbox: Notification model (migration 20261102180000), `notify()`, sidebar Inbox popover + /inbox page, delete toast 5 s then Undo in Inbox for 30 min,
   assignment/feedback notices; account is one box (name + My account). 92 tests.
+- Roles per work type: migration 20261102210000, module `roles`/`rolesForModule`, `ensureModuleRoles`, Roles page tabs per work type, user form filters roles by work type, APK Test Lead role. 99 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

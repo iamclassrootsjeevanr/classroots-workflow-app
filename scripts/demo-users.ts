@@ -36,7 +36,7 @@ async function main() {
   const passwordHash = await hashPassword(password);
   await ensureSystemRoles();
   const wt = await enableModule('journey-applet');
-  const roleIds = new Map((await db.accessRole.findMany()).map(r => [r.key, r.id]));
+  const roleIds = new Map((await db.accessRole.findMany({ where: { workTypeId: wt.id } })).map(r => [r.key, r.id]));
 
   for (const d of DEMOS) {
     const base = { isAdmin: Boolean(d.isAdmin), active: true, passwordHash, passwordUpdatedAt: new Date() };

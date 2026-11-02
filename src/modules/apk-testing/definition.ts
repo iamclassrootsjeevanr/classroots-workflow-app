@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VIEWER } from '../roles';
 import type { GroupSummaryRow, WorkTypeDefinition } from '../types';
 
 /**
@@ -42,6 +43,12 @@ export const apkTesting: WorkTypeDefinition = {
   importRoles: { assignee: 'tester', owner: 'app-developer' },
   categoryLabels: { queue: 'Not tested', active: 'In process', feedback: 'Failed', review: 'Fixed / pending retest', done: 'Passed', hold: 'Not reported' },
 
+  roles: [
+    { key: 'tester', name: 'Tester', description: 'Runs test cases on APK builds: tests, logs failures, retests, adds new APK versions.', color: '#00897b', capabilities: ['work', 'create'], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'app-developer', name: 'App Developer', description: 'Responds to test failures: marks them fixed and adds developer remarks.', color: '#6d4c41', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'test-lead', name: 'Test Lead', description: 'Plans the test runs: adds versions and cases, assigns testers, edits test details and the APK file.', color: '#ef6c00', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    VIEWER,
+  ],
   statuses: [
     { key: 'not_tested', label: 'Not Tested', color: '#90a4ae', category: 'queue', marks: ['assigned'], sheetValue: 'Not Tested' },
     { key: 'in_process', label: 'In Process', color: '#fb8c00', category: 'active', marks: ['started'], sheetValue: 'In Process' },

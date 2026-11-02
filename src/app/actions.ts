@@ -237,6 +237,11 @@ export async function saveUserAction(raw: UserInput) {
     }
     for (const a of input.access) {
       if (a.enabled && !a.roleIds.length) throw new Error('Pick at least one role for each work type you give access to.');
+      // Roles belong to one work type: every picked role must be a role of that work type.
+      if (a.enabled) {
+        const ok = await db.accessRole.count({ where: { id: { in: a.roleIds }, workTypeId: a.workTypeId } });
+        if (ok !== new Set(a.roleIds).size) throw new Error('A picked role does not belong to that work type.');
+      }
     }
     let pw = {};
     if (input.password) {
@@ -279,6 +284,8 @@ export async function setUserActiveAction(userId: string, active: boolean) {
 
 const roleInput = z.object({
   id: z.string().optional(),
+  /** The work type this role belongs to (fixed once created). */
+  workTypeId: z.string().min(1),
   name: z.string().trim().min(1, 'Name is required').max(60),
   description: z.string().trim().max(240).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Pick a colour'),
@@ -300,14 +307,18 @@ export type RoleInput = z.infer<typeof roleInput>;
 export async function saveRoleAction(raw: RoleInput) {
   return run(async () => {
     await requireAdmin();
-    const { id, ...parsed } = roleInput.parse(raw);
+    const { id, workTypeId, ...parsed } = roleInput.parse(raw);
     const data = { ...parsed, pageExport: parsed.pageReports && parsed.pageExport };
+    await db.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (!data.pageDashboard && !data.pageItems && !data.pageReports) throw new Error('Tick at least one page this role can see.');
     const key = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const clash = await db.accessRole.findFirst({ where: { OR: [{ key }, { name: { equals: data.name, mode: 'insensitive' } }], ...(id ? { NOT: { id } } : {}) } });
-    if (clash) throw new Error(`A role called “${clash.name}” already exists.`);
-    if (id) await db.accessRole.update({ where: { id }, data });
-    else await db.accessRole.create({ data: { ...data, key } });
+    const clash = await db.accessRole.findFirst({ where: { workTypeId, OR: [{ key }, { name: { equals: data.name, mode: 'insensitive' } }], ...(id ? { NOT: { id } } : {}) } });
+    if (clash) throw new Error(`A role called “${clash.name}” already exists in this work type.`);
+    if (id) {
+      const own = await db.accessRole.count({ where: { id, workTypeId } });
+      if (!own) throw new Error('That role belongs to another work type.');
+      await db.accessRole.update({ where: { id }, data });
+    } else await db.accessRole.create({ data: { ...data, key, workTypeId } });
     return id ? 'Role saved' : `Role “${data.name}” added`;
   });
 }

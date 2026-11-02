@@ -45,3 +45,8 @@ By: claude-code
 Decision: `Notification` rows (kind string, title, body, href, data JSON, readAt) per user, written with `notify()`. Delete creates `item.deleted` with `undoUntil`; restore turns it into `item.restored`. Assignment and feedback also notify. Sidebar: Inbox popover + /inbox page; account is one box (name + My account, no email).
 Why: one extensible place for future events instead of per-feature toasts. Rejected: localStorage-only toasts (lost on other devices).
 By: claude-code
+
+## 2026-11-02 — Roles belong to one work type and come from its flow
+Decision: `AccessRole.workTypeId` (unique with `key`). Modules declare `roles` (or they are derived from the flow); `ensureModuleRoles` adds missing ones on enable and on the Roles/People pages. Migration 20261102210000 copied each global role into every work type that used it, moved members to the copies and removed the globals. APK Testing gained a Test Lead role because its flow needs `manageFields`.
+Why: a Developer or Reviewer role means different things in each flow; roles should grow with the flow. Rejected: global roles shared across work types (preview and permissions were ambiguous).
+By: claude-code

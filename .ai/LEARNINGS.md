@@ -13,3 +13,4 @@
 
 - Speed: don't pass per-row field values or option lists for hundreds of rows into client components (Items page was 7 MB / 6 s). Page lists (`pageOf`, `capPerType`) and load edit fields on demand (`loadEditFieldsAction`). `next dev` also inflates the RSC payload; judge speed on a production build.
 - After a schema change (`prisma generate`) the running `next dev` keeps the old Prisma client ("Cannot read properties of undefined"); restart the dev server.
+- Adding a role to a module definition is enough: Admin → Roles (or the user form) creates it. A flow capability with no role granting it fails `tests/roles.test.ts`.

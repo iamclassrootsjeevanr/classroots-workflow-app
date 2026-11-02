@@ -410,6 +410,12 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 On the APK Testing list, the dashboards and Reports, the per-version summary is a full-width chart with the table underneath. Versions run left to right in release order. Each column stacks that build's test results (Pass, Fail, Pending retest, Not tested, Other). A line on the right-hand 0 to 100% axis shows the pass rate per build, with dashed lines at the tracker's Good (80%) and Stable (90%) cut-offs, so improving or regressing builds stand out at a glance. Hover a column for the full version name and every count. A work type opts in through `groupSummary` (`successSeries`, `rateLines`) in its module definition; the data comes from `groupTrend` in `src/lib/groups.ts`.
 
+### Roles follow the work type
+
+Roles are made from a work type's flow, not the other way round. A work type has many roles; a role belongs to exactly one work type (`AccessRole.workTypeId`). A module lists its roles in `roles` in its definition (see `src/modules/apk-testing/definition.ts`); if it lists none, they are derived from who may move statuses and edit fields (`rolesForModule` in `src/modules/roles.ts`). Roles are created when a work type is enabled and again whenever its module gains a role (`ensureModuleRoles`); existing roles are never overwritten. Admin → Roles shows one tab per work type with only that work type's roles, and when giving someone access you pick from that work type's roles. A test fails if a flow needs a capability that none of its roles has.
+
+To add a work type: write its module (statuses, transitions, fields, and optionally `roles`), register it, enable it. Its roles appear on their own.
+
 ### Work type pages
 
 Each work type has its own pages, shown as tabs under its name (code: `src/app/(app)/w/[workType]/(tabs)/`):

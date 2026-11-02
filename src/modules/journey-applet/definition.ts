@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COORDINATOR, VIEWER } from '../roles';
 import type { WorkTypeDefinition } from '../types';
 
 /**
@@ -16,6 +17,12 @@ export const journeyApplet: WorkTypeDefinition = {
   labels: { assignee: 'Developer', owner: 'SME', group: 'Chapter' },
   importRoles: { assignee: 'developer', owner: 'reviewer' },
 
+  roles: [
+    { key: 'developer', name: 'Developer', description: 'Builds the work: gets assigned, starts, submits for review.', color: '#1976d2', capabilities: ['work'], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items'] },
+    { key: 'reviewer', name: 'SME / Reviewer', description: 'Reviews submissions: approves, requests corrections, gives feedback.', color: '#7e57c2', capabilities: ['review', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    COORDINATOR,
+    VIEWER,
+  ],
   statuses: [
     { key: 'received', label: 'Received from SME', color: '#78909c', category: 'queue', sheetValue: '' },
     { key: 'assigned', label: 'YTS', color: '#90a4ae', category: 'queue', marks: ['assigned'], sheetValue: 'YTS' },

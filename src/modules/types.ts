@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { Capability } from '@/lib/access-core';
+import type { Capability, DataScope, PageKey } from '@/lib/access-core';
 import type { NavIcon } from '@/components/icons';
 
 /** What a status means for analytics and workload, independent of its label. */
@@ -88,6 +88,18 @@ export type GroupSummary = {
   rateLines?: { label: string; at: number }[];
 };
 
+/** A role this work type's flow needs. Roles are created from these when the work type is enabled or its flow changes. */
+export type RoleTemplate = {
+  key: string;
+  name: string;
+  description: string;
+  color: string;
+  capabilities: Capability[];
+  dataScope: DataScope;
+  canEdit: boolean;
+  pages: PageKey[];
+};
+
 export type WorkTypeDefinition = {
   key: string;
   name: string;
@@ -102,6 +114,8 @@ export type WorkTypeDefinition = {
   categoryLabels?: Partial<Record<StatusCategory, string>>;
   /** Role keys given to people created from the sheet / import (assignee column, owner column). */
   importRoles?: { assignee: string; owner?: string };
+  /** Roles of this work type. Omit to derive them from the flow (who moves statuses, who edits fields). */
+  roles?: RoleTemplate[];
   statuses: StatusDef[];
   initialStatus: string;
   /** Status given when an item is first assigned (if it is still in a queue status). */

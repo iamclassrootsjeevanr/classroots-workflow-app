@@ -1,5 +1,7 @@
 import type { Prisma, WorkTypeState } from '@prisma/client';
-import { allModules, requireModule } from '@/modules/registry';
+import { allModules, getModule, requireModule } from '@/modules/registry';
+import { rolesForModule } from '@/modules/roles';
+import type { WorkTypeDefinition } from '@/modules/types';
 import { db } from '../db';
 import { env } from '../env';
 import type { WorkTypeConfig } from './work-items';
@@ -8,11 +10,13 @@ import type { WorkTypeConfig } from './work-items';
 export async function enableModule(key: string) {
   const mod = requireModule(key);
   const config: WorkTypeConfig = { sync: { enabled: false, tab: mod.sheet?.defaultTab } };
-  return db.workType.upsert({
+  const wt = await db.workType.upsert({
     where: { key },
     create: { key, name: mod.name, description: mod.description, config: config as Prisma.InputJsonValue },
     update: {},
   });
+  await ensureModuleRoles(wt.id, mod);
+  return wt;
 }
 
 export async function ensureAllModules() {
@@ -48,18 +52,44 @@ export async function ensureAdmins() {
   }
 }
 
-/** The built-in roles (also created by the access_roles migration). Safe to re-run; never overwrites admin edits. */
-export const SYSTEM_ROLES = [
-  { id: 'role_developer', key: 'developer', name: 'Developer', description: 'Builds the work: gets assigned, starts, submits for review.', color: '#1976d2', capWork: true, dataScope: 'OWN' as const, canEdit: true, pageDashboard: true, pageItems: true, pageReports: false, pageExport: false },
-  { id: 'role_reviewer', key: 'reviewer', name: 'SME / Reviewer', description: 'Reviews submissions: approves, requests corrections, gives feedback.', color: '#7e57c2', capReview: true, capManageFields: true, dataScope: 'ALL' as const, canEdit: true, pageDashboard: true, pageItems: true, pageReports: true, pageExport: false },
-  { id: 'role_coordinator', key: 'coordinator', name: 'Coordinator', description: 'Plans the work: creates items and assigns people.', color: '#ef6c00', capAssign: true, capCreate: true, dataScope: 'ALL' as const, canEdit: true, pageDashboard: true, pageItems: true, pageReports: true, pageExport: true },
-  { id: 'role_tester', key: 'tester', name: 'Tester', description: 'Runs test cases on APK builds: tests, logs failures, retests, adds new APK versions.', color: '#00897b', capWork: true, capCreate: true, dataScope: 'OWN' as const, canEdit: true, pageDashboard: true, pageItems: true, pageReports: true, pageExport: false },
-  { id: 'role_app_developer', key: 'app-developer', name: 'App Developer', description: 'Responds to test failures: marks them fixed and adds developer remarks.', color: '#6d4c41', capReview: true, dataScope: 'ALL' as const, canEdit: true, pageDashboard: true, pageItems: true, pageReports: true, pageExport: false },
-  { id: 'role_viewer', key: 'viewer', name: 'Viewer', description: 'Can look but not act.', color: '#78909c', dataScope: 'ALL' as const, canEdit: false, pageDashboard: true, pageItems: true, pageReports: true, pageExport: false },
-] as const;
+/**
+ * Create the roles a work type's flow needs. Roles follow the flow: run this when a work type is enabled and whenever its
+ * module gains a role. It only adds missing roles by key and never overwrites what an admin edited.
+ */
+export async function ensureModuleRoles(workTypeId: string, mod: WorkTypeDefinition) {
+  const have = new Set((await db.accessRole.findMany({ where: { workTypeId }, select: { key: true } })).map(r => r.key));
+  const missing = rolesForModule(mod).filter(r => !have.has(r.key));
+  for (const r of missing) {
+    await db.accessRole.create({
+      data: {
+        workTypeId,
+        key: r.key,
+        name: r.name,
+        description: r.description,
+        color: r.color,
+        isSystem: true,
+        capWork: r.capabilities.includes('work'),
+        capReview: r.capabilities.includes('review'),
+        capAssign: r.capabilities.includes('assign'),
+        capCreate: r.capabilities.includes('create'),
+        capManageFields: r.capabilities.includes('manageFields'),
+        dataScope: r.dataScope,
+        canEdit: r.canEdit,
+        pageDashboard: r.pages.includes('dashboard'),
+        pageItems: r.pages.includes('items'),
+        pageReports: r.pages.includes('reports'),
+        pageExport: r.pages.includes('export'),
+      },
+    });
+  }
+  return missing.length;
+}
 
+/** Make sure every enabled work type has the roles its flow needs. Safe to run often. */
 export async function ensureSystemRoles() {
-  for (const r of SYSTEM_ROLES) {
-    await db.accessRole.upsert({ where: { key: r.key }, create: { ...r, isSystem: true }, update: {} });
+  const types = await db.workType.findMany({ select: { id: true, key: true } });
+  for (const t of types) {
+    const mod = getModule(t.key);
+    if (mod) await ensureModuleRoles(t.id, mod);
   }
 }

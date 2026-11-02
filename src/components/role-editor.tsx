@@ -24,7 +24,7 @@ const PAGE_FIELD: Record<PageKey, keyof RoleInput> = {
   export: 'pageExport',
 };
 
-const blank: RoleInput = {
+const blank: Omit<RoleInput, 'workTypeId'> = {
   name: '',
   description: '',
   color: '#1976d2',
@@ -44,9 +44,9 @@ const blank: RoleInput = {
 const capsOf = (v: RoleInput) => CAPABILITIES.filter(c => Boolean(v[CAP_FIELD[c]]));
 
 /** Add or edit one role. Left: plain choices. Right: what those choices unlock in each work type's flow. */
-export function RoleForm({ initial, members, isSystem, flows }: { initial?: RoleInput; members?: number; isSystem?: boolean; flows: FlowLite[] }) {
+export function RoleForm({ initial, members, isSystem, flows, workTypeId }: { initial?: RoleInput; members?: number; isSystem?: boolean; flows: FlowLite[]; /** The work type this role belongs to. */ workTypeId: string }) {
   const isNew = !initial?.id;
-  const [v, setV] = useState<RoleInput>(initial ?? blank);
+  const [v, setV] = useState<RoleInput>(initial ?? { ...blank, workTypeId });
   const [open, setOpen] = useState(!isNew);
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -70,7 +70,7 @@ export function RoleForm({ initial, members, isSystem, flows }: { initial?: Role
           const r = await saveRoleAction(v);
           setResult(r);
           if (r.ok && isNew) {
-            setV(blank);
+            setV({ ...blank, workTypeId });
             setOpen(false);
           }
         });
