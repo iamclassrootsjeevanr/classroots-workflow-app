@@ -77,7 +77,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
       <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="My work by status">
@@ -90,6 +90,11 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
       </>
     ),
     others: (
+      <>
+      {types.map(t => {
+        const mod = getModule(t.workTypeKey);
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
+      })}
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Due in the next 7 days">
           {dueSoon.length ? (
@@ -129,6 +134,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
           )}
         </Card>
       </div>
+      </>
     ),
     items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
@@ -202,7 +208,7 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
       <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status">
@@ -223,7 +229,14 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
       <p className="mb-5 text-xs text-muted">Times in business hours ({tz}).</p>
       </>
     ),
-    others: null,
+    others: (
+      <>
+      {types.map(t => {
+        const mod = getModule(t.workTypeKey);
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+      })}
+      </>
+    ),
     items: null,
   } satisfies Part;
 }

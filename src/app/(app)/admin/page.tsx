@@ -82,7 +82,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
         const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
 
 
@@ -94,6 +94,12 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
           <StackedByPerson rows={d.byDeveloper} series={statusSeries} itemsHref={itemsHref} />
         </Card>
       </div>
+
+
+      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
+        const mod = getModule(key);
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+      })}
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Workload now" actions={<span className="text-xs text-muted">active items ÷ capacity</span>}>
