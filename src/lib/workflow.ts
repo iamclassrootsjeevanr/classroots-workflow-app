@@ -15,7 +15,7 @@ export function hasCap(ctx: ActorContext, cap: Capability): boolean {
   return ctx.isAdmin || (ctx.canEdit && ctx.capabilities.has(cap));
 }
 
-function actorMatches(by: Actor[], ctx: ActorContext): boolean {
+export function actorMatches(by: Actor[], ctx: ActorContext): boolean {
   if (ctx.isAdmin) return true;
   if (!ctx.canEdit) return false;
   return by.some(a => (a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : ctx.capabilities.has(a)));

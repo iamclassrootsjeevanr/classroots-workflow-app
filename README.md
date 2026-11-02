@@ -272,7 +272,7 @@ Every change to an item goes through `src/server/services/work-items.ts`, whethe
 4. **Closes and opens a stage interval.** This records time in each status in calendar minutes and business minutes.
 5. **Queues a sheet write.** The changed cells go to `SyncOutbox`, if sync is on.
 
-On the item page every detail field is its own row with **Edit** and **Delete** buttons (`FieldsForm` in `src/components/controls.tsx`). Saving or deleting one field is one transaction and one `FIELD_CHANGED` event; Delete clears the value (sets it to empty) after an inline confirmation. Link fields (CMS, AI Tutor, build, APK) render as buttons that open in a new tab, on the item page and in the item lists.
+On the item page every detail field is its own row with **Edit** and **Delete** buttons (`FieldsForm` in `src/components/controls.tsx`). The same editor opens from the pencil at the end of every list row (`EditItemButton`), so details can be fixed without leaving the list; the server decides per item which fields the viewer may edit (`editableFieldsFor` in `src/server/view.ts`). Saving or deleting one field is one transaction and one `FIELD_CHANGED` event; Delete clears the value (sets it to empty) after an inline confirmation. Link fields (CMS, AI Tutor, build, APK) render as buttons that open in a new tab, on the item page and in the item lists.
 
 ```mermaid
 flowchart LR
@@ -327,6 +327,8 @@ One item per **APK version × test case**, grouped by APK version.
 ---
 
 ## People, roles and access
+
+The Roles editor (Admin → Roles) is built from plain choices: can they make changes or only view, what they can do (work on, review, assign, add, edit details), which items they see, which pages they open. A panel beside each role, **What this means in the flow**, lists for every active work type the exact status moves and item details those choices unlock (`src/lib/role-preview.ts`), so a new role can be checked against the workflow before it is saved.
 
 Everything is managed in the app under **Admin → People & access** and **Admin → Roles**. No code changes are needed.
 

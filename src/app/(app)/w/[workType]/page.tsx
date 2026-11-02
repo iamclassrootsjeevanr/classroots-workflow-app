@@ -11,7 +11,7 @@ import type { Capability } from '@/lib/access-core';
 import { requireWorkTypePage, scopeWhere } from '@/server/access';
 import { appTz } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
-import { assignablePeople, statusOptionsFor } from '@/server/view';
+import { assignablePeople, editableFieldsFor, statusOptionsFor } from '@/server/view';
 
 type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string };
 
@@ -43,8 +43,9 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
   }
 
   const editable = wt.state === 'ACTIVE';
-  const [options, people, owners, grades] = await Promise.all([
+  const [options, edits, people, owners, grades] = await Promise.all([
     editable ? statusOptionsFor(user, items) : Promise.resolve(undefined),
+    editable ? editableFieldsFor(user, items, tz) : Promise.resolve(undefined),
     can('assign') && editable ? assignablePeople(all, [key]) : Promise.resolve(undefined),
     db.user.findMany({ where: { ownedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.chapter.findMany({ where: { grade: { not: null } }, distinct: ['grade'], select: { grade: true }, orderBy: { grade: 'asc' } }),
@@ -92,7 +93,7 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
       <GroupSummaryCard mod={mod} items={all} tz={tz} />
 
       <Card>
-        <ItemsTable items={items} statusOptions={options} people={people} tz={tz} labels={mod.labels} empty="No items match these filters." />
+        <ItemsTable items={items} statusOptions={options} fieldEdits={edits} people={people} tz={tz} labels={mod.labels} empty="No items match these filters." />
         <p className="mt-2 text-xs text-muted">
           Showing {items.length} of {all.length}
         </p>

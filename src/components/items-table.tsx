@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { getModule } from '@/modules/registry';
 import { formatDate } from '@/lib/time';
 import type { ItemRow } from '@/server/services/analytics';
-import { AssignSelect, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { AssignSelect, EditItemButton, LinkButton, StatusSelect, type EditableField, type PersonOption, type StatusOption } from './controls';
 import { Delay, Empty, StatusBadge } from './ui';
 
 type Props = {
   items: ItemRow[];
   statusOptions?: Map<string, StatusOption[]>;
+  /** Per item, the fields the viewer may edit; rows with an entry get an Edit button. */
+  fieldEdits?: Map<string, EditableField[]>;
   people?: PersonOption[];
   showWorkType?: boolean;
   showAssignee?: boolean;
@@ -24,11 +26,16 @@ type Props = {
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels }: Props) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
-  const cols = 7 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0);
+  const anyEdit = Boolean(fieldEdits?.size);
+  const cols = 7 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyEdit ? 1 : 0);
+  const editBtn = (it: ItemRow, compact: boolean) => {
+    const f = fieldEdits?.get(it.id);
+    return f ? <EditItemButton itemId={it.id} itemKey={it.externalKey} title={it.title} fields={f} compact={compact} /> : null;
+  };
   const groupOf = (it: ItemRow) => (groupByChapter ? [it.groupKey, it.chapterTitle].filter(Boolean).join(' · ') : '');
   const canOpen = (it: ItemRow) => !linkable || linkable.has(it.workTypeKey);
   const linksOf = (it: ItemRow) => Object.entries(LINK_FIELDS).filter(([k]) => typeof it.data[k] === 'string' && it.data[k]);
@@ -101,12 +108,13 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                     <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
                   </div>
                 </dl>
-                {(links.length > 0 || it.reviewRounds > 1) && (
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs">
+                {(links.length > 0 || it.reviewRounds > 1 || fieldEdits?.has(it.id)) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-2.5 text-xs">
+                    {editBtn(it, false)}
                     {links.map(([k, label]) => (
                       <LinkButton key={k} href={String(it.data[k])} label={label} size="xs" />
                     ))}
-                    {it.reviewRounds > 1 && <span className="text-muted">{it.reviewRounds} review rounds</span>}
+                    {it.reviewRounds > 1 && <span className="ml-auto text-muted">{it.reviewRounds} review rounds</span>}
                   </div>
                 )}
               </div>
@@ -129,6 +137,7 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
               <th>Expected</th>
               <th>Delay</th>
               <th>Links</th>
+              {anyEdit && <th className="w-12 text-center">Edit</th>}
             </tr>
           </thead>
           <tbody>
@@ -182,6 +191,7 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                     )}
                     {!getModule(it.workTypeKey) && <span className="text-bad">module missing</span>}
                   </td>
+                  {anyEdit && <td className="text-center">{editBtn(it, true)}</td>}
                 </tr>,
               ];
             })}

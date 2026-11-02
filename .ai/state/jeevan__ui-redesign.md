@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-02T06:40:20Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-02T06:55:42Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -27,11 +27,18 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   calls `updateFieldsAction` on its own. New `LinkButton` (btn-ghost, `target=_blank`) used for url fields and the Links
   column / card links in `items-table.tsx`. Verified in browser (dark, 1440 and 375) on an APK test item; 56 tests pass.
 
+- Roles editor redesigned (`src/components/role-editor.tsx`): "Can make changes? Yes / View only" segmented control,
+  plain-language capability labels (`CAPABILITY_LABELS` in access-core), items-seen radios, pages; live right-hand panel
+  "What this means in the flow" per work type from `src/lib/role-preview.ts` (`flowLite`, `rolePreview`; `actorMatches`
+  now exported from workflow.ts). `tests/role-preview.test.ts` (5 tests, 61 total).
+- Item lists: pencil "Edit" column (table) / button (cards) opens a dialog with the same field rows (`EditItemButton`);
+  `editableFieldsFor` in `src/server/view.ts`; wired on /w/[workType] and all three /my tables.
+
 ## In progress
 Nothing mid-edit. Code is not broken.
 
 ## Next steps
-1. PR #3 (jeevan/ui-redesign → main) is open and now also carries the field-row edit/delete change; review and merge it.
+1. PR #3 (jeevan/ui-redesign → main) carries field-row edit/delete, list-row edit dialog and the roles redesign; review and merge it.
 2. Optional polish: verify charts in dark mode on /reports with real data (screenshot caught them pre-measure once).
 3. Optional: add a "Reset to defaults" button to the Appearance card (`prefs-form.tsx`).
 

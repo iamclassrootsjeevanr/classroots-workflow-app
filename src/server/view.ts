@@ -1,8 +1,9 @@
 import 'server-only';
 import { workloadByUser } from '@/lib/analytics-core';
-import { allowedTransitions } from '@/lib/workflow';
+import { instantToDateKey } from '@/lib/time';
+import { allowedTransitions, canEditField } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
-import type { PersonOption, StatusOption } from '@/components/controls';
+import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
 import { loadLabel } from '@/components/ui';
 import { actorContextFor, getAccess } from './access';
 import { db } from './db';
@@ -25,6 +26,27 @@ export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Pro
         statusLabel: statusDef(mod, t.to).label,
       })),
     );
+  }
+  return out;
+}
+
+/** Per item, the fields the viewer may edit from a list row (items with none are left out). */
+export async function editableFieldsFor(user: CurrentUser, items: ItemRow[], tz: string): Promise<Map<string, EditableField[]>> {
+  const access = await getAccess(user);
+  const out = new Map<string, EditableField[]>();
+  for (const it of items) {
+    const mod = getModule(it.workTypeKey);
+    if (!mod) continue;
+    const ctx = actorContextFor(access, it.workTypeKey, it);
+    const fields: EditableField[] = mod.fields.map(f => ({
+      key: f.key,
+      label: f.label,
+      type: f.type,
+      linkLabel: f.linkLabel,
+      value: f.key === 'dueAt' ? instantToDateKey(it.dueAt, tz) : it.data[f.key] == null ? '' : String(it.data[f.key]),
+      editable: canEditField(f, ctx),
+    }));
+    if (fields.some(f => f.editable)) out.set(it.id, fields);
   }
   return out;
 }

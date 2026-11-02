@@ -14,7 +14,7 @@ import { db } from '@/server/db';
 import type { CurrentUser } from '@/server/rbac';
 import { appTz, workCalendar } from '@/server/settings';
 import { dashboard, loadItems, stageTimesFor, statusSlices, type ItemRow } from '@/server/services/analytics';
-import { statusOptionsFor } from '@/server/view';
+import { editableFieldsFor, statusOptionsFor } from '@/server/view';
 import type { Access } from '@/lib/access-core';
 
 export const metadata = { title: 'My dashboard' };
@@ -29,8 +29,9 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const cal = await workCalendar();
   const mine = await loadItems({ workTypeKeys: keys(types), assigneeId: user.id }, { includePausedTypes: false });
   const open = mine.filter(i => i.category !== 'done');
-  const [options, meVsTeam, recent] = await Promise.all([
+  const [options, edits, meVsTeam, recent] = await Promise.all([
     statusOptionsFor(user, mine),
+    editableFieldsFor(user, mine, tz),
     stageTimesFor(user.id, { workTypeKeys: keys(types) }),
     db.workItemEvent.findMany({
       where: { item: { assigneeId: user.id, workType: { key: { in: keys(types) } } }, type: { in: ['STATUS_CHANGED', 'FEEDBACK', 'ASSIGNED', 'COMMENTED'] } },
@@ -114,7 +115,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         </Card>
       </div>
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
-        <ItemsTable items={mine} statusOptions={options} showAssignee={false} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
+        <ItemsTable items={mine} statusOptions={options} fieldEdits={edits} showAssignee={false} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
       </Card>
     </section>
   );
@@ -126,7 +127,7 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
   const now = new Date();
   const scoped = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
   const toReview = scoped.filter(i => i.category === 'review');
-  const options = await statusOptionsFor(user, toReview);
+  const [options, edits] = await Promise.all([statusOptionsFor(user, toReview), editableFieldsFor(user, toReview, tz)]);
   const intervals = await db.workItemStageInterval.findMany({
     where: { itemId: { in: scoped.map(i => i.id) }, exitedAt: { not: null, gte: addDays(now, -90) } },
     select: { status: true, enteredAt: true, exitedAt: true, item: { select: { workType: { select: { key: true } } } } },
@@ -146,7 +147,7 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
         <Kpi label="Avg review time" value={formatDuration(avgReview)} hint="submitted → reviewed" />
       </KpiGrid>
       <Card actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
-        <ItemsTable items={toReview} statusOptions={options} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
+        <ItemsTable items={toReview} statusOptions={options} fieldEdits={edits} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
       </Card>
     </section>
   );
@@ -197,7 +198,7 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
 /** Fallback: no work/review capability and only own data – list what they can see. */
 async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentUser; access: Access; types: WorkTypeAccess[]; tz: string }) {
   const items: ItemRow[] = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
-  const options = await statusOptionsFor(user, items);
+  const [options, edits] = await Promise.all([statusOptionsFor(user, items), editableFieldsFor(user, items, tz)]);
   return (
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">My items</h2>
@@ -206,7 +207,7 @@ async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentU
           <StatusPie slices={statusSlices(items)} />
         </Card>
         <Card title="Items" className="lg:col-span-2">
-          <ItemsTable items={items} statusOptions={options} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="No items yet." />
+          <ItemsTable items={items} statusOptions={options} fieldEdits={edits} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="No items yet." />
         </Card>
       </div>
     </section>

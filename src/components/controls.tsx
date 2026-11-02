@@ -1,7 +1,7 @@
 'use client';
 
-import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
-import { useState, useTransition } from 'react';
+import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
 import {
   assignAction,
   changeStatusAction,
@@ -269,6 +269,63 @@ export function FieldsForm({ itemId, fields }: { itemId: string; fields: Editabl
         <FieldRow key={f.key} itemId={itemId} field={f} />
       ))}
     </ul>
+  );
+}
+
+/** Pencil on a list row: opens a panel with that item's fields (same Edit / Delete rows as the item page). */
+export function EditItemButton({ itemId, itemKey, title, fields, compact }: { itemId: string; itemKey: string; title: string; fields: EditableField[]; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [open]);
+  const editable = fields.filter(f => f.editable).length;
+  return (
+    <>
+      <button
+        type="button"
+        className={compact ? 'btn-icon' : 'btn-ghost min-h-8 gap-1 px-2.5 text-xs'}
+        aria-label={`Edit ${itemKey}`}
+        data-tip={compact ? 'Edit details' : undefined}
+        onClick={() => setOpen(true)}
+      >
+        <Pencil size={14} aria-hidden="true" />
+        {!compact && 'Edit'}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 text-left backdrop-blur-[2px] sm:items-center sm:p-6" onClick={() => setOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`edit-${itemId}`}
+            className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)] sm:rounded-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-mono text-2xs text-muted">{itemKey}</div>
+                <h2 id={`edit-${itemId}`} className="text-md leading-snug font-semibold text-ink">
+                  {title}
+                </h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {editable} of {fields.length} details editable by you · each row saves on its own
+                </p>
+              </div>
+              <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <FieldsForm itemId={itemId} fields={fields} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
