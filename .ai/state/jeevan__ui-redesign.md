@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-02T06:55:42Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-02T07:01:43Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -33,6 +33,10 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   now exported from workflow.ts). `tests/role-preview.test.ts` (5 tests, 61 total).
 - Item lists: pencil "Edit" column (table) / button (cards) opens a dialog with the same field rows (`EditItemButton`);
   `editableFieldsFor` in `src/server/view.ts`; wired on /w/[workType] and all three /my tables.
+- Data tables now spreadsheet-style: `src/components/sheet.tsx` (`<Sheet>`: visible scrollbars, right fade, pinned-column
+  shadow, click + arrow-key cell nav, Ctrl/Cmd+C copy) and `.sheet*` CSS; applied to items-table, group-summary, reports.
+  Root cause of "can't scroll": tables were `w-full` so columns squeezed instead of overflowing, and macOS hid scrollbars.
+  Not converted: admin users, sync, admin overview tables (wrapping content), stage timeline.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

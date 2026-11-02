@@ -4,6 +4,7 @@ import { getModule } from '@/modules/registry';
 import { formatDate } from '@/lib/time';
 import type { ItemRow } from '@/server/services/analytics';
 import { AssignSelect, EditItemButton, LinkButton, StatusSelect, type EditableField, type PersonOption, type StatusOption } from './controls';
+import { Sheet } from './sheet';
 import { Delay, Empty, StatusBadge } from './ui';
 
 type Props = {
@@ -31,7 +32,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkT
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
   const anyEdit = Boolean(fieldEdits?.size);
-  const cols = 7 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyEdit ? 1 : 0);
+  const cols = 8 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyEdit ? 1 : 0);
   const editBtn = (it: ItemRow, compact: boolean) => {
     const f = fieldEdits?.get(it.id);
     return f ? <EditItemButton itemId={it.id} itemKey={it.externalKey} title={it.title} fields={f} compact={compact} /> : null;
@@ -124,12 +125,13 @@ export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkT
       </ul>
 
       {/* Wider screens: table */}
-      <div className="hidden max-h-[70vh] overflow-auto rounded-xl border border-line bg-surface shadow-[var(--shadow-card)] md:block">
-        <table className="table">
+      <Sheet className="hidden md:block">
+        <table className="sheet">
           <thead>
             <tr>
+              <th className="rownum">#</th>
               {showWorkType && <th>Work type</th>}
-              <th>Key</th>
+              <th className="pin">Key</th>
               <th>Title</th>
               <th>{ownerLabel}</th>
               {showAssignee && <th>{assigneeLabel}</th>}
@@ -149,14 +151,15 @@ export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkT
               return [
                 header && (
                   <tr key={`g-${it.id}`}>
-                    <td colSpan={cols} className="bg-surface-2 py-1.5 text-2xs font-semibold tracking-wide text-muted uppercase">
-                      {g || 'No chapter'}
+                    <td colSpan={cols} className="group">
+                      <div className="sticky left-3 w-max">{g || 'No chapter'}</div>
                     </td>
                   </tr>
                 ),
-                <tr key={it.id}>
+                <tr key={it.id} className="row">
+                  <td className="rownum" />
                   {showWorkType && <td className="text-xs text-muted">{it.workTypeName}</td>}
-                  <td className="font-mono text-xs whitespace-nowrap">
+                  <td className="pin font-mono text-xs">
                     {canOpen(it) ? (
                       <Link className="link" href={`/w/${it.workTypeKey}/${it.id}`}>
                         {it.externalKey}
@@ -171,8 +174,10 @@ export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkT
                     )}
                   </td>
                   <td className="min-w-48">
-                    {title(it, 'font-medium text-ink')}
-                    {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
+                    <div className="max-w-[28rem] truncate" title={it.title}>
+                      {title(it, 'font-medium text-ink')}
+                      {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
+                    </div>
                   </td>
                   <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>
                   {showAssignee && <td className="whitespace-nowrap">{assignee(it, true)}</td>}
@@ -197,7 +202,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, people, showWorkT
             })}
           </tbody>
         </table>
-      </div>
+      </Sheet>
     </>
   );
 }

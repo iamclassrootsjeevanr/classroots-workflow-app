@@ -406,6 +406,12 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 ---
 
+### Spreadsheet-style data grids
+
+The item lists, the per-group summary (for example By APK version) and the report tables use one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). Columns keep their natural width and the grid scrolls sideways, with always-visible scrollbars and a fade at the right edge when more columns are hidden. The header row, the `#` column and the key column stay pinned while you scroll. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, add `<th className="rownum">#</th>` and `<td className="rownum" />` (rows need `className="row"`) and `className="pin"` on the first real column.
+
+---
+
 ## Google Sheet two-way sync
 
 Postgres is the source of truth. Sync is **off** until an admin turns it on, so nothing touches the live sheet by accident.

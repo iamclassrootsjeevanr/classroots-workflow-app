@@ -1,4 +1,5 @@
 import { StackedByPerson } from '@/components/charts';
+import { Sheet } from '@/components/sheet';
 import { Card, ToneChip } from '@/components/ui';
 import { groupRollup, groupSeries, type GroupableItem } from '@/lib/groups';
 import { formatDate, normalizeDate } from '@/lib/time';
@@ -19,11 +20,12 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
   return (
     <div className="mb-5 grid gap-5 xl:grid-cols-5">
       <Card title={title ?? `By ${summary.label}`} className="xl:col-span-3">
-        <div className="table-wrap max-h-[60vh] overflow-auto">
-          <table className="table">
+        <Sheet maxHeight="60vh">
+          <table className="sheet">
             <thead>
               <tr>
-                <th>{summary.label}</th>
+                <th className="rownum">#</th>
+                <th className="pin">{summary.label}</th>
                 {summary.columns.map(c => (
                   <th key={c.key}>{c.label}</th>
                 ))}
@@ -32,8 +34,9 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.group}>
-                  <td className="font-mono text-xs font-medium whitespace-nowrap">{r.group}</td>
+                <tr key={r.group} className="row">
+                  <td className="rownum" />
+                  <td className="pin font-mono text-xs font-medium">{r.group}</td>
                   {summary.columns.map(c => (
                     <td key={c.key} className="whitespace-nowrap tabular-nums">
                       {cell(c.key, r.cells[c.key] ?? '')}
@@ -44,7 +47,7 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
               ))}
             </tbody>
           </table>
-        </div>
+        </Sheet>
       </Card>
       <Card title={`Status by ${summary.label}`} className="xl:col-span-2">
         <StackedByPerson rows={chart.rows} series={chart.series} height={Math.max(220, rows.length * 26)} labelWidth={Math.min(170, 20 + Math.max(...rows.map(r => r.group.length)) * 7)} />
