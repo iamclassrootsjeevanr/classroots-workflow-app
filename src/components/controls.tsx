@@ -2,6 +2,7 @@
 
 import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import { useEffect, useState, useTransition } from 'react';
 import {
   assignAction,
@@ -58,10 +59,10 @@ export function StatusSelect({
     );
   }
   return (
-    <div>
+    <div className="min-w-0">
       <select
         aria-label="Change status"
-        className={`status-control cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
+        className={`status-control max-w-full cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
         style={style}
         value={current.key}
         disabled={pending}
@@ -87,7 +88,7 @@ export type PersonOption = { id: string; name: string; hint?: string };
 export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean }) {
   const { pending, result, exec } = useAction();
   return (
-    <div>
+    <div className="min-w-0">
       <select
         aria-label="Assign developer"
         className={`input ${compact ? 'w-auto py-1 text-xs' : ''}`}
@@ -238,14 +239,14 @@ function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
             </>
           ) : (
             <>
-              <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} data-tip="Edit" disabled={pending} onClick={startEdit}>
+              <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} title="Edit" disabled={pending} onClick={startEdit}>
                 <Pencil size={15} aria-hidden="true" />
               </button>
               <button
                 type="button"
                 className="btn-icon hover:bg-bad-soft hover:text-bad"
                 aria-label={`Delete ${field.label}`}
-                data-tip="Delete"
+                title="Delete"
                 disabled={pending || !has}
                 onClick={() => {
                   clear();
@@ -303,7 +304,7 @@ export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { ite
       type="button"
       className={compact ? 'btn-icon hover:bg-bad-soft hover:text-bad' : 'btn-danger min-h-8 gap-1 px-2.5 text-xs'}
       aria-label={`Delete ${itemKey}`}
-      data-tip={compact ? 'Delete row' : undefined}
+      title={compact ? 'Delete row' : undefined}
       onClick={() => {
         clear();
         setConfirming(true);
@@ -335,14 +336,15 @@ export function EditItemButton({ itemId, itemKey, title, fields, compact }: { it
         type="button"
         className={compact ? 'btn-icon' : 'btn-ghost min-h-8 gap-1 px-2.5 text-xs'}
         aria-label={`Edit ${itemKey}`}
-        data-tip={compact ? 'Edit details' : undefined}
+        title={compact ? 'Edit details' : undefined}
         onClick={() => setOpen(true)}
       >
         <Pencil size={14} aria-hidden="true" />
         {!compact && 'Edit'}
       </button>
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 text-left backdrop-blur-[2px] sm:items-center sm:p-6" onClick={() => setOpen(false)}>
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 text-left backdrop-blur-[2px] sm:items-center sm:p-6" onClick={() => setOpen(false)}>
           <div
             role="dialog"
             aria-modal="true"
@@ -366,8 +368,9 @@ export function EditItemButton({ itemId, itemKey, title, fields, compact }: { it
             </div>
             <FieldsForm itemId={itemId} fields={fields} />
           </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

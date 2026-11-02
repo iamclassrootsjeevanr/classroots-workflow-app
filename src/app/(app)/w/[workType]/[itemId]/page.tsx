@@ -120,7 +120,6 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          {editable && canDeleteItem(ctx) && <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}`} />}
           <div>
             <span className="label">Status</span>
             <StatusSelect itemId={item.id} version={item.version} current={{ key: item.status, label: def.label, color: def.color }} options={transitions} />
@@ -129,6 +128,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
             {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
           </div>
+          {editable && canDeleteItem(ctx) && (
+            <div className="sm:ml-3 sm:border-l sm:border-line sm:pl-4">
+              <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}`} />
+            </div>
+          )}
         </div>
       </div>
 

@@ -236,6 +236,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
   /* ── Data grid: spreadsheet behaviour (sideways scroll, pinned columns, cell keys), modern look ── */
   .sheet-wrap {
     position: relative;
+    isolation: isolate; /* keep the pinned header/columns inside the table, below the top bar, menus and dialogs */
     border: 1px solid var(--line);
     border-radius: 1rem;
     background: var(--surface);

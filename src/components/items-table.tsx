@@ -99,21 +99,21 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                   <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-muted">Status</dt>
                     <dd className="mt-0.5">{status(it, false)}</dd>
                   </div>
                   {showAssignee && (
-                    <div>
+                    <div className="min-w-0">
                       <dt className="text-muted">{assigneeLabel}</dt>
                       <dd className="mt-0.5 text-sm">{assignee(it, false)}</dd>
                     </div>
                   )}
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-muted">{ownerLabel}</dt>
                     <dd className="mt-0.5 text-sm">{it.ownerName ?? '—'}</dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-muted">Expected</dt>
                     <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
                   </div>

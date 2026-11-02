@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-02T07:50:42Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-02T08:02:01Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -41,6 +41,9 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   release order + pass-rate line on 0-100% axis + Good 80% / Stable 90% reference lines) above the By-version table.
   New `groupTrend` / `shortLabels` in lib/groups.ts, `successSeries` / `rateLines` on `GroupSummary` (APK module sets them).
   Applies everywhere the card is used (work list, overview, my dashboard, reports). 65 tests.
+- Overlap fixes: edit dialog now portaled to body (was trapped under sticky table header), `.sheet-wrap` isolated,
+  row tooltips switched to `title`, phone card selects `min-w-0` (status no longer under assignee), item-page Delete moved
+  after the controls. Swept all main pages at 375px: no page-level overflow.
 - Data tables spreadsheet behaviour: `src/components/sheet.tsx` (`<Sheet>`: visible scrollbars, right fade, pinned-column
   shadow, click + arrow-key cell nav, Ctrl/Cmd+C copy) and `.sheet*` CSS; applied to items-table, group-summary, reports.
   Root cause of "can't scroll": tables were `w-full` so columns squeezed instead of overflowing, and macOS hid scrollbars.

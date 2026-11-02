@@ -8,3 +8,4 @@
 - 2026-11-02T07:01Z | claude-code | Spreadsheet-style data grids: horizontal scroll, pinned columns, cell navigation
 - 2026-11-02T07:11Z | claude-code | Modern data grid (no gridlines), row Delete with edit, archive-on-delete
 - 2026-11-02T07:50Z | claude-code | APK version summary: full-width trend chart above the table
+- 2026-11-02T08:02Z | claude-code | Fix overlaps: portal edit dialog, isolate table layers, card selects, tooltips

@@ -8,3 +8,6 @@
 - Demo sign-in for local checks: accounts from `scripts/demo-users.ts`, password `DEMO_PASSWORD` in `.env` (git-ignored).
 - Never run two `next dev` servers on the same checkout: they share `.next/` and corrupt it ("Cannot find module './vendor-chunks/…'"). Check `lsof -iTCP:3000` first; if it's corrupted, stop all servers and `rm -rf .next`. `AUTH_URL` is pinned to port 3000, so sign-in only works there.
 - Wide tables: `w-full` tables never overflow (browser squeezes columns), so nothing scrolls. Use the `.sheet` grid (`width:max-content; min-width:100%`) inside `<Sheet>`; style scrollbars with `::-webkit-scrollbar` because macOS overlay scrollbars are invisible until you scroll.
+- Overlays: a `position: fixed` dialog inside a sticky/positioned table cell is trapped in that cell's stacking layer and paints under sticky headers. Render dialogs with `createPortal(..., document.body)`. `.sheet-wrap` uses `isolation: isolate` so table z-indexes stay below the phone top bar (z-30), drawer (z-40) and dialogs (z-50). Avoid `data-tip` tooltips inside tables or scrolling dialogs (they open sideways and get clipped); use `title`.
+- Don't run `npx prettier` on files here: there is no project config, so it reformats the whole file with default quotes.
+
