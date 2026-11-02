@@ -1,4 +1,4 @@
-# STATE — branch: jeevan/ui-redesign
+Updated: 2026-11-02T10:07:56Z · by: claude-code · owner: Jeevan# STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
 Updated: 2026-11-02T08:02:01Z · by: claude-code · owner: Jeevan
@@ -48,6 +48,13 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   shadow, click + arrow-key cell nav, Ctrl/Cmd+C copy) and `.sheet*` CSS; applied to items-table, group-summary, reports.
   Root cause of "can't scroll": tables were `w-full` so columns squeezed instead of overflowing, and macOS hid scrollbars.
   Not converted: admin users, sync, admin overview tables (wrapping content), stage timeline.
+- APK Testing for testers/developers: "New APK version" dialog (link, date, notes, copy cases from an earlier version, extras) and
+  "Add test case" (`src/components/new-apk-version.tsx`, `src/lib/apk-versions.ts`, `src/server/services/apk-versions.ts`, actions
+  `createApkVersionAction` / `updateApkVersionAction`); Tester role now has capCreate (migration 20261102120000, applied locally).
+  Edit-version pencil + APK link in the By-version table. APK list drops Owner/Expected/Delay (`mod.table`), adds Priority, Bug,
+  Developer remarks, Last update. Item page: Tester bug card, Developer remarks card, Time log (`src/lib/time-log.ts`,
+  `src/components/time-log.tsx`, `mod.timeLog`). 75 tests. Verified in browser (admin, 1440 + 375, dark). Not done: prompt for bug
+  text when marking Fail (bug is edited in its card), light theme check, testing as a real Tester login.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

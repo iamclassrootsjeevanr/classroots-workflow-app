@@ -69,6 +69,8 @@ export type GroupSummaryRow = {
   result?: { label: string; tone: 'ok' | 'warn' | 'bad' | 'muted' };
   /** Stacked-bar segments for this group (label → count). */
   series?: Record<string, number>;
+  /** Links for this group (e.g. the APK file), shown as buttons in the group table. */
+  links?: { label: string; url: string }[];
 };
 
 /** A per-group rollup shown above item lists and in reports, e.g. "per APK version" with pass %. */
@@ -109,6 +111,12 @@ export type WorkTypeDefinition = {
   /** Order of items inside a group (e.g. journey number, test-case number). */
   sortOrder?: (data: Record<string, unknown>) => number;
   groupSummary?: GroupSummary;
+  /** Item list columns: hide default ones, add data fields. */
+  table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
+  /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */
+  versions?: boolean;
+  /** Item pages show a time log (status changes, bug and remark edits, time per status). */
+  timeLog?: boolean;
   sheet?: {
     defaultTab: string;
     /** Several 'key' columns make a composite key, joined with " | ". */

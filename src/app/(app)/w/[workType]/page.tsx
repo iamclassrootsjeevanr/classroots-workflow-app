@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { NewItemForm } from '@/components/admin-controls';
+import { AddTestCaseButton, NewApkVersionButton, type VersionOption } from '@/components/new-apk-version';
 import { FilterBar } from '@/components/filter-bar';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { ItemsTable } from '@/components/items-table';
@@ -9,6 +10,7 @@ import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import type { Capability } from '@/lib/access-core';
 import { requireWorkTypePage, scopeWhere } from '@/server/access';
+import { normalizeDate } from '@/lib/time';
 import { appTz } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
 import { assignablePeople, deletableItemsFor, editableFieldsFor, statusOptionsFor } from '@/server/view';
@@ -59,6 +61,23 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
   });
   const k = kpis(all, new Date());
 
+  // APK-style work types: versions (groups of tests) that can be added in the app.
+  const versions: VersionOption[] = mod.versions
+    ? [...all.filter(i => i.groupKey).reduce((m, i) => m.set(i.groupKey as string, [...(m.get(i.groupKey as string) ?? []), i]), new Map<string, typeof all>())]
+        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+        .map(([name, list]) => {
+          const pick = (key: string) => String(list.find(i => i.data[key])?.data[key] ?? '');
+          return {
+            name,
+            releaseDate: normalizeDate(pick('releaseDate')),
+            apkUrl: pick('apkUrl'),
+            releaseNotes: pick('releaseNotes'),
+            cases: list.filter(i => i.data.testCaseId).map(i => ({ id: String(i.data.testCaseId), title: i.title })),
+          };
+        })
+    : [];
+  const canTest = access.isAdmin || wtAccess.capabilities.has('work');
+
   return (
     <>
       <PageHeader
@@ -66,14 +85,20 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
         subtitle={`${wtAccess.dataScope === 'ALL' ? '' : 'Your items · '}${wtAccess.canEdit ? '' : 'View only · '}${k.total} ${mod.itemNoun}s · ${k.unassigned} unassigned · ${k.inProgress} in progress · ${k.inReview} in review · ${k.done} done · ${k.overdue} overdue`}
         actions={
           can('create') &&
-          editable && (
+          editable &&
+          (mod.versions ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <AddTestCaseButton workTypeId={wt.id} versions={versions} assigneeId={canTest ? user.id : undefined} />
+              <NewApkVersionButton workTypeId={wt.id} versions={versions} people={people} />
+            </div>
+          ) : (
             <NewItemForm
               workTypeId={wt.id}
               noun={mod.itemNoun}
               smes={smeOptions.map(u => ({ id: u.id, name: u.name! }))}
               developers={people ?? []}
             />
-          )
+          ))
         }
       />
       {wt.state === 'PAUSED' && (
@@ -91,10 +116,10 @@ export default async function WorkTypePage({ params, searchParams }: { params: P
         ]}
       />
 
-      <GroupSummaryCard mod={mod} items={all} tz={tz} />
+      <GroupSummaryCard mod={mod} items={all} tz={tz} versionEdit={mod.versions && editable && (can('create') || can('manageFields')) ? { workTypeId: wt.id } : undefined} />
 
       <Card>
-        <ItemsTable items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} empty="No items match these filters." />
+        <ItemsTable items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
         <p className="mt-2 text-xs text-muted">
           Showing {items.length} of {all.length}
         </p>

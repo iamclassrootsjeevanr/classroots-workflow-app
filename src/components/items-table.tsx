@@ -1,7 +1,8 @@
 import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { getModule } from '@/modules/registry';
-import { formatDate } from '@/lib/time';
+import { formatDate, formatDateTime } from '@/lib/time';
+import type { WorkTypeDefinition } from '@/modules/types';
 import type { ItemRow } from '@/server/services/analytics';
 import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type EditableField, type PersonOption, type StatusOption } from './controls';
 import { Sheet } from './sheet';
@@ -24,17 +25,26 @@ type Props = {
   linkable?: ReadonlySet<string>;
   /** Column names for this work type (mixed lists keep the defaults). */
   labels?: { assignee?: string; owner?: string };
+  /** Hide default columns / add data columns (from the work type definition). */
+  table?: WorkTypeDefinition['table'];
 };
 
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
   const anyActions = Boolean(fieldEdits?.size || deletable?.size);
-  const cols = 7 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyActions ? 1 : 0);
+  const hide = new Set(table?.hide ?? []);
+  const extra = table?.extra ?? [];
+  const showOwner = !hide.has('owner');
+  const showExpected = !hide.has('expected');
+  const showDelay = !hide.has('delay');
+  const showUpdated = extra.length > 0;
+  const cols = 4 + (showOwner ? 1 : 0) + (showExpected ? 1 : 0) + (showDelay ? 1 : 0) + extra.length + (showUpdated ? 1 : 0) + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyActions ? 1 : 0);
+  const text = (it: ItemRow, field: string) => (it.data[field] == null ? '' : String(it.data[field]));
   const rowActions = (it: ItemRow, compact: boolean) => {
     const f = fieldEdits?.get(it.id);
     const canDelete = deletable?.has(it.id);
@@ -46,6 +56,8 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
       </span>
     );
   };
+  /** Keys like "<version> | TC_001" show only the test case when the version is already the group heading. */
+  const keyOf = (it: ItemRow) => (groupByChapter && it.groupKey && it.externalKey.startsWith(`${it.groupKey} | `) ? it.externalKey.slice(it.groupKey.length + 3) : it.externalKey);
   const groupOf = (it: ItemRow) => (groupByChapter ? [it.groupKey, it.chapterTitle].filter(Boolean).join(' · ') : '');
   const canOpen = (it: ItemRow) => !linkable || linkable.has(it.workTypeKey);
   const linksOf = (it: ItemRow) => Object.entries(LINK_FIELDS).filter(([k]) => typeof it.data[k] === 'string' && it.data[k]);
@@ -85,8 +97,8 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
               <div className="rounded-xl border border-line bg-surface p-3.5 shadow-[var(--shadow-card)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-mono text-2xs text-muted">
-                      {it.externalKey}
+                    <div className="font-mono text-2xs text-muted" title={it.externalKey}>
+                      {keyOf(it)}
                       {showWorkType && <span className="ml-1.5 font-sans">· {it.workTypeName}</span>}
                       {it.sheetMissing && (
                         <span className="ml-1 inline-flex align-middle text-warn" title="Not found in the Google Sheet on the last sync">
@@ -96,7 +108,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                     </div>
                     {title(it, 'mt-0.5 block text-md leading-snug font-medium text-ink')}
                   </div>
-                  <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>
+                  {showDelay && <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>}
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                   <div className="min-w-0">
@@ -109,14 +121,29 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                       <dd className="mt-0.5 text-sm">{assignee(it, false)}</dd>
                     </div>
                   )}
-                  <div className="min-w-0">
-                    <dt className="text-muted">{ownerLabel}</dt>
-                    <dd className="mt-0.5 text-sm">{it.ownerName ?? '—'}</dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-muted">Expected</dt>
-                    <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
-                  </div>
+                  {showOwner && (
+                    <div className="min-w-0">
+                      <dt className="text-muted">{ownerLabel}</dt>
+                      <dd className="mt-0.5 text-sm">{it.ownerName ?? '—'}</dd>
+                    </div>
+                  )}
+                  {showExpected && (
+                    <div className="min-w-0">
+                      <dt className="text-muted">Expected</dt>
+                      <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
+                    </div>
+                  )}
+                  {extra
+                    .filter(c => text(it, c.field))
+                    .map(c => (
+                      <div key={c.field} className="col-span-2 min-w-0">
+                        <dt className="text-muted">{c.label}</dt>
+                        <dd className="mt-0.5 line-clamp-3 text-sm whitespace-pre-wrap">{text(it, c.field)}</dd>
+                      </div>
+                    ))}
+                  {showUpdated && (
+                    <div className="col-span-2 min-w-0 text-muted tabular-nums">Updated {formatDateTime(it.updatedAt, tz)}</div>
+                  )}
                 </dl>
                 {(links.length > 0 || it.reviewRounds > 1 || fieldEdits?.has(it.id) || deletable?.has(it.id)) && (
                   <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-2.5 text-xs">
@@ -141,11 +168,15 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
               {showWorkType && <th>Work type</th>}
               <th className="pin">Key</th>
               <th>Title</th>
-              <th>{ownerLabel}</th>
+              {showOwner && <th>{ownerLabel}</th>}
               {showAssignee && <th>{assigneeLabel}</th>}
               <th>Status</th>
-              <th>Expected</th>
-              <th>Delay</th>
+              {extra.map(c => (
+                <th key={c.field}>{c.label}</th>
+              ))}
+              {showUpdated && <th>Last update</th>}
+              {showExpected && <th>Expected</th>}
+              {showDelay && <th>Delay</th>}
               <th>Links</th>
               {anyActions && <th className="pin-end">Actions</th>}
             </tr>
@@ -168,11 +199,11 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                   {showWorkType && <td className="text-xs text-muted">{it.workTypeName}</td>}
                   <td className="pin font-mono text-xs">
                     {canOpen(it) ? (
-                      <Link className="link" href={`/w/${it.workTypeKey}/${it.id}`}>
-                        {it.externalKey}
+                      <Link className="link" href={`/w/${it.workTypeKey}/${it.id}`} title={it.externalKey}>
+                        {keyOf(it)}
                       </Link>
                     ) : (
-                      it.externalKey
+                      keyOf(it)
                     )}
                     {it.sheetMissing && (
                       <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[0.625rem] text-warn" title="Not found in the Google Sheet on the last sync">
@@ -186,11 +217,23 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                       {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
                     </div>
                   </td>
-                  <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>
+                  {showOwner && <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>}
                   {showAssignee && <td className="whitespace-nowrap">{assignee(it, true)}</td>}
                   <td>{status(it, true)}</td>
-                  <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>
-                  <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>
+                  {extra.map(c => (
+                    <td key={c.field} className="max-w-56 text-xs">
+                      {text(it, c.field) ? (
+                        <div className="truncate" title={text(it, c.field)}>
+                          {text(it, c.field)}
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                  ))}
+                  {showUpdated && <td className="whitespace-nowrap text-xs text-muted tabular-nums">{formatDateTime(it.updatedAt, tz)}</td>}
+                  {showExpected && <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>}
+                  {showDelay && <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>}
                   <td className="whitespace-nowrap text-xs">
                     {links.length ? (
                       <span className="inline-flex flex-wrap gap-1">

@@ -27,6 +27,16 @@ export const apkTesting: WorkTypeDefinition = {
   description: 'Each APK build run through the test-case list: tested, failures fixed, retested, passed.',
   itemNoun: 'test',
   labels: { assignee: 'Tested by', owner: 'Owner', group: 'APK version' },
+  table: {
+    hide: ['owner', 'expected', 'delay'],
+    extra: [
+      { field: 'priority', label: 'Priority' },
+      { field: 'bug', label: 'Bug / issue' },
+      { field: 'developerRemarks', label: 'Developer remarks' },
+    ],
+  },
+  versions: true,
+  timeLog: true,
   importRoles: { assignee: 'tester', owner: 'app-developer' },
   categoryLabels: { queue: 'Not tested', active: 'In process', feedback: 'Failed', review: 'Fixed / pending retest', done: 'Passed', hold: 'Not reported' },
 
@@ -131,9 +141,11 @@ export const apkTesting: WorkTypeDefinition = {
       const inProgress = count('in_process');
       const other = total - pass - fail - pendingRetest - notTested;
       const releaseDate = String(items.find(i => i.data.releaseDate)?.data.releaseDate ?? '');
+      const apkUrl = String(items.find(i => i.data.apkUrl)?.data.apkUrl ?? '');
       return {
         cells: { releaseDate, total, pass, fail, pendingRetest, notTested, other, passRate: total ? `${Math.round((pass / total) * 1000) / 10}%` : '—' },
         result: apkVersionResult({ total, pass, fail, notTested, inProgress }),
+        links: apkUrl ? [{ label: 'Open APK', url: apkUrl }] : undefined,
         series: { Pass: pass, Fail: fail, 'Pending retest': pendingRetest, 'Not tested': notTested, Other: other },
       };
     },

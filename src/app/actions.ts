@@ -9,6 +9,7 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { createApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { snapshotWorkload } from '@/server/jobs';
@@ -79,7 +80,7 @@ export async function commentAction(itemId: string, body: string) {
   return run(async () => addComment(await itemActor(itemId), itemId, body));
 }
 
-export async function createItemAction(workTypeId: string, input: { externalKey: string; title: string; ownerId?: string; assigneeId?: string; dueAt?: string; groupKey?: string }) {
+export async function createItemAction(workTypeId: string, input: { externalKey: string; title: string; ownerId?: string; assigneeId?: string; dueAt?: string; groupKey?: string; data?: Record<string, string> }) {
   return run(async () => {
     const user = await requireUser();
     const access = await getAccess(user);
@@ -96,9 +97,47 @@ export async function createItemAction(workTypeId: string, input: { externalKey:
       dueAt: input.dueAt ? dueDateToInstant(input.dueAt) : null,
       groupKey: input.groupKey?.trim() || null,
       chapterId: chapter?.id ?? null,
-      data: chapter ? { chapterTitle: chapter.title } : {},
+      data: { ...(chapter ? { chapterTitle: chapter.title } : {}), ...Object.fromEntries(Object.entries(input.data ?? {}).filter(([, v]) => typeof v === 'string' && v.trim())) },
     });
     return 'Created';
+  });
+}
+
+export type NewApkVersionInput = {
+  version: string;
+  apkUrl?: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+  copyFrom?: string;
+  includeCaseIds: string[];
+  extraCases: { testCaseId: string; title: string; scenario?: string; expected?: string; steps?: string; priority?: string }[];
+  assigneeId?: string;
+};
+
+async function workTypeActor(workTypeId: string) {
+  const user = await requireUser();
+  const access = await getAccess(user);
+  const wt = [...access.byKey.values()].find(a => a.workTypeId === workTypeId);
+  if (!wt) throw new ForbiddenError('You don’t have access to this work type.');
+  const ctx = { isAdmin: access.isAdmin, capabilities: wt.capabilities, isAssignee: false, canEdit: wt.canEdit };
+  return { user, ctx, actor: { userId: user.id, ctx, source: 'APP' } as ChangeActor };
+}
+
+/** Add an APK version with tests copied from an earlier version. New tests go to the creator when they can test. */
+export async function createApkVersionAction(workTypeId: string, input: NewApkVersionInput) {
+  return run(async () => {
+    const { user, ctx, actor } = await workTypeActor(workTypeId);
+    const canTest = ctx.isAdmin || ctx.capabilities.has('work');
+    const r = await createApkVersion(actor, workTypeId, { ...input, assigneeId: input.assigneeId || (canTest ? user.id : null) });
+    return `Created ${r.version} with ${r.count} tests`;
+  });
+}
+
+export async function updateApkVersionAction(workTypeId: string, version: string, meta: VersionMeta) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await updateApkVersion(actor, workTypeId, version, meta);
+    return `Updated ${version} (${r.count} tests)`;
   });
 }
 

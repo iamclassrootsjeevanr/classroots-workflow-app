@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
+import { TimeLog } from '@/components/time-log';
+import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
 import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey } from '@/lib/time';
@@ -90,6 +92,24 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     };
   });
 
+  // Bug and remarks get their own card (and the time log) for work types that track them.
+  const NOTE_KEYS = ['bug', 'comments', 'developerRemarks'];
+  const noteFields = mod.timeLog ? fields.filter(f => NOTE_KEYS.includes(f.key)) : [];
+  const detailFields = mod.timeLog ? fields.filter(f => !NOTE_KEYS.includes(f.key)) : fields;
+  const lastEdit = (key: string) => {
+    const e = item.events.find(ev => ev.type === 'FIELD_CHANGED' && ev.field === key);
+    return e ? `${e.actor?.name ?? e.actor?.email ?? 'System'} · ${formatDateTime(e.at, tz)}` : null;
+  };
+  const logIntervals = intervals.map(iv => ({ status: iv.status, enteredAt: iv.enteredAt, exitedAt: iv.exitedAt, businessMinutes: iv.businessMinutes }));
+  const lookup = { label: (s: string) => statusDef(mod, s).label, category: (s: string) => statusDef(mod, s).category, fieldLabel: (f: string) => mod.fields.find(x => x.key === f)?.label ?? f };
+  const logEntries = mod.timeLog
+    ? buildTimeLog(
+        item.events.map(e => ({ id: e.id, at: e.at, type: e.type, field: e.field, fromValue: e.fromValue, toValue: e.toValue, note: e.note, who: e.actor?.name ?? e.actor?.email ?? (e.source === 'SHEET' ? 'Google Sheet' : e.source === 'IMPORT' ? 'Import' : 'System') })),
+        logIntervals,
+        lookup,
+      )
+    : [];
+
   const milestones: [string, Date | null][] = [
     ['Received', item.receivedAt],
     ['Assigned', item.assignedAt],
@@ -115,7 +135,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{item.title}</h1>
           <p className="mt-1 text-sm text-muted">
             {[item.groupKey, item.chapter?.title ?? (data.chapterTitle as string | undefined), item.chapter?.grade ? `Grade ${item.chapter.grade}` : null].filter(Boolean).join(' · ')}
-            {item.owner?.name && <> · SME {item.owner.name}</>}
+            {item.owner?.name && !mod.table?.hide?.includes('owner') && <> · SME {item.owner.name}</>}
           </p>
           {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
@@ -151,8 +171,25 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <StageTimeline intervals={intervals} now={now} tz={tz} />
           </Card>
 
+          {noteFields.length > 0 && (
+            <div className="space-y-5">
+              <Card title="Tester: bug / issue" description={lastEdit('bug') ? `Last edit ${lastEdit('bug')}` : 'Describe what went wrong. Saved with your name and time.'}>
+                <FieldsForm itemId={item.id} fields={noteFields.filter(f => f.key !== 'developerRemarks')} />
+              </Card>
+              <Card title="Developer remarks" description={lastEdit('developerRemarks') ? `Last edit ${lastEdit('developerRemarks')}` : 'Reply to the bug: cause, fix, build.'}>
+                <FieldsForm itemId={item.id} fields={noteFields.filter(f => f.key === 'developerRemarks')} />
+              </Card>
+            </div>
+          )}
+
+          {mod.timeLog && (
+            <Card title="Time log" description="Every status change and edit, with who did it and how long the test sat in the previous status.">
+              <TimeLog entries={logEntries} totals={timeLogTotals(logIntervals, lookup.category)} tz={tz} />
+            </Card>
+          )}
+
           <Card title="Details & links">
-            <FieldsForm itemId={item.id} fields={fields} />
+            <FieldsForm itemId={item.id} fields={detailFields} />
           </Card>
 
           <Card title={`Feedback (${item.feedback.length})`}>

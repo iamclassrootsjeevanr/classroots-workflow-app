@@ -359,4 +359,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem };
+export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue };

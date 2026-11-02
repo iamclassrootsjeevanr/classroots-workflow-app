@@ -21,6 +21,8 @@ export const metadata = { title: 'My dashboard' };
 
 const keys = (types: WorkTypeAccess[]) => types.map(t => t.workTypeKey);
 /** Work types whose item pages this person may open (the "Items list & pages" tick). */
+/** Column setup of the work type when the list holds one type only. */
+const tableOf = (types: WorkTypeAccess[]) => (types.length === 1 ? getModule(types[0].workTypeKey)?.table : undefined);
 const openable = (types: WorkTypeAccess[]) => new Set(types.filter(t => t.pages.has('items')).map(t => t.workTypeKey));
 
 /** Section: work assigned to me (people with the "work" capability). */
@@ -116,7 +118,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         </Card>
       </div>
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
-        <ItemsTable items={mine} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
+        <ItemsTable items={mine} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} table={tableOf(types)} empty="Nothing is assigned to you yet." />
       </Card>
     </section>
   );
@@ -148,7 +150,7 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
         <Kpi label="Avg review time" value={formatDuration(avgReview)} hint="submitted → reviewed" />
       </KpiGrid>
       <Card actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
-        <ItemsTable items={toReview} statusOptions={options} fieldEdits={edits} deletable={deletable} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
+        <ItemsTable items={toReview} statusOptions={options} fieldEdits={edits} deletable={deletable} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} table={tableOf(types)} empty="Nothing is waiting for your review." />
       </Card>
     </section>
   );
@@ -208,7 +210,7 @@ async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentU
           <StatusPie slices={statusSlices(items)} />
         </Card>
         <Card title="Items" className="lg:col-span-2">
-          <ItemsTable items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} empty="No items yet." />
+          <ItemsTable items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} showWorkType={types.length > 1} tz={tz} linkable={openable(types)} table={tableOf(types)} empty="No items yet." />
         </Card>
       </div>
     </section>
