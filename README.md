@@ -272,6 +272,8 @@ Every change to an item goes through `src/server/services/work-items.ts`, whethe
 4. **Closes and opens a stage interval.** This records time in each status in calendar minutes and business minutes.
 5. **Queues a sheet write.** The changed cells go to `SyncOutbox`, if sync is on.
 
+On the item page every detail field is its own row with **Edit** and **Delete** buttons (`FieldsForm` in `src/components/controls.tsx`). Saving or deleting one field is one transaction and one `FIELD_CHANGED` event; Delete clears the value (sets it to empty) after an inline confirmation. Link fields (CMS, AI Tutor, build, APK) render as buttons that open in a new tab, on the item page and in the item lists.
+
 ```mermaid
 flowchart LR
   ui["Button or select in the UI"] --> action["Server action (actions.ts)"]

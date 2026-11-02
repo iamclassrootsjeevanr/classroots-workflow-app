@@ -1,7 +1,7 @@
 # STATE — branch: jeevan/ui-redesign
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-10-30T13:15:04Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-02T06:40:20Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Modern UI/UX pass on the Classroots Work dashboard: collapsible desktop sidebar, row-style tick controls,
@@ -22,12 +22,16 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - All of the above is committed (ce8ab8e on main); this branch starts from main with no code diff.
 - README: new "Working with AI coding tools" section (ai-continuity-kit usage, `.ai/` files), TOC + structure updated,
   Contributing branch naming aligned to `<name>/<topic>`. AGENTS.md Project section filled (stack, commands, layout, conventions).
+- Item page "Details & links": `FieldsForm` rewritten as per-field rows (`FieldRow` in `src/components/controls.tsx`) with
+  Edit (inline input/textarea, Enter saves, Esc cancels) and Delete (inline confirm, sets value to null) per row; each row
+  calls `updateFieldsAction` on its own. New `LinkButton` (btn-ghost, `target=_blank`) used for url fields and the Links
+  column / card links in `items-table.tsx`. Verified in browser (dark, 1440 and 375) on an APK test item; 56 tests pass.
 
 ## In progress
 Nothing mid-edit. Code is not broken.
 
 ## Next steps
-1. Open a PR from `jeevan/ui-redesign` into main (README + AGENTS.md docs are only on this branch).
+1. PR #3 (jeevan/ui-redesign → main) is open and now also carries the field-row edit/delete change; review and merge it.
 2. Optional polish: verify charts in dark mode on /reports with real data (screenshot caught them pre-measure once).
 3. Optional: add a "Reset to defaults" button to the Appearance card (`prefs-form.tsx`).
 

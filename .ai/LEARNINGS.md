@@ -6,3 +6,4 @@
 - Cookies set from a server action are URL-encoded; keep cookie values free of `=`/`&` (the prefs cookie uses `.` separators) and `decodeURIComponent` defensively when parsing.
 - Embedded Postgres must be running (`npm run db:start`) before `prisma migrate deploy`, otherwise P1001.
 - Demo sign-in for local checks: accounts from `scripts/demo-users.ts`, password `DEMO_PASSWORD` in `.env` (git-ignored).
+- Never run two `next dev` servers on the same checkout: they share `.next/` and corrupt it ("Cannot find module './vendor-chunks/…'"). Check `lsof -iTCP:3000` first; if it's corrupted, stop all servers and `rm -rf .next`. `AUTH_URL` is pinned to port 3000, so sign-in only works there.

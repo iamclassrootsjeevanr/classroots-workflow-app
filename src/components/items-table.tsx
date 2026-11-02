@@ -1,9 +1,9 @@
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { getModule } from '@/modules/registry';
 import { formatDate } from '@/lib/time';
 import type { ItemRow } from '@/server/services/analytics';
-import { AssignSelect, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { AssignSelect, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
 import { Delay, Empty, StatusBadge } from './ui';
 
 type Props = {
@@ -104,9 +104,7 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                 {(links.length > 0 || it.reviewRounds > 1) && (
                   <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs">
                     {links.map(([k, label]) => (
-                      <a key={k} className="link inline-flex items-center gap-1" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                        {label} <ExternalLink size={11} aria-hidden="true" />
-                      </a>
+                      <LinkButton key={k} href={String(it.data[k])} label={label} size="xs" />
                     ))}
                     {it.reviewRounds > 1 && <span className="text-muted">{it.reviewRounds} review rounds</span>}
                   </div>
@@ -174,11 +172,11 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                   <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>
                   <td className="whitespace-nowrap text-xs">
                     {links.length ? (
-                      links.map(([k, label]) => (
-                        <a key={k} className="link mr-2 inline-flex items-center gap-0.5" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                          {label} <ExternalLink size={11} aria-hidden="true" />
-                        </a>
-                      ))
+                      <span className="inline-flex flex-wrap gap-1">
+                        {links.map(([k, label]) => (
+                          <LinkButton key={k} href={String(it.data[k])} label={label} size="xs" />
+                        ))}
+                      </span>
                     ) : (
                       <span className="text-muted">—</span>
                     )}

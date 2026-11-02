@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Pencil, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import {
   assignAction,
@@ -108,66 +108,167 @@ export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: 
 
 export type EditableField = { key: string; label: string; type: string; value: string; editable: boolean; linkLabel?: string };
 
-export function FieldsForm({ itemId, fields }: { itemId: string; fields: EditableField[] }) {
-  const { pending, result, exec } = useAction();
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map(f => [f.key, f.value])));
-  const dirty = fields.filter(f => f.editable && (values[f.key] ?? '') !== f.value);
+/** A link field shown as a button that opens the URL in a new tab. */
+export function LinkButton({ href, label, size = 'sm' }: { href: string; label: string; size?: 'xs' | 'sm' }) {
   return (
-    <form
-      className="space-y-3"
-      onSubmit={e => {
-        e.preventDefault();
-        if (!dirty.length) return;
-        exec(() => updateFieldsAction(itemId, Object.fromEntries(dirty.map(f => [f.key, values[f.key] || null]))));
-      }}
+    <a
+      className={`btn-ghost ${size === 'xs' ? 'min-h-7 gap-1 px-2 py-0.5 text-xs' : 'min-h-8 px-3 text-xs'}`}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={href}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map(f => (
-          <div key={f.key} className={f.type === 'longtext' ? 'sm:col-span-2' : ''}>
-            <label className="label" htmlFor={`f-${f.key}`}>
-              {f.label}
-            </label>
-            {!f.editable ? (
-              <div className="min-h-9 rounded-lg bg-surface-2 px-3 py-1.5 text-sm break-all">
-                {f.type === 'url' && f.value ? (
-                  <a className="link" href={f.value} target="_blank" rel="noopener noreferrer">
-                    {f.linkLabel ?? 'Open'} <ExternalLink size={12} className="inline" aria-hidden="true" />
-                  </a>
-                ) : (
-                  f.value || <span className="text-muted">—</span>
-                )}
-              </div>
-            ) : f.type === 'longtext' ? (
-              <textarea id={`f-${f.key}`} className="input min-h-20" value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+      {label} <ExternalLink size={12} aria-hidden="true" />
+    </a>
+  );
+}
+
+function inputType(type: string) {
+  return type === 'date' ? 'date' : type === 'number' ? 'number' : type === 'url' ? 'url' : 'text';
+}
+
+/** One data field as a row: label · value · Edit / Delete. Each row saves on its own. */
+function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
+  const { pending, result, exec, clear } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [draft, setDraft] = useState(field.value);
+  const id = `f-${field.key}`;
+  const has = field.value !== '';
+
+  const startEdit = () => {
+    clear();
+    setConfirming(false);
+    setDraft(field.value);
+    setEditing(true);
+  };
+  const cancel = () => {
+    setEditing(false);
+    clear();
+  };
+  const save = () => {
+    const next = draft.trim();
+    if (next === field.value) return cancel();
+    exec(() => updateFieldsAction(itemId, { [field.key]: next || null }), () => setEditing(false));
+  };
+  const remove = () =>
+    exec(
+      async () => {
+        const r = await updateFieldsAction(itemId, { [field.key]: null });
+        return r.ok ? { ...r, message: 'Deleted' } : r;
+      },
+      () => setConfirming(false),
+    );
+
+  const display = !has ? (
+    <span className="text-muted">—</span>
+  ) : field.type === 'url' ? (
+    <LinkButton href={field.value} label={field.linkLabel ?? 'Open link'} />
+  ) : (
+    <span className={field.type === 'longtext' ? 'whitespace-pre-wrap' : 'break-words'}>{field.value}</span>
+  );
+
+  return (
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0">
+      <label htmlFor={id} className="order-1 shrink-0 pt-1.5 text-xs font-medium text-muted sm:w-40">
+        {field.label}
+      </label>
+      <div className="order-3 min-w-0 basis-full sm:order-2 sm:min-w-0 sm:flex-1 sm:basis-0">
+        {editing ? (
+          <div className="space-y-2">
+            {field.type === 'longtext' ? (
+              <textarea
+                id={id}
+                className="input min-h-24"
+                autoFocus
+                value={draft}
+                disabled={pending}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => e.key === 'Escape' && cancel()}
+              />
             ) : (
-              <div className="flex gap-2">
-                <input
-                  id={`f-${f.key}`}
-                  className="input"
-                  type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'url' ? 'url' : 'text'}
-                  value={values[f.key]}
-                  placeholder={f.type === 'url' ? 'https://…' : ''}
-                  onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
-                />
-                {f.type === 'url' && f.value && (
-                  <a className="btn-ghost shrink-0" href={f.value} target="_blank" rel="noopener noreferrer" title={f.linkLabel}>
-                    <ExternalLink size={15} aria-hidden="true" />
-                  </a>
-                )}
-              </div>
+              <input
+                id={id}
+                className="input"
+                type={inputType(field.type)}
+                autoFocus
+                value={draft}
+                placeholder={field.type === 'url' ? 'https://…' : ''}
+                disabled={pending}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    save();
+                  }
+                  if (e.key === 'Escape') cancel();
+                }}
+              />
             )}
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-primary min-h-8 px-3 text-xs" disabled={pending} onClick={save}>
+                {pending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="btn-ghost min-h-8 px-3 text-xs" disabled={pending} onClick={cancel}>
+                Cancel
+              </button>
+              <ActionMessage result={result} />
+            </div>
           </div>
-        ))}
+        ) : (
+          <div className="min-h-8 py-1 text-sm">
+            {display}
+            {result && <ActionMessage result={result} />}
+          </div>
+        )}
       </div>
-      {fields.some(f => f.editable) && (
-        <div className="flex items-center gap-3">
-          <button className="btn-primary" disabled={pending || !dirty.length}>
-            {pending ? 'Saving…' : 'Save changes'}
-          </button>
-          <ActionMessage result={result} />
+      {field.editable && !editing && (
+        <div className="order-2 ml-auto flex shrink-0 items-center gap-0.5 self-start sm:order-3 sm:ml-0 sm:pt-0.5">
+          {confirming ? (
+            <>
+              <span className="mr-1 text-xs text-muted">Delete this value?</span>
+              <button type="button" className="btn-danger min-h-8 px-2.5 text-xs" disabled={pending} onClick={remove}>
+                {pending ? 'Deleting…' : 'Delete'}
+              </button>
+              <button type="button" className="btn-ghost min-h-8 px-2.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} data-tip="Edit" disabled={pending} onClick={startEdit}>
+                <Pencil size={15} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="btn-icon hover:bg-bad-soft hover:text-bad"
+                aria-label={`Delete ${field.label}`}
+                data-tip="Delete"
+                disabled={pending || !has}
+                onClick={() => {
+                  clear();
+                  setConfirming(true);
+                }}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+              </button>
+            </>
+          )}
         </div>
       )}
-    </form>
+    </li>
+  );
+}
+
+/** All data fields of an item as rows. Editable rows have Edit and Delete; link rows open in a new tab. */
+export function FieldsForm({ itemId, fields }: { itemId: string; fields: EditableField[] }) {
+  if (!fields.length) return <p className="text-sm text-muted">No fields for this work type.</p>;
+  return (
+    <ul className="divide-y divide-line">
+      {fields.map(f => (
+        <FieldRow key={f.key} itemId={itemId} field={f} />
+      ))}
+    </ul>
   );
 }
 
