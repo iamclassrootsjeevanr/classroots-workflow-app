@@ -20,3 +20,4 @@
 - 2026-11-02T11:48Z | claude-code | Dashboard: version table after the graphs
 - 2026-11-02T12:12Z | claude-code | Faster lists (paging, lazy edit fields, optimistic selects) and 30-minute undo for deletes
 - 2026-11-02T12:27Z | claude-code | Inbox (notifications), 5s undo toast, single account box
+- 2026-11-02T12:27Z | claude-code | Trim state file

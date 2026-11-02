@@ -17,9 +17,6 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   lucide-react icons via `src/components/icons.tsx`.
 - Form primitives `src/components/form.tsx` (Checkbox/Radio/Switch rows, Segmented); Roles editor,
   user access form and Sync settings rewritten on them.
-- Design sweep: ui.tsx, items-table, charts (CSS-var colours), heatmap, filter-bar, sign-in, admin pages.
-- Tests: `tests/prefs.test.ts` (56 total passing); typecheck and `next build` clean. README section added.
-- All of the above is committed (ce8ab8e on main); this branch starts from main with no code diff.
 - README: new "Working with AI coding tools" section (ai-continuity-kit usage, `.ai/` files), TOC + structure updated,
   Contributing branch naming aligned to `<name>/<topic>`. AGENTS.md Project section filled (stack, commands, layout, conventions).
 - Item page "Details & links": `FieldsForm` rewritten as per-field rows (`FieldRow` in `src/components/controls.tsx`) with
