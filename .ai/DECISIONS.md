@@ -30,3 +30,8 @@ By: claude-code
 Decision: `/w/[workType]` is now Overview (analytics only); `versions`, `items` and `cases` are sibling pages under a `(tabs)` route group with a shared header (`loadWorkTypePage` caches the data). Tabs derive from the module (`pages`, `groupSummary`, `versions`). On `/my` each section returns `{ top, items }` and the page renders all analytics first.
 Why: one long page mixed reviewing builds, managing versions, running tests and maintaining test cases. Rejected: client-side tab switching (loses URLs, filters and permissions per page).
 By: claude-code
+
+## 2026-11-02 — Own-data people see themselves vs a team average; Done leaves the status charts
+Decision: for `dataScope = OWN` non-admins the Overview replaces the per-person chart with `compareWithTeam` (aggregates only). By status and per-person bars exclude `done`-category slices; Done stays a KPI tile. Charts navigate with `router.push` to `/w/<key>/items?...`; KPI tiles are `<Link>`s.
+Why: colleagues' names must not leak to own-data roles; Done dominated the charts and hid open work. Rejected: hiding the chart entirely (loses comparison).
+By: claude-code

@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Bar,
   BarChart,
@@ -30,16 +32,23 @@ const TOOLTIP = {
 const LEGEND = { fontSize: 12, color: 'var(--color-ink)' };
 const fmtHours = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)}h`;
 
-export type Slice = { label: string; color: string; count: number };
+export type Slice = { label: string; color: string; count: number; /** Status key, used to open the matching item list. */ key?: string };
 
-export function StatusPie({ slices, height = 260 }: { slices: Slice[]; height?: number }) {
+const CLICKABLE = '[&_.recharts-bar-rectangle]:cursor-pointer [&_.recharts-pie-sector]:cursor-pointer';
+const withQuery = (base: string, params: Record<string, string | undefined>) => {
+  const q = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => Boolean(e[1])));
+  return q.size ? `${base}?${q}` : base;
+};
+
+export function StatusPie({ slices, height = 260, itemsHref, note }: { slices: Slice[]; height?: number; /** Item list these slices open (e.g. /w/apk-testing/items). */ itemsHref?: string; note?: React.ReactNode }) {
+  const router = useRouter();
   const total = slices.reduce((s, x) => s + x.count, 0);
   if (!total) return <p className="py-10 text-center text-sm text-muted">No items yet.</p>;
   return (
-    <div>
+    <div className={itemsHref ? CLICKABLE : undefined}>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
-          <Pie data={slices} dataKey="count" nameKey="label" innerRadius="55%" outerRadius="85%" paddingAngle={1} isAnimationActive={false} label={({ value }) => value}>
+          <Pie data={slices} dataKey="count" nameKey="label" innerRadius="55%" outerRadius="85%" paddingAngle={1} isAnimationActive={false} label={({ value }) => value} onClick={(d: { key?: string }) => itemsHref && d?.key && router.push(withQuery(itemsHref, { status: d.key }))}>
             {slices.map(s => (
               <Cell key={s.label} fill={s.color} stroke="var(--color-surface)" />
             ))}
@@ -51,21 +60,35 @@ export function StatusPie({ slices, height = 260 }: { slices: Slice[]; height?: 
         </PieChart>
       </ResponsiveContainer>
       <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
-        {slices.map(s => (
-          <span key={s.label} className="inline-flex items-center gap-1.5 text-xs text-ink">
-            <i className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
-            {s.label} <b className="tabular-nums">{s.count}</b>
-          </span>
-        ))}
+        {slices.map(s => {
+          const inner = (
+            <>
+              <i className="h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />
+              {s.label} <b className="tabular-nums">{s.count}</b>
+            </>
+          );
+          return itemsHref && s.key ? (
+            <Link key={s.label} href={withQuery(itemsHref, { status: s.key })} className="inline-flex items-center gap-1.5 rounded text-xs text-ink hover:text-brand">
+              {inner}
+            </Link>
+          ) : (
+            <span key={s.label} className="inline-flex items-center gap-1.5 text-xs text-ink">
+              {inner}
+            </span>
+          );
+        })}
       </div>
+      {note && <p className="mt-2 text-center text-xs text-muted">{note}</p>}
     </div>
   );
 }
 
 /** One bar per person, stacked by status. */
-export function StackedByPerson({ rows, series, height = 280, labelWidth = 90 }: { rows: Record<string, string | number>[]; series: Slice[]; height?: number; /** Room for the category labels (longer for APK versions). */ labelWidth?: number }) {
+export function StackedByPerson({ rows, series, height = 280, labelWidth = 90, itemsHref }: { rows: Record<string, string | number>[]; series: Slice[]; height?: number; /** Room for the category labels (longer for APK versions). */ labelWidth?: number; /** Rows with a `__dev` user id open that person's items, per status. */ itemsHref?: string }) {
+  const router = useRouter();
   if (!rows.length) return <p className="py-10 text-center text-sm text-muted">No assigned work.</p>;
   return (
+    <div className={itemsHref ? CLICKABLE : undefined}>
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 16 }}>
         <CartesianGrid horizontal={false} stroke={GRID} />
@@ -74,10 +97,18 @@ export function StackedByPerson({ rows, series, height = 280, labelWidth = 90 }:
         <Tooltip {...TOOLTIP} />
         <Legend wrapperStyle={LEGEND} />
         {series.map(s => (
-          <Bar key={s.label} dataKey={s.label} stackId="a" fill={s.color} isAnimationActive={false} />
+          <Bar
+            key={s.label}
+            dataKey={s.label}
+            stackId="a"
+            fill={s.color}
+            isAnimationActive={false}
+            onClick={(d: { payload?: Record<string, string | number> }) => itemsHref && router.push(withQuery(itemsHref, { dev: d?.payload?.__dev ? String(d.payload.__dev) : undefined, status: s.key }))}
+          />
         ))}
       </BarChart>
     </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -188,17 +219,21 @@ export function GroupTrendChart({
   successLabel,
   rateLines = [],
   height = 380,
+  itemsHref,
 }: {
   rows: TrendRow[];
   series: Slice[];
   successLabel: string | null;
   rateLines?: { label: string; at: number }[];
   height?: number;
+  /** A column opens the item list filtered to that group. */
+  itemsHref?: string;
 }) {
+  const router = useRouter();
   if (!rows.length) return <p className="py-10 text-center text-sm text-muted">No data yet.</p>;
   const rate = successLabel ? `${successLabel} %` : null;
   return (
-    <div className="overflow-x-auto">
+    <div className={`overflow-x-auto ${itemsHref ? CLICKABLE : ''}`}>
       <div style={{ minWidth: rows.length * 40 + 100 }}>
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={rows} margin={{ top: 12, right: 8, bottom: 4, left: 0 }}>
@@ -213,7 +248,16 @@ export function GroupTrendChart({
         />
         <Legend wrapperStyle={LEGEND} />
         {series.map(s => (
-          <Bar key={s.label} yAxisId="count" dataKey={s.label} stackId="a" fill={s.color} maxBarSize={44} isAnimationActive={false} />
+          <Bar
+            key={s.label}
+            yAxisId="count"
+            dataKey={s.label}
+            stackId="a"
+            fill={s.color}
+            maxBarSize={44}
+            isAnimationActive={false}
+            onClick={(d: { payload?: TrendRow }) => itemsHref && d?.payload?.name && router.push(withQuery(itemsHref, { group: d.payload.name }))}
+          />
         ))}
         {rate &&
           rateLines.map(l => (

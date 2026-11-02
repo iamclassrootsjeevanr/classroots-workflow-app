@@ -7,7 +7,9 @@ import { Sidebar, SignOutButton, WhenExpanded } from '@/components/sidebar';
 import { getAccess } from '@/server/access';
 import { signOut } from '@/server/auth';
 import { requireUser } from '@/server/rbac';
-import { NavLink } from './nav-link';
+import { NavGroupLink, NavLink } from './nav-link';
+import { getModule } from '@/modules/registry';
+import { workTypeTabs } from '@/lib/work-type-tabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +34,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       title: itemTypes.length ? 'Work types' : undefined,
-      links: itemTypes.map(t => ({ href: `/w/${t.workTypeKey}`, label: t.workTypeName, icon: 'items' as const, badge: t.state === 'PAUSED' ? 'paused' : !t.canEdit ? 'view' : undefined })),
+      links: itemTypes.map(t => {
+        const mod = getModule(t.workTypeKey);
+        return {
+          href: `/w/${t.workTypeKey}`,
+          label: t.workTypeName,
+          icon: mod?.icon ?? ('items' as const),
+          badge: t.state === 'PAUSED' ? 'paused' : !t.canEdit ? 'view' : undefined,
+          children: mod ? workTypeTabs(mod) : [],
+        };
+      }),
     },
     { title: hasReports ? 'Insights' : undefined, links: hasReports ? [{ href: '/reports', label: 'Reports', icon: 'reports' as const }] : [] },
     {
@@ -92,9 +103,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </WhenExpanded>
             )}
             {!g.title && i > 0 && <div className="my-2 border-t border-line" />}
-            {g.links.map(l => (
-              <NavLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={l.badge} exact={l.exact} />
-            ))}
+            {g.links.map(l =>
+              'children' in l && l.children?.length ? (
+                <NavGroupLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={l.badge} children={l.children} />
+              ) : (
+                <NavLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={'badge' in l ? l.badge : undefined} exact={'exact' in l ? l.exact : undefined} />
+              ),
+            )}
           </div>
         ))}
         {!groups.length && (

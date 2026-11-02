@@ -25,6 +25,7 @@ export const apkTesting: WorkTypeDefinition = {
   key: 'apk-testing',
   name: 'APK Testing',
   description: 'Each APK build run through the test-case list: tested, failures fixed, retested, passed.',
+  icon: 'smartphone',
   itemNoun: 'test',
   labels: { assignee: 'Tested by', owner: 'Owner', group: 'APK version' },
   table: {

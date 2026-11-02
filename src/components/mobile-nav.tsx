@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { NavGlyph, type NavIcon } from './icons';
+import { activeChild } from '@/app/(app)/nav-link';
 
-export type NavGroup = { title?: string; links: { href: string; label: string; icon: NavIcon; badge?: string; exact?: boolean }[] };
+export type NavChildLink = { href: string; label: string; icon: NavIcon };
+export type NavGroup = { title?: string; links: { href: string; label: string; icon: NavIcon; badge?: string; exact?: boolean; children?: NavChildLink[] }[] };
 
 /** Top bar + slide-over menu below 1024px (phones, tablets, small windows); the sidebar takes over above that. */
 export function MobileNav({ groups, name, email, subtitle, signOut }: { groups: NavGroup[]; name: string; email: string; subtitle: string; signOut: React.ReactNode }) {
@@ -76,17 +78,35 @@ export function MobileNav({ groups, name, email, subtitle, signOut }: { groups: 
                 {g.title && <div className="px-2 pt-4 pb-1 text-2xs font-semibold tracking-wide text-muted uppercase">{g.title}</div>}
                 {g.links.map(l => {
                   const active = isActive(l.href, l.exact);
+                  const kids = l.children ?? [];
+                  const current = active && kids.length ? activeChild(path, l.href, kids) : undefined;
                   return (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex min-h-11 items-center gap-3 rounded-lg px-3 ${active ? 'bg-brand-soft font-medium text-brand' : 'text-ink active:bg-surface-2'}`}
-                    >
-                      <NavGlyph name={l.icon} className={active ? 'text-brand' : 'text-muted'} />
-                      <span className="flex-1 truncate">{l.label}</span>
-                      {l.badge && <span className="rounded-md bg-warn-soft px-1.5 py-px text-2xs font-medium text-warn">{l.badge}</span>}
-                    </Link>
+                    <div key={l.href}>
+                      <Link
+                        href={l.href}
+                        aria-current={active && !kids.length ? 'page' : undefined}
+                        className={`flex min-h-11 items-center gap-3 rounded-lg px-3 ${active && !kids.length ? 'bg-brand-soft font-medium text-brand' : 'text-ink active:bg-surface-2'}`}
+                      >
+                        <NavGlyph name={l.icon} className={active ? 'text-brand' : 'text-muted'} />
+                        <span className={`flex-1 truncate ${active && kids.length ? 'font-medium' : ''}`}>{l.label}</span>
+                        {l.badge && <span className="rounded-md bg-warn-soft px-1.5 py-px text-2xs font-medium text-warn">{l.badge}</span>}
+                      </Link>
+                      {active && kids.length > 0 && (
+                        <div className="mb-1 ml-5 space-y-0.5 border-l border-line pl-2">
+                          {kids.map(c => (
+                            <Link
+                              key={c.href}
+                              href={c.href}
+                              aria-current={c.href === current ? 'page' : undefined}
+                              className={`flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 ${c.href === current ? 'bg-brand-soft font-medium text-brand' : 'text-muted active:bg-surface-2'}`}
+                            >
+                              <NavGlyph name={c.icon} size={16} />
+                              <span className="truncate">{c.label}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>

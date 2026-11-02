@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { Capability } from '@/lib/access-core';
+import type { NavIcon } from '@/components/icons';
 
 /** What a status means for analytics and workload, independent of its label. */
 export type StatusCategory =
@@ -89,6 +90,8 @@ export type WorkTypeDefinition = {
   key: string;
   name: string;
   description: string;
+  /** Sidebar icon key (see NAV_ICONS). Default: a checklist. */
+  icon?: NavIcon;
   /** Singular noun for one item, e.g. "journey". */
   itemNoun: string;
   /** Column / field names shown in the UI for this work type. */

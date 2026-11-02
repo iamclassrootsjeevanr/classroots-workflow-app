@@ -59,6 +59,9 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   columns/labels (APK: no SME/Expected/Delay).
 - Work type pages split into tabs (Overview, APK versions, Test execution, Test cases; Journey: Overview + Items) under `w/[workType]/(tabs)/`,
   `src/server/work-type-page.ts`, `PathTabs`, `src/lib/test-cases.ts`, `CasesTable`. /my renders all analytics before item tables. 79 tests.
+- Overview redesign: icon/accent KPI tiles (links), Latest-versions cards with result bar, pass-rate graph at the bottom, no Unassigned, Done
+  removed from status charts; every tile/slice/bar/column opens Items filtered (cat/status/dev/group/overdue). Own-data roles get You vs team
+  average (`compareWithTeam`). Sidebar: per-work-type icon + dropdown pages (`NavGroupLink`), phone drawer nests pages. Journey tab = 'Journey chapters'. 84 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

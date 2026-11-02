@@ -40,7 +40,8 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
   const unassigned = d.items.filter(i => !i.assigneeId && i.category !== 'done').slice(0, 12);
   const overdue = d.items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < d.now).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
-  const statusSeries = d.statusSlices.map(s => ({ label: s.label, color: s.color, count: s.count }));
+  const statusSeries = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
+  const itemsHref = sp.wt ? `/w/${sp.wt}/items` : undefined;
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
   const flowHint = 'business hours';
@@ -70,7 +71,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
         const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard key={key} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
@@ -84,10 +85,10 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status">
-          <StatusPie slices={statusSeries} />
+          <StatusPie slices={statusSeries} itemsHref={itemsHref} />
         </Card>
         <Card title="Work per developer" className="lg:col-span-2">
-          <StackedByPerson rows={d.byDeveloper} series={statusSeries} />
+          <StackedByPerson rows={d.byDeveloper} series={statusSeries} itemsHref={itemsHref} />
         </Card>
       </div>
 

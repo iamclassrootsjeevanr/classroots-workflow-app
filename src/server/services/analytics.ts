@@ -4,6 +4,7 @@ import type { StatusCategory } from '@/modules/types';
 import {
   delayDays,
   flowTimes,
+  compareWithTeam,
   kpis,
   qualityRates,
   reviewAndCorrection,
@@ -153,7 +154,7 @@ export async function loadIntervals(itemIds: string[], workTypeByItem: Map<strin
   }));
 }
 
-export type StatusSlice = { key: string; label: string; color: string; count: number };
+export type StatusSlice = { key: string; label: string; color: string; count: number; category: StatusCategory };
 
 /** Counts per status label (merged across work types), in workflow order. */
 export function statusSlices(items: ItemRow[]): StatusSlice[] {
@@ -161,7 +162,7 @@ export function statusSlices(items: ItemRow[]): StatusSlice[] {
   for (const it of items) {
     const mod = getModule(it.workTypeKey);
     const order = mod ? mod.statuses.findIndex(s => s.key === it.status) : 99;
-    const s = m.get(it.statusLabel) ?? { key: it.status, label: it.statusLabel, color: it.statusColor, count: 0, order };
+    const s = m.get(it.statusLabel) ?? { key: it.status, label: it.statusLabel, color: it.statusColor, count: 0, order, category: it.category };
     s.count++;
     m.set(it.statusLabel, s);
   }
@@ -237,7 +238,7 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
       const mine = items.filter(i => i.assigneeId === u.id);
       const counts: Record<string, number> = {};
       for (const i of mine) counts[i.statusLabel] = (counts[i.statusLabel] ?? 0) + 1;
-      return { name: u.name, ...counts };
+      return { name: u.name, __dev: u.id, ...counts };
     }),
   };
 }
@@ -257,4 +258,12 @@ export async function stageTimesFor(userId: string, filters: Filters = {}) {
   return team
     .filter(t => !['queue', 'done', 'approved'].includes(categoryOf(items[0]?.workTypeKey ?? '', t.status)) || me.has(t.status))
     .map(t => ({ label: t.label, team: t.avg != null ? t.avg / 60 : null, me: me.get(t.status)?.avg != null ? me.get(t.status)!.avg! / 60 : null }));
+}
+
+/** You vs team average for one work type. The team side is aggregate numbers only. */
+export async function comparison(userId: string, workTypeKey: string) {
+  const now = new Date();
+  const cal = await workCalendar();
+  const all = await loadItems({ workTypeKeys: [workTypeKey] });
+  return compareWithTeam(all.filter(i => i.assigneeId === userId), all, now, cal);
 }

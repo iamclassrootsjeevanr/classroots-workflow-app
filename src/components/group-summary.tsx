@@ -9,7 +9,7 @@ import { formatDate, normalizeDate } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 
 /** "By APK version"-style summary table plus a stacked bar per group. Renders nothing for work types without a groupSummary. */
-export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string }; /** Makes each group name a link (e.g. to the item list filtered to it). */ groupHref?: (group: string) => string }) {
+export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref, only, itemsHref }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string }; /** Makes each group name a link (e.g. to the item list filtered to it). */ groupHref?: (group: string) => string; /** Render just the chart (or just the table). */ only?: 'chart' | 'table'; /** Chart columns open the item list filtered to a group. */ itemsHref?: string }) {
   const summary = mod.groupSummary;
   if (!summary) return null;
   const rows = groupRollup(mod, items);
@@ -29,10 +29,10 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref
   const chartTitle = trend.successLabel ? `${trend.successLabel} rate and results by ${summary.label}` : `Results by ${summary.label}`;
   return (
     <div className="mb-5 space-y-5">
-      <Card title={chartTitle} description={`One column per ${summary.label}, oldest to newest. The line is the share of tests that ${trend.successLabel?.toLowerCase() ?? 'succeeded'}.`}>
-        <GroupTrendChart rows={trend.points} series={trend.series} successLabel={trend.successLabel} rateLines={trend.rateLines} />
-      </Card>
-      <Card title={title ?? `By ${summary.label}`}>
+      {only !== 'table' && <Card title={chartTitle} description={`One column per ${summary.label}, oldest to newest. The line is the share of tests that ${trend.successLabel?.toLowerCase() ?? 'succeeded'}.`}>
+        <GroupTrendChart rows={trend.points} series={trend.series} successLabel={trend.successLabel} rateLines={trend.rateLines} itemsHref={itemsHref} />
+      </Card>}
+      {only !== 'chart' && <Card title={title ?? `By ${summary.label}`}>
         <Sheet maxHeight="60vh">
           <table className="sheet">
             <thead>
@@ -73,7 +73,7 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref
             </tbody>
           </table>
         </Sheet>
-      </Card>
+      </Card>}
     </div>
   );
 }

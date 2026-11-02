@@ -98,7 +98,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <SummaryTable rows={[report.combined, ...report.workTypes]} highlightFirst />
         </Card>
         {groupMods.map(m => (
-          <GroupSummaryCard key={m!.key} mod={m!} items={scopedItems.filter(i => i.workTypeKey === m!.key)} tz={appTz()} title={`${m!.name} · by ${m!.groupSummary!.label}`} />
+          <GroupSummaryCard key={m!.key} itemsHref={`/w/${m!.key}/items`} mod={m!} items={scopedItems.filter(i => i.workTypeKey === m!.key)} tz={appTz()} title={`${m!.name} · by ${m!.groupSummary!.label}`} />
         ))}
         <Card title="Per developer">
           <SummaryTable rows={report.developers} />

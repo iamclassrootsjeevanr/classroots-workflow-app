@@ -1,4 +1,6 @@
+import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
+import { NavGlyph, type NavIcon } from '@/components/icons';
 import type { LoadLevel } from '@/lib/analytics-core';
 
 export function PageHeader({ title, subtitle, actions, eyebrow }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode; eyebrow?: React.ReactNode }) {
@@ -47,14 +49,34 @@ export function Card({
 }
 
 const TONE_TEXT = { ok: 'text-ok', warn: 'text-warn', bad: 'text-bad', brand: 'text-brand' } as const;
+const ACCENT = { brand: 'var(--color-brand)', ok: 'var(--color-ok)', warn: 'var(--color-warn)', bad: 'var(--color-bad)', info: 'var(--color-info)', muted: 'var(--color-muted)' } as const;
 
-export function Kpi({ label, value, hint, tone }: { label: string; value: React.ReactNode; hint?: string; tone?: keyof typeof TONE_TEXT }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-line bg-surface px-3.5 py-3 shadow-[var(--shadow-card)] sm:px-4 sm:py-3.5">
-      <div className="truncate text-xs font-medium text-muted">{label}</div>
-      <div className={`mt-1 text-xl font-semibold tracking-tight tabular-nums sm:text-2xl ${tone ? TONE_TEXT[tone] : 'text-ink'}`}>{value}</div>
-      {hint && <div className="mt-0.5 truncate text-2xs text-muted sm:text-xs">{hint}</div>}
-    </div>
+/** Metric tile. With `href` the whole tile opens the matching list; `icon` and `accent` give it a tinted icon chip and a top edge. */
+export function Kpi({ label, value, hint, tone, icon, accent, href }: { label: string; value: React.ReactNode; hint?: string; tone?: keyof typeof TONE_TEXT; icon?: NavIcon; accent?: keyof typeof ACCENT; href?: string }) {
+  const color = accent ? ACCENT[accent] : undefined;
+  const body = (
+    <>
+      {color && <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px]" style={{ background: color }} />}
+      <div className="flex items-center gap-2">
+        {icon && color && (
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg" style={{ background: `color-mix(in oklab, ${color} 15%, transparent)`, color }}>
+            <NavGlyph name={icon} size={15} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted">{label}</span>
+        {href && <ArrowUpRight size={14} aria-hidden="true" className="shrink-0 text-muted opacity-0 transition-opacity group-hover/kpi:opacity-100 group-focus-visible/kpi:opacity-100" />}
+      </div>
+      <div className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-[1.75rem] sm:leading-8 ${tone ? TONE_TEXT[tone] : 'text-ink'}`}>{value}</div>
+      {hint && <div className="mt-1 truncate text-2xs text-muted sm:text-xs">{hint}</div>}
+    </>
+  );
+  const cls = 'group/kpi relative block min-w-0 overflow-hidden rounded-xl border border-line bg-surface px-3.5 pt-3.5 pb-3 shadow-[var(--shadow-card)] sm:px-4 sm:pt-4 sm:pb-3.5';
+  return href ? (
+    <Link href={href} className={`${cls} transition hover:-translate-y-px hover:border-brand/40 hover:shadow-[var(--shadow-pop)] focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

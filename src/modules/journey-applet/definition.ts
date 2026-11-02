@@ -10,6 +10,8 @@ export const journeyApplet: WorkTypeDefinition = {
   key: 'journey-applet',
   name: 'Journey Applets',
   description: 'Applets built for SME journeys, from hand-over to review and completion.',
+  icon: 'route',
+  pages: { items: 'Journey chapters' },
   itemNoun: 'journey',
   labels: { assignee: 'Developer', owner: 'SME', group: 'Chapter' },
   importRoles: { assignee: 'developer', owner: 'reviewer' },

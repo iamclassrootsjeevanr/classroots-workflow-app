@@ -9,7 +9,7 @@ import { db } from '@/server/db';
 import { loadWorkTypePage } from '@/server/work-type-page';
 import { assignablePeople, deletableItemsFor, editableFieldsFor, statusOptionsFor } from '@/server/view';
 
-type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string; group?: string };
+type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string; group?: string; cat?: string };
 
 export async function generateMetadata({ params }: { params: Promise<{ workType: string }> }) {
   const { workType } = await params;
@@ -26,10 +26,12 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   let items = all;
   if (sp.group) items = items.filter(i => i.groupKey === sp.group);
   if (sp.grade) items = items.filter(i => String(i.grade) === sp.grade);
+  if (sp.cat) items = items.filter(i => i.category === sp.cat);
   if (sp.status) items = items.filter(i => i.status === sp.status);
   if (sp.dev) items = items.filter(i => (sp.dev === 'none' ? !i.assigneeId : i.assigneeId === sp.dev));
   if (sp.sme) items = items.filter(i => i.ownerId === sp.sme);
   if (sp.scope === 'mine') items = items.filter(i => i.assigneeId === user.id || i.ownerId === user.id);
+  if (sp.scope === 'overdue') items = items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < new Date());
   if (sp.scope === 'review') items = items.filter(i => i.category === 'review');
   if (sp.q) {
     const q = sp.q.toLowerCase();
@@ -52,6 +54,8 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   });
   const versions: VersionOption[] = mod.versions ? versionOptions(all) : [];
   const groups = [...new Set(all.map(i => i.groupKey).filter((g): g is string => Boolean(g)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const STAGE_NAMES: Record<string, string> = { queue: 'To start', active: 'In progress', feedback: 'In corrections', review: 'In review', approved: 'Approved', done: 'Done', hold: 'On hold' };
+  const stages = [...new Set(mod.statuses.map(s => s.category))].map(c => ({ value: c, label: mod.categoryLabels?.[c] ?? STAGE_NAMES[c] ?? c }));
   const canTest = access.isAdmin || access.byKey.get(key)?.capabilities.has('work');
 
   return (
@@ -70,11 +74,12 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
           ...(groups.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', options: groups.map(g => ({ value: g, label: g })) }] : []),
+          { name: 'cat', label: 'Stage', options: stages },
           { name: 'status', label: 'Status', options: mod.statuses.map(s => ({ value: s.key, label: s.label })) },
           { name: 'dev', label: mod.labels?.assignee ?? 'Developer', options: [{ value: 'none', label: 'Unassigned' }, ...devs.map(d => ({ value: d.id, label: d.name ?? '?' }))] },
           ...(owners.length && !mod.table?.hide?.includes('owner') ? [{ name: 'sme', label: mod.labels?.owner ?? 'SME', options: owners.map(o => ({ value: o.id, label: o.name ?? '?' })) }] : []),
           ...(all.some(i => i.grade) ? [{ name: 'grade', label: 'Grade', options: grades.map(g => ({ value: String(g.grade), label: `Grade ${g.grade}` })) }] : []),
-          { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, { value: 'review', label: 'Waiting for review' }] },
+          { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },
         ]}
       />
 

@@ -70,11 +70,11 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
       </KpiGrid>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="My work by status">
-          <StatusPie slices={statusSlices(mine)} />
+          <StatusPie slices={statusSlices(mine).filter(s => s.category !== 'done')} itemsHref={single ? `/w/${single.key}/items` : undefined} note={mine.some(i => i.category === 'done') ? `Done (${mine.filter(i => i.category === 'done').length}) is on its card above.` : undefined} />
         </Card>
         <Card title="My time per stage vs team" className="lg:col-span-2">
           <MeVsTeamChart rows={meVsTeam} />
@@ -168,7 +168,8 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
 /** Section: team overview for work types where the person sees all data. */
 async function TeamSection({ access, types, tz }: { access: Access; types: WorkTypeAccess[]; tz: string }) {
   const d = await dashboard({ workTypeKeys: keys(types), where: scopeWhere(access, types), from: addDays(new Date(), -7 * 12) }, { weeks: 12, heatmapDays: 14 });
-  const series = d.statusSlices.map(s => ({ label: s.label, color: s.color, count: s.count }));
+  const series = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
+  const itemsHref = types.length === 1 ? `/w/${types[0].workTypeKey}/items` : undefined;
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   return {
     top: (
@@ -185,14 +186,14 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
       </KpiGrid>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status">
-          <StatusPie slices={series} />
+          <StatusPie slices={series} itemsHref={itemsHref} />
         </Card>
         <Card title="Work per person" className="lg:col-span-2">
-          <StackedByPerson rows={d.byDeveloper} series={series} />
+          <StackedByPerson rows={d.byDeveloper} series={series} itemsHref={itemsHref} />
         </Card>
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
@@ -225,7 +226,7 @@ async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentU
         </KpiGrid>
         <div className="mb-5 grid gap-5 lg:grid-cols-3">
           <Card title="By status">
-            <StatusPie slices={statusSlices(items)} />
+            <StatusPie slices={statusSlices(items).filter(s => s.category !== 'done')} itemsHref={types.length === 1 ? `/w/${types[0].workTypeKey}/items` : undefined} />
           </Card>
         </div>
       </section>

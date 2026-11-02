@@ -423,6 +423,12 @@ Each work type has its own pages, shown as tabs under its name (code: `src/app/(
 
 Tab names come from `pages` in the module definition. Item pages open without tabs. Old links like `/w/apk-testing?status=fail` redirect to the Items page. On My dashboard every section's metrics and graphs come first and the item tables follow, one table per work type.
 
+**Clickable analytics.** On every Overview, KPI tiles, By status slices, per-person bars, version columns and Latest-version cards open the Items page with the matching filter applied (`cat`, `status`, `dev`, `group`, `scope=overdue`). The same links work on My dashboard and the admin overview when one work type is in view. By status and the per-person bars leave Done out; Done is on its own tile.
+
+**Own-data roles.** A person whose role sees only their own data gets "You vs team average" instead of the per-person chart. The team side is aggregates only; no colleague appears anywhere on the page.
+
+**Sidebar.** Each work type has its own icon (`icon` in the module definition) and a dropdown of its pages. Tab names and icons come from `workTypeTabs` in `src/lib/work-type-tabs.ts`.
+
 ### APK Testing: versions, bugs and the time log
 
 - **Add a version.** Testers (the Tester role has "Add new items") and admins press **New APK version**: version name, APK link, release date and notes, then pick an earlier version to copy test cases from (untick any, add extra cases). The tests start as Not Tested, with bug, comments and remarks empty, and the creator is the tester unless an assigner picks someone else. **Add test case** adds one test to an existing version. The pencil in the By APK version table edits the link, date and notes of every test in that version. Code: `src/lib/apk-versions.ts` (pure planner), `src/server/services/apk-versions.ts`, `src/components/new-apk-version.tsx`.
