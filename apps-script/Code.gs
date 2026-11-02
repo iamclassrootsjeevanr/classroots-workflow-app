@@ -53,6 +53,11 @@ function checkToken_(token) {
   if (expected && token !== expected) throw new Error('Unauthorized');
 }
 
+/** Time zone for dates: the spreadsheet's, else the script's, else India (a sheet converted from Excel may have none). */
+function tz_(ss) {
+  return ss.getSpreadsheetTimeZone() || Session.getScriptTimeZone() || 'Asia/Kolkata';
+}
+
 /** The spreadsheet and sheet that hold a tab: explicit id, else the default tracker, else a remembered or discovered one. */
 function locate_(tab, sheetId) {
   var name = tab || DEFAULT_TAB;
@@ -123,7 +128,7 @@ function readRows_(tab, sheetId) {
   var range = sh.getDataRange();
   var raw = range.getValues();
   var display = range.getDisplayValues();
-  var tz = loc.ss.getSpreadsheetTimeZone();
+  var tz = tz_(loc.ss);
   if (!raw.length) return { tab: tab, headers: [], rows: [], all: true };
   var headers = display[0].map(function (h) { return String(h).trim(); });
   var rows = [];
@@ -168,7 +173,7 @@ function batchUpdate_(body) {
     }
 
     var updated = 0, appended = 0, failed = [];
-    var stamp = Utilities.formatDate(new Date(), loc.ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    var stamp = Utilities.formatDate(new Date(), tz_(loc.ss), 'yyyy-MM-dd HH:mm:ss');
     (body.updates || []).forEach(function (u) {
       var key = String(u.key || '').trim();
       var col = headers.indexOf(String(u.column || '').trim());
