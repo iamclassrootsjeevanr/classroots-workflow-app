@@ -23,3 +23,4 @@
 - 2026-11-02T12:27Z | claude-code | Trim state file
 - 2026-11-02T12:36Z | claude-code | Inbox: click reveals Undo; restored or expired notices move to Read
 - 2026-11-02T12:43Z | claude-code | Roles belong to a work type and follow its flow
+- 2026-11-02T12:47Z | claude-code | Clear sync error when a sheet tab is missing
