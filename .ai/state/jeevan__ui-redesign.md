@@ -55,6 +55,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   Developer remarks, Last update. Item page: Tester bug card, Developer remarks card, Time log (`src/lib/time-log.ts`,
   `src/components/time-log.tsx`, `mod.timeLog`). 75 tests. Verified in browser (admin, 1440 + 375, dark). Not done: prompt for bug
   text when marking Fail (bug is edited in its card), light theme check, testing as a real Tester login.
+- Dashboard (/my) lists with several work types now render one table per work type (`ItemsTables` in items-table.tsx), each with its own
+  columns/labels (APK: no SME/Expected/Delay).
 
 ## In progress
 Nothing mid-edit. Code is not broken.

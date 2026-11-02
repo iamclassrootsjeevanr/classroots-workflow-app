@@ -256,3 +256,31 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
     </>
   );
 }
+
+/** Mixed lists: one table per work type, each with that work type's own columns and labels. A single type renders one plain table. */
+export function ItemsTables({ items, empty, ...rest }: Omit<Props, 'labels' | 'table' | 'showWorkType'>) {
+  if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
+  const byType = new Map<string, ItemRow[]>();
+  for (const it of items) byType.set(it.workTypeKey, [...(byType.get(it.workTypeKey) ?? []), it]);
+  const render = (key: string, list: ItemRow[]) => {
+    const mod = getModule(key);
+    return <ItemsTable {...rest} items={list} labels={mod?.labels} table={mod?.table} showWorkType={false} empty={empty} />;
+  };
+  if (byType.size === 1) {
+    const [[key, list]] = [...byType];
+    return render(key, list);
+  }
+  return (
+    <div className="space-y-6">
+      {[...byType].map(([key, list]) => (
+        <section key={key}>
+          <h3 className="mb-2 flex items-baseline gap-2 text-sm font-semibold text-ink">
+            {getModule(key)?.name ?? key}
+            <span className="text-xs font-normal text-muted">{list.length}</span>
+          </h3>
+          {render(key, list)}
+        </section>
+      ))}
+    </div>
+  );
+}
