@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CommentForm, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
-import { allowedTransitions, canEditField, hasCap } from '@/lib/workflow';
+import { allowedTransitions, canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
 import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
@@ -50,7 +50,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       feedback: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
     },
   });
-  if (!mod || !item || item.workType.key !== key) notFound();
+  if (!mod || !item || item.archivedAt || item.workType.key !== key) notFound();
   if (!canSeeItem(access, key, item)) notFound();
 
   const tz = appTz();
@@ -120,6 +120,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
         <div className="flex flex-wrap items-end gap-3">
+          {editable && canDeleteItem(ctx) && <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}`} />}
           <div>
             <span className="label">Status</span>
             <StatusSelect itemId={item.id} version={item.version} current={{ key: item.status, label: def.label, color: def.color }} options={transitions} />

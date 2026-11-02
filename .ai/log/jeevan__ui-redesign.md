@@ -6,3 +6,4 @@
 - 2026-11-02T06:40Z | claude-code | Item page: per-field Edit/Delete rows, link fields as new-tab buttons
 - 2026-11-02T06:55Z | claude-code | Roles editor: plain choices + live workflow preview; Edit dialog on list rows
 - 2026-11-02T07:01Z | claude-code | Spreadsheet-style data grids: horizontal scroll, pinned columns, cell navigation
+- 2026-11-02T07:11Z | claude-code | Modern data grid (no gridlines), row Delete with edit, archive-on-delete

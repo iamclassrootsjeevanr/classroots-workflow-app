@@ -8,7 +8,7 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, resolveFeedback, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { snapshotWorkload } from '@/server/jobs';
@@ -51,6 +51,13 @@ export async function updateFieldsAction(itemId: string, patch: Record<string, F
   return run(async () => {
     await updateFields(await itemActor(itemId), itemId, patch);
     return 'Saved';
+  });
+}
+
+export async function deleteItemAction(itemId: string) {
+  return run(async () => {
+    await deleteItem(await itemActor(itemId), itemId);
+    return 'Deleted';
   });
 }
 

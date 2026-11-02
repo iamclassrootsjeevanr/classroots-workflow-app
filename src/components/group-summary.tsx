@@ -24,7 +24,6 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
           <table className="sheet">
             <thead>
               <tr>
-                <th className="rownum">#</th>
                 <th className="pin">{summary.label}</th>
                 {summary.columns.map(c => (
                   <th key={c.key}>{c.label}</th>
@@ -34,8 +33,7 @@ export function GroupSummaryCard({ mod, items, tz, title }: { mod: WorkTypeDefin
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.group} className="row">
-                  <td className="rownum" />
+                <tr key={r.group}>
                   <td className="pin font-mono text-xs font-medium">{r.group}</td>
                   {summary.columns.map(c => (
                     <td key={c.key} className="whitespace-nowrap tabular-nums">

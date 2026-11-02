@@ -23,7 +23,6 @@ function SummaryTable({ rows, highlightFirst }: { rows: SummaryRow[]; highlightF
       <table className="sheet">
         <thead>
           <tr>
-            <th className="rownum">#</th>
             {headers.map((h, j) => (
               <th key={h} className={j === 0 ? 'pin' : ''}>
                 {h}
@@ -33,8 +32,7 @@ function SummaryTable({ rows, highlightFirst }: { rows: SummaryRow[]; highlightF
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} className={`row ${highlightFirst && i === 0 ? 'font-semibold' : ''}`}>
-              <td className="rownum" />
+            <tr key={i} className={highlightFirst && i === 0 ? 'font-semibold' : ''}>
               {headers.map((h, j) => (
                 <td key={h} className={`tabular-nums ${j === 0 ? 'pin' : ''}`}>
                   {r[h] === '' ? '—' : r[h]}

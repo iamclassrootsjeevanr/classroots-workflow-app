@@ -406,9 +406,11 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 ---
 
-### Spreadsheet-style data grids
+### Data grids (spreadsheet feel, modern look)
 
-The item lists, the per-group summary (for example By APK version) and the report tables use one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). Columns keep their natural width and the grid scrolls sideways, with always-visible scrollbars and a fade at the right edge when more columns are hidden. The header row, the `#` column and the key column stay pinned while you scroll. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, add `<th className="rownum">#</th>` and `<td className="rownum" />` (rows need `className="row"`) and `className="pin"` on the first real column.
+The item lists, the per-group summary (for example By APK version) and the report tables share one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). It has no gridlines; it behaves like a spreadsheet instead. Columns keep their natural width and the grid scrolls sideways with always-visible scrollbars and a fade at the right edge. The header row, the first column and the Actions column stay pinned. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, and put `className="pin"` on the first column's cells (and `pin-end` on an actions column).
+
+Every item row has **Edit** (opens that item's fields) and **Delete** (asks first). Delete is for admins and anyone who can edit item details. It archives the item: it leaves every list, report and dashboard and its page returns 404, but its history stays in the database. The Google Sheet row is not touched and will not bring the item back.
 
 ---
 

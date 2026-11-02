@@ -1,7 +1,7 @@
 import 'server-only';
 import { workloadByUser } from '@/lib/analytics-core';
 import { instantToDateKey } from '@/lib/time';
-import { allowedTransitions, canEditField } from '@/lib/workflow';
+import { allowedTransitions, canDeleteItem, canEditField } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
 import { loadLabel } from '@/components/ui';
@@ -47,6 +47,17 @@ export async function editableFieldsFor(user: CurrentUser, items: ItemRow[], tz:
       editable: canEditField(f, ctx),
     }));
     if (fields.some(f => f.editable)) out.set(it.id, fields);
+  }
+  return out;
+}
+
+/** Ids of the items the viewer may delete. */
+export async function deletableItemsFor(user: CurrentUser, items: ItemRow[]): Promise<Set<string>> {
+  const access = await getAccess(user);
+  const out = new Set<string>();
+  for (const it of items) {
+    if (!getModule(it.workTypeKey)) continue;
+    if (canDeleteItem(actorContextFor(access, it.workTypeKey, it))) out.add(it.id);
   }
   return out;
 }

@@ -3,7 +3,7 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dueDateToInstant, minutesBetween, normalizeDate, type WorkCalendar } from '@/lib/time';
-import { canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
+import { canDeleteItem, canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
@@ -210,6 +210,25 @@ export async function updateFields(actor: ChangeActor, itemId: string, patch: Re
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     await updateFieldsTx(tx, item, actor, patch, new Date());
+  });
+}
+
+/**
+ * Delete a row. The item is archived, not erased: it disappears from every list, report and dashboard, its history
+ * stays in the database, and the Google Sheet row (if any) is left alone and will not bring it back.
+ */
+export async function deleteItem(actor: ChangeActor, itemId: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t delete items in this work type.');
+    if (item.archivedAt) return;
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: now });
+    await tx.syncOutbox.deleteMany({ where: { itemId, status: 'PENDING' } });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
+    });
   });
 }
 

@@ -1,10 +1,12 @@
 'use client';
 
 import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import {
   assignAction,
   changeStatusAction,
+  deleteItemAction,
   commentAction,
   feedbackAction,
   resolveFeedbackAction,
@@ -269,6 +271,47 @@ export function FieldsForm({ itemId, fields }: { itemId: string; fields: Editabl
         <FieldRow key={f.key} itemId={itemId} field={f} />
       ))}
     </ul>
+  );
+}
+
+/** Trash on a row (or the item page): asks first, then deletes the whole item. Deleted items leave every list and report. */
+export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { itemId: string; itemKey: string; compact?: boolean; redirectTo?: string }) {
+  const { pending, result, exec, clear } = useAction();
+  const [confirming, setConfirming] = useState(false);
+  const router = useRouter();
+  if (confirming) {
+    return (
+      <span className="confirm inline-flex items-center gap-1.5 text-xs">
+        <span className="text-muted">{compact ? 'Delete row?' : `Delete ${itemKey}?`}</span>
+        <button
+          type="button"
+          className="btn-danger min-h-7 px-2.5 py-0.5 text-xs"
+          disabled={pending}
+          onClick={() => exec(() => deleteItemAction(itemId), () => (redirectTo ? router.push(redirectTo) : setConfirming(false)))}
+        >
+          {pending ? 'Deleting…' : 'Delete'}
+        </button>
+        <button type="button" className="btn-ghost min-h-7 px-2.5 py-0.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
+          Cancel
+        </button>
+        {result && !result.ok && <span className="text-bad">{result.error}</span>}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={compact ? 'btn-icon hover:bg-bad-soft hover:text-bad' : 'btn-danger min-h-8 gap-1 px-2.5 text-xs'}
+      aria-label={`Delete ${itemKey}`}
+      data-tip={compact ? 'Delete row' : undefined}
+      onClick={() => {
+        clear();
+        setConfirming(true);
+      }}
+    >
+      <Trash2 size={14} aria-hidden="true" />
+      {!compact && 'Delete'}
+    </button>
   );
 }
 

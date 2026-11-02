@@ -42,6 +42,11 @@ export function canEditField(field: FieldDef, ctx: ActorContext): boolean {
   return actorMatches(field.editableBy, ctx);
 }
 
+/** Whether someone may delete (archive) items: admins and anyone who can edit item details. null = trusted system change. */
+export function canDeleteItem(ctx: ActorContext | null): boolean {
+  return !ctx || ctx.isAdmin || hasCap(ctx, 'manageFields');
+}
+
 export type StageState = {
   status: string;
   assignedAt: Date | null;
