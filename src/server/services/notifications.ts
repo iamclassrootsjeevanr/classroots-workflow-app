@@ -1,6 +1,7 @@
 import 'server-only';
 import type { Prisma } from '@prisma/client';
 import type { NotificationView } from '@/lib/notifications-core';
+import { UNDO_DELETE_MINUTES } from '@/lib/workflow';
 import { db } from '../db';
 
 type Client = Prisma.TransactionClient | typeof db;
@@ -23,11 +24,23 @@ const view = (n: { id: string; kind: string; title: string; body: string | null;
   createdAt: n.createdAt.toISOString(),
 });
 
-export const unreadCount = (userId: string) => db.notification.count({ where: { userId, readAt: null } });
+/** A delete notice whose 30 minutes of Undo are over has nothing left to do: move it to Read. */
+export async function expireUndoNotices(userId: string, now: Date = new Date()) {
+  await db.notification.updateMany({
+    where: { userId, kind: 'item.deleted', readAt: null, createdAt: { lt: new Date(now.getTime() - UNDO_DELETE_MINUTES * 60_000) } },
+    data: { readAt: now },
+  });
+}
+
+export async function unreadCount(userId: string) {
+  await expireUndoNotices(userId);
+  return db.notification.count({ where: { userId, readAt: null } });
+}
 
 export type InboxQuery = { tab?: 'all' | 'unread' | 'read'; q?: string; take?: number };
 
 export async function listNotifications(userId: string, { tab = 'all', q, take = 100 }: InboxQuery = {}): Promise<NotificationView[]> {
+  await expireUndoNotices(userId);
   const rows = await db.notification.findMany({
     where: {
       userId,

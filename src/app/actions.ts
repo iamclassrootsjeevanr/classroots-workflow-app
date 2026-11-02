@@ -84,7 +84,7 @@ export async function loadEditFieldsAction(itemId: string): Promise<{ ok: true; 
 export async function loadInboxAction(): Promise<{ ok: true; items: NotificationView[]; unread: number } | { ok: false; error: string }> {
   try {
     const user = await requireUser();
-    const [items, unread] = await Promise.all([listNotifications(user.id, { take: 8 }), unreadCount(user.id)]);
+    const [items, unread] = await Promise.all([listNotifications(user.id, { tab: 'unread', take: 8 }), unreadCount(user.id)]);
     return { ok: true, items, unread };
   } catch {
     return { ok: false, error: 'Could not load your inbox.' };

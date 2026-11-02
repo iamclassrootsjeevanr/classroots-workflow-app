@@ -22,10 +22,17 @@ export function NotificationRow({ n, selected, onSelect, onChanged, compact }: {
   const Icon = ICONS[n.kind] ?? Bell;
   const router = useRouter();
   const canUndo = undoOpen(n);
+  const [shown, setShown] = useState(false);
   const open = () => {
     if (!n.read) void markNotificationsAction(true, [n.id]).then(() => onChanged?.());
   };
-  const titleEl = n.href ? (
+  // A delete notice with Undo left does not navigate: clicking it reveals the Undo button.
+  const expandable = canUndo && typeof n.data.itemId === 'string';
+  const titleEl = expandable ? (
+    <button type="button" className="text-left font-medium text-ink hover:text-brand" aria-expanded={shown} onClick={() => setShown(v => !v)}>
+      {n.title}
+    </button>
+  ) : n.href ? (
     <Link href={n.href} onClick={open} className="font-medium text-ink hover:text-brand">
       {n.title}
     </Link>
@@ -46,18 +53,19 @@ export function NotificationRow({ n, selected, onSelect, onChanged, compact }: {
         {n.body && <p className="mt-0.5 line-clamp-2 text-sm text-muted">{n.body}</p>}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
           <span>{timeAgo(n.createdAt)}</span>
-          {canUndo && <span>Undo for {undoMinutesLeft(n)} more min</span>}
+          {expandable && !shown && <span>Click to undo · {undoMinutesLeft(n)} min left</span>}
           {n.kind === 'item.deleted' && !canUndo && <span>Undo time is over</span>}
         </div>
-        {canUndo && typeof n.data.itemId === 'string' && (
-          <div className="mt-2">
+        {expandable && shown && (
+          <div className="mt-2 flex flex-wrap items-center gap-3">
             <UndoButton
-              itemId={n.data.itemId}
+              itemId={String(n.data.itemId)}
               onDone={() => {
                 onChanged?.();
                 router.refresh();
               }}
             />
+            <span className="text-2xs text-muted">{undoMinutesLeft(n)} min left</span>
           </div>
         )}
       </div>
