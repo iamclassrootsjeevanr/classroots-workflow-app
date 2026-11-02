@@ -12,12 +12,12 @@
 import type { Prisma, WorkType } from '@prisma/client';
 import { requireModule } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
-import { diffRow, itemSheetValues, keyColumns, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
+import { diffRow, itemSheetValues, keyColumns, linkedPayloads, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
 import { dueDateToInstant } from '@/lib/time';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 import { createItemTx, internals, workTypeConfig, type ChangeActor, type NewItem } from '../services/work-items';
-import { batchUpdate, readSheet } from './apps-script';
+import { batchUpdate, ensureLinked, readSheet } from './apps-script';
 
 const SHEET_ACTOR: ChangeActor = { userId: null, ctx: null, source: 'SHEET' };
 
@@ -116,6 +116,24 @@ async function push(wt: WorkType, mod: WorkTypeDefinition, tab: string, spreadsh
     take: 500,
   });
   if (!pending.length) return { pushed: 0, failed: 0 };
+
+  // The sheet's tabs are linked: lists, then reference tables, then the main tab. Update them in that order first.
+  if (mod.sheet?.linked?.length) {
+    const itemIds = [...new Set(pending.map(p => p.itemId))];
+    const rows = await db.workItem.findMany({ where: { id: { in: itemIds } }, select: { title: true, groupKey: true, data: true, assignee: { select: { name: true } } } });
+    const payloads = linkedPayloads(mod, rows.map(r => ({ title: r.title, groupKey: r.groupKey, assigneeName: r.assignee?.name ?? null, data: (r.data ?? {}) as Record<string, unknown> })));
+    for (const payload of payloads) {
+      try {
+        await ensureLinked(payload, tab, spreadsheetId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A tracker without that tab simply has nothing to keep in step; any other problem stops the push so order is kept.
+        if (/^Tab not found/i.test(msg)) continue;
+        throw new Error(`Updating the “${payload.tab}” tab first failed: ${msg}`);
+      }
+    }
+  }
+
   const result = await batchUpdate(
     tab,
     keyColumns(mod),

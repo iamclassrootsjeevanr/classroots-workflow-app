@@ -7,6 +7,8 @@
  * GET  ?action=read&tab=<tab>&token=…[&sheetId=…]  → { tab, headers, rows: [{__row, <header>: value}], all: true }
  * POST {action:'batchUpdate', token, tab, keyColumns:[…], updatedAtColumn, updates:[{key, column, value}][, sheetId]}
  *                                                 → { ok, updated, appended, failed:[{key, column, error}] }
+ * POST {action:'ensureValues', token, tab, column, values:[…], sibling}   → { ok, added }   (dropdown lists next to the main tab)
+ * POST {action:'ensureRows', token, tab, keyHeader, mode:'fill'|'update', rows:[{key, values:{header:value}}], sibling} → { ok, added, updated }
  * GET  ?action=update&tab&key&field&value&token  → { ok }   (single cell, kept for older app versions)
  *
  * Finding the tab: no spreadsheet id needed. The script looks for the tab in the default tracker (SHEET_ID below); if it is not
@@ -42,6 +44,8 @@ function doPost(e) {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     checkToken_(body.token);
     if (body.action === 'batchUpdate') return out_(batchUpdate_(body));
+    if (body.action === 'ensureValues') return out_(ensureValues_(body));
+    if (body.action === 'ensureRows') return out_(ensureRows_(body));
     return out_({ error: 'Unknown action: ' + body.action });
   } catch (err) {
     return out_({ error: String(err && err.message || err) });
@@ -59,8 +63,15 @@ function tz_(ss) {
 }
 
 /** The spreadsheet and sheet that hold a tab: explicit id, else the default tracker, else a remembered or discovered one. */
-function locate_(tab, sheetId) {
+function locate_(tab, sheetId, sibling) {
   var name = tab || DEFAULT_TAB;
+  // A tab next to the main tab (Lists, Test Cases, ...): use the spreadsheet that has the main tab, never a same-named tab elsewhere.
+  if (sibling) {
+    var home = locate_(sibling, sheetId).ss;
+    var shSibling = home.getSheetByName(name);
+    if (!shSibling) throw new Error('Tab not found: ' + name);
+    return { ss: home, sh: shSibling };
+  }
   if (sheetId) {
     var given = SpreadsheetApp.openById(sheetId);
     var shGiven = given.getSheetByName(name);
@@ -211,6 +222,86 @@ function setCell_(range, value) {
   var rule = range.getDataValidation();
   if (rule && !rule.getAllowInvalid()) range.setDataValidation(rule.copy().setAllowInvalid(true).build());
   range.setValue(value);
+}
+
+/** Last row (1-based) that has something in column `col` (0-based) of `values`; 1 = only the header. */
+function lastFilled_(values, col) {
+  for (var i = values.length - 1; i >= 1; i--) if (String(values[i][col]).trim() !== '') return i + 1;
+  return 1;
+}
+
+/** Linked tab, step 1: make sure each value exists in a list column (e.g. the new APK version in Lists → APK Versions). */
+function ensureValues_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = locate_(body.tab, body.sheetId, body.sibling).sh;
+    var values = sh.getDataRange().getDisplayValues();
+    var headers = values[0].map(function (h) { return String(h).trim(); });
+    var col = headers.indexOf(String(body.column).trim());
+    if (col < 0) throw new Error('Column not found: ' + body.column);
+    var have = {};
+    for (var i = 1; i < values.length; i++) have[String(values[i][col]).trim()] = true;
+    var row = lastFilled_(values, col), added = 0;
+    (body.values || []).forEach(function (v) {
+      v = String(v).trim();
+      if (!v || have[v]) return;
+      row++;
+      setCell_(sh.getRange(row, col + 1), v);
+      have[v] = true;
+      added++;
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, added: added, updated: 0 };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Linked tab, step 2: make sure each key has a row in a reference table (Test Cases, APK Releases).
+ * mode 'fill' only fills empty cells of an existing row; 'update' also keeps the cells in step with the app.
+ */
+function ensureRows_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sh = locate_(body.tab, body.sheetId, body.sibling).sh;
+    var values = sh.getDataRange().getDisplayValues();
+    var headers = values[0].map(function (h) { return String(h).trim(); });
+    var keyCol = headers.indexOf(String(body.keyHeader).trim());
+    if (keyCol < 0) throw new Error('Column not found: ' + body.keyHeader);
+    var rowOf = {};
+    for (var i = 1; i < values.length; i++) { var k = String(values[i][keyCol]).trim(); if (k) rowOf[k] = i + 1; }
+    var next = lastFilled_(values, keyCol), added = 0, updated = 0;
+    (body.rows || []).forEach(function (r) {
+      var key = String(r.key).trim();
+      if (!key) return;
+      var row = rowOf[key];
+      if (!row) {
+        row = ++next;
+        setCell_(sh.getRange(row, keyCol + 1), key);
+        rowOf[key] = row;
+        added++;
+      }
+      var touched = false;
+      Object.keys(r.values || {}).forEach(function (header) {
+        var col = headers.indexOf(String(header).trim());
+        if (col < 0) return;
+        var want = String(r.values[header]);
+        var current = String(sh.getRange(row, col + 1).getDisplayValue()).trim();
+        if (current === want) return;
+        if (current !== '' && body.mode !== 'update') return;
+        setCell_(sh.getRange(row, col + 1), want);
+        touched = true;
+      });
+      if (touched) updated++;
+    });
+    SpreadsheetApp.flush();
+    return { ok: true, added: added, updated: updated };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function out_(obj) {

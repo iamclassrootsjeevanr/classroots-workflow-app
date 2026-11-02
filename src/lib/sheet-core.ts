@@ -2,7 +2,7 @@
  * Pure mapping between work items and sheet rows, plus the 3-way diff used by two-way sync.
  * Values are compared as normalized strings (dates as YYYY-MM-DD).
  */
-import type { FieldType, SheetColumn, WorkTypeDefinition } from '@/modules/types';
+import type { FieldType, LinkedSource, SheetColumn, WorkTypeDefinition } from '@/modules/types';
 import { instantToDateKey, normalizeDate } from './time';
 
 export type SheetValues = Record<string, string>;
@@ -142,4 +142,44 @@ export function diffRow(sheet: SheetValues, snapshot: SheetValues | null, app: R
     else d.conflicts.push(col);
   }
   return d;
+}
+
+
+export type LinkedItem = { title: string; groupKey: string | null; assigneeName: string | null; data: Record<string, unknown> };
+
+export type LinkedPayload =
+  | { kind: 'values'; tab: string; column: string; values: string[] }
+  | { kind: 'rows'; tab: string; keyHeader: string; mode: 'fill' | 'update'; rows: { key: string; values: Record<string, string> }[] };
+
+const sourceValue = (src: LinkedSource, it: LinkedItem): string => {
+  const raw = src === 'group' ? it.groupKey : src === 'title' ? it.title : src === 'assignee' ? it.assigneeName : it.data[src.field];
+  return raw == null ? '' : String(raw).trim();
+};
+
+/**
+ * What to write to the linked tabs (lists, reference tables) for these items, in the module's order. Pure.
+ * Distinct values/keys only; empty ones are skipped.
+ */
+export function linkedPayloads(mod: WorkTypeDefinition, items: LinkedItem[]): LinkedPayload[] {
+  const out: LinkedPayload[] = [];
+  for (const l of mod.sheet?.linked ?? []) {
+    if (l.kind === 'values') {
+      const values = [...new Set(items.map(i => sourceValue(l.from, i)).filter(Boolean))];
+      if (values.length) out.push({ kind: 'values', tab: l.tab, column: l.column, values });
+    } else {
+      const rows = new Map<string, Record<string, string>>();
+      for (const it of items) {
+        const key = sourceValue(l.key, it);
+        if (!key) continue;
+        const values = rows.get(key) ?? {};
+        for (const c of l.columns) {
+          const v = sourceValue(c.from, it);
+          if (v && !values[c.header]) values[c.header] = v;
+        }
+        rows.set(key, values);
+      }
+      if (rows.size) out.push({ kind: 'rows', tab: l.tab, keyHeader: l.keyHeader, mode: l.mode, rows: [...rows].map(([key, values]) => ({ key, values })) });
+    }
+  }
+  return out;
 }

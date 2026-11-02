@@ -57,6 +57,18 @@ export type SheetColumn =
   | { column: string; kind: 'dueAt' }
   | { column: string; kind: 'data'; field: string; type: FieldType };
 
+/**
+ * Other tabs of the same spreadsheet that the main tab depends on (dropdown lists, reference tables). Before rows are pushed to the
+ * main tab, these are brought up to date in the order listed, so a new version or test case exists everywhere it is referenced.
+ */
+export type LinkedTab =
+  /** A column of allowed values (e.g. the "Lists" tab): values from the items are appended when missing. */
+  | { tab: string; kind: 'values'; column: string; from: 'group' | 'assignee' }
+  /** A reference table keyed by one column: a row per distinct key. `fill` only fills empty cells, `update` keeps cells in step with the app. */
+  | { tab: string; kind: 'rows'; key: LinkedSource; mode: 'fill' | 'update'; keyHeader: string; columns: { header: string; from: LinkedSource }[] };
+
+export type LinkedSource = 'group' | 'title' | 'assignee' | { field: string };
+
 export type TableColumn = {
   key: string;
   label: string;
@@ -144,6 +156,8 @@ export type WorkTypeDefinition = {
     columns: SheetColumn[];
     /** Optional column the sync job stamps with the last app write time. */
     updatedAtColumn?: string;
+    /** Tabs to update first, in order (see LinkedTab). */
+    linked?: LinkedTab[];
   };
   /** Hours an item may sit in a category before it is flagged as stuck (business hours). */
   stuckAfterHours?: Partial<Record<StatusCategory, number>>;

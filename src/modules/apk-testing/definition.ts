@@ -170,6 +170,37 @@ export const apkTesting: WorkTypeDefinition = {
   sheet: {
     defaultTab: 'Test Execution',
     updatedAtColumn: 'App Updated At',
+    // The tracker's tabs are linked: Test Execution picks its version, case and tester from these. Update them first, in this order.
+    linked: [
+      { tab: 'Lists', kind: 'values', column: 'APK Versions', from: 'group' },
+      { tab: 'Lists', kind: 'values', column: 'Tested By', from: 'assignee' },
+      {
+        tab: 'Test Cases',
+        kind: 'rows',
+        mode: 'fill',
+        keyHeader: 'Test Case ID',
+        key: { field: 'testCaseId' },
+        columns: [
+          { header: 'Feature / Module', from: 'title' },
+          { header: 'Test Scenario', from: { field: 'scenario' } },
+          { header: 'Expected Result', from: { field: 'expected' } },
+          { header: 'Default Priority', from: { field: 'priority' } },
+          { header: 'Test Steps', from: { field: 'steps' } },
+        ],
+      },
+      {
+        tab: 'APK Releases',
+        kind: 'rows',
+        mode: 'update',
+        keyHeader: 'APK Version',
+        key: 'group',
+        columns: [
+          { header: 'Release Date', from: { field: 'releaseDate' } },
+          { header: 'APK Link', from: { field: 'apkUrl' } },
+          { header: 'Notes', from: { field: 'releaseNotes' } },
+        ],
+      },
+    ],
     columns: [
       { column: 'APK Version', kind: 'key' },
       { column: 'Test Case ID', kind: 'key' },

@@ -457,6 +457,8 @@ Every item row has **Edit** (opens that item's fields) and **Delete** (asks firs
 ## Google Sheet two-way sync
 
 > **No spreadsheet ID needed.** `apps-script/Code.gs` finds a work type's tab by name: first in the default tracker, then in any Google Sheet the script owner can open (it remembers where it found it). After pasting a new `Code.gs`, deploy a new version and approve the Drive permission once. To pin a tab to one sheet, add the script property `TAB_SHEET::<tab name>` with the sheet's ID.
+>
+> **Linked tabs are updated first.** The APK tracker's tabs depend on each other, so a push goes in this order: **Lists** (new APK version and tester names in the dropdown columns), **Test Cases** (a row for each new test case, empty cells filled), **APK Releases** (the version's date, link and notes, kept in step), then **Test Execution**. A work type declares this in `sheet.linked` in its module. A tracker without one of those tabs just skips it. Paste the latest `apps-script/Code.gs` and deploy a new version for this to work.
 
 Postgres is the source of truth. Sync is **off** until an admin turns it on, so nothing touches the live sheet by accident.
 
