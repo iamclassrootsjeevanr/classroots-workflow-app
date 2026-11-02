@@ -71,11 +71,6 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`first-pass ${pct(d.quality.firstPassRate)}`} />
       </KpiGrid>
 
-      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
-        const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
-      })}
-
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="Avg lead time" value={formatDuration(d.flow.leadTime.avg)} hint="received → done" />
         <Kpi label="Avg cycle time" value={formatDuration(d.flow.cycleTime.avg)} hint="started → done" />
@@ -84,6 +79,12 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         <Kpi label="Review turnaround" value={formatDuration(d.review.reviewTurnaround.avg)} hint={`p90 ${formatDuration(d.review.reviewTurnaround.p90)}`} />
         <Kpi label="Correction time" value={formatDuration(d.review.correctionTime.avg)} hint={`p90 ${formatDuration(d.review.correctionTime.p90)}`} />
       </div>
+
+      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
+        const mod = getModule(key);
+        return mod?.groupSummary ? <GroupSummaryCard key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+      })}
+
 
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status">

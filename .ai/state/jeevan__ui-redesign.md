@@ -64,6 +64,7 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   average (`compareWithTeam`). Sidebar: per-work-type icon + dropdown pages (`NavGroupLink`), phone drawer nests pages. Journey tab = 'Journey chapters'. 84 tests.
 - Click-through everywhere: `itemsUrl` (src/lib/items-url.ts), version chart segments open group+status, dashboard/admin KPI tiles link when one work type
   is in view, `seriesStatuses` on groupSummary (test enforces it for new modules; rule in AGENTS.md). 86 tests.
+- Dashboard order for every role: cards, then analytics/graphs, then lists (due, activity), then item tables (/my sections return {cards, analytics, others, items}); admin overview puts both KPI rows first.
 
 ## In progress
 Nothing mid-edit. Code is not broken.
@@ -78,4 +79,3 @@ Nothing mid-edit. Code is not broken.
 - `src/app/globals.css` — all colour/size/density tokens; add new colours here, never raw Tailwind palette classes.
 - `src/lib/prefs.ts`, `src/app/layout.tsx` — preference model and first-paint theme attributes.
 - `src/components/sidebar.tsx`, `src/app/(app)/layout.tsx` — shell and nav groups.
-- `src/components/form.tsx`, `src/components/ui.tsx` — shared primitives.

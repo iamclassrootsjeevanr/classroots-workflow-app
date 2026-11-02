@@ -16,3 +16,4 @@
 - 2026-11-02T11:26Z | claude-code | Trim state file
 - 2026-11-02T11:26Z | claude-code | State file under 80 lines
 - 2026-11-02T11:36Z | claude-code | Click-through for all analytics incl. version chart segments; rule for new work types
+- 2026-11-02T11:44Z | claude-code | Dashboard order: cards, analytics, lists, items

@@ -21,7 +21,7 @@ import type { Access } from '@/lib/access-core';
 export const metadata = { title: 'My dashboard' };
 
 /** A dashboard section: analytics first, item tables shown after every section's analytics. */
-type Part = { top: React.ReactNode; items: React.ReactNode };
+type Part = { cards: React.ReactNode; analytics: React.ReactNode; others: React.ReactNode; items: React.ReactNode };
 
 const keys = (types: WorkTypeAccess[]) => types.map(t => t.workTypeKey);
 /** Work types whose item pages this person may open (the "Items list & pages" tick). */
@@ -57,8 +57,8 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const lbl = (cat: 'queue' | 'active' | 'feedback' | 'review' | 'done', dflt: string) => single?.categoryLabels?.[cat] ?? dflt;
 
   return {
-    top: (
-    <section className="mb-8">
+    cards: (
+      <section>
       <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
         My work <LoadBadge level={load.level} /> <span className="text-xs font-normal text-muted">{load.active}/{user.capacity} active</span>
       </h2>
@@ -71,6 +71,10 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" href={mineLink({ cat: 'done' })} />
         <Kpi label="Avg cycle time" value={formatDuration(flow.cycleTime.avg)} hint="start → done, business hours" />
       </KpiGrid>
+      </section>
+    ),
+    analytics: (
+      <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
         return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mine.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
@@ -83,6 +87,9 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
           <MeVsTeamChart rows={meVsTeam} />
         </Card>
       </div>
+      </>
+    ),
+    others: (
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Due in the next 7 days">
           {dueSoon.length ? (
@@ -122,7 +129,6 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
           )}
         </Card>
       </div>
-    </section>
     ),
     items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
@@ -149,8 +155,8 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
   const monthAgo = addDays(now, -30);
 
   return {
-    top: (
-    <section className="mb-8">
+    cards: (
+    <section>
       <h2 className="mb-3 text-lg font-semibold">Waiting for my review</h2>
       <KpiGrid>
         <Kpi label="To review" value={toReview.length} href={types.length === 1 ? itemsUrl(types[0].workTypeKey, { scope: 'review' }) : undefined} tone={toReview.length ? 'brand' : 'ok'} hint={oldest ? `oldest since ${formatDateTime(oldest, tz)}` : undefined} />
@@ -160,6 +166,8 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
       </KpiGrid>
     </section>
     ),
+    analytics: null,
+    others: null,
     items: (
       <Card title="Waiting for my review" actions={<span className="text-xs text-muted">open one to approve or send feedback</span>}>
         <ItemsTables items={toReview} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="Nothing is waiting for your review." />
@@ -176,8 +184,8 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
   const itemsHref = one && itemsUrl(one);
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   return {
-    top: (
-    <section className="mb-8">
+    cards: (
+    <section>
       <h2 className="mb-3 text-lg font-semibold">Team overview</h2>
       <KpiGrid>
         <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
@@ -188,6 +196,10 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
         <Kpi label="Overdue" value={d.kpis.overdue} tone={d.kpis.overdue ? 'bad' : 'ok'} href={one && itemsUrl(one, { scope: 'overdue' })} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`avg cycle ${formatDuration(d.flow.cycleTime.avg)}`} />
       </KpiGrid>
+    </section>
+    ),
+    analytics: (
+      <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
         return mod?.groupSummary ? <GroupSummaryCard key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
@@ -208,9 +220,10 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
           <WorkloadHeatmap days={d.heatmap.days} rows={d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }))} />
         </Card>
       </div>
-      <p className="mt-2 text-xs text-muted">Times in business hours ({tz}).</p>
-    </section>
+      <p className="mb-5 text-xs text-muted">Times in business hours ({tz}).</p>
+      </>
     ),
+    others: null,
     items: null,
   } satisfies Part;
 }
@@ -220,21 +233,24 @@ async function VisibleItemsSection({ user, access, types, tz }: { user: CurrentU
   const items: ItemRow[] = await loadItems({ workTypeKeys: keys(types), where: scopeWhere(access, types) }, { includePausedTypes: false });
   const [options, edits, deletable] = await Promise.all([statusOptionsFor(user, items), editableFieldsFor(user, items, tz), deletableItemsFor(user, items)]);
   return {
-    top: (
-      <section className="mb-8">
+    cards: (
+      <section>
         <h2 className="mb-3 text-lg font-semibold">My items</h2>
         <KpiGrid>
           <Kpi label="Items" value={items.length} />
           <Kpi label="Done" value={items.filter(i => i.category === 'done').length} tone="ok" />
           <Kpi label="Open" value={items.filter(i => i.category !== 'done').length} />
         </KpiGrid>
-        <div className="mb-5 grid gap-5 lg:grid-cols-3">
-          <Card title="By status">
-            <StatusPie slices={statusSlices(items).filter(s => s.category !== 'done')} itemsHref={types.length === 1 ? `/w/${types[0].workTypeKey}/items` : undefined} />
-          </Card>
-        </div>
       </section>
     ),
+    analytics: (
+      <div className="mb-5 grid gap-5 lg:grid-cols-3">
+        <Card title="By status">
+          <StatusPie slices={statusSlices(items).filter(s => s.category !== 'done')} itemsHref={types.length === 1 ? `/w/${types[0].workTypeKey}/items` : undefined} />
+        </Card>
+      </div>
+    ),
+    others: null,
     items: (
       <Card title="Items">
         <ItemsTables items={items} statusOptions={options} fieldEdits={edits} deletable={deletable} tz={tz} linkable={openable(types)} empty="No items yet." />
@@ -269,9 +285,12 @@ export default async function MyDashboard({ searchParams }: { searchParams: Prom
         subtitle={types.map(t => `${t.workTypeName}: ${t.roles.map(r => r.name).join(' + ')} · ${t.dataScope === 'ALL' ? 'all data' : 'own data'}${t.canEdit ? '' : ' · view only'}`).join('   |   ')}
       />
       {allTypes.length > 1 && <FilterBar filters={[{ name: 'wt', label: 'Work type', options: allTypes.map(t => ({ value: t.workTypeKey, label: t.workTypeName })) }]} />}
+      {/* Order for every role: cards, then analytics and graphs, then lists, then the item tables. */}
       {parts.map((p, i) => (
-        <div key={i}>{p.top}</div>
+        <div key={`c${i}`}>{p.cards}</div>
       ))}
+      {parts.map((p, i) => p.analytics && <div key={`a${i}`}>{p.analytics}</div>)}
+      {parts.map((p, i) => p.others && <div key={`o${i}`}>{p.others}</div>)}
       {parts.some(p => p.items) && (
         <section className="mb-8 space-y-5">
           <h2 className="text-lg font-semibold">Items</h2>
