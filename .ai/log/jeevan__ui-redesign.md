@@ -29,3 +29,4 @@
 - 2026-11-02T13:11Z | claude-code | Delete APK version with Undo; remove test version
 - 2026-11-02T13:25Z | claude-code | Apps Script: allow values outside a cell's dropdown rules
 - 2026-11-02T13:32Z | claude-code | Sheet sync updates Lists, Test Cases and APK Releases before Test Execution
+- 2026-11-02T13:33Z | claude-code | Apps Script: never leave dropdown rules changed

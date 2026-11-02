@@ -215,13 +215,23 @@ function batchUpdate_(body) {
 }
 
 /**
- * Write a cell. A dropdown (data validation) that does not list the value, e.g. a brand-new APK version typed by the app,
- * would reject it ("violates the data validation rules"), so the cell's rule is kept but set to only warn.
+ * Write a cell without changing the sheet's design. Normally the value is valid (the Lists tab is updated first, so a new APK version
+ * is already in its dropdown). If a cell's validation still rejects it (e.g. a fixed inline list), the rule is lifted for that one write
+ * and the very same rule is put back straight after, so dropdowns look and behave exactly as before.
  */
 function setCell_(range, value) {
-  var rule = range.getDataValidation();
-  if (rule && !rule.getAllowInvalid()) range.setDataValidation(rule.copy().setAllowInvalid(true).build());
-  range.setValue(value);
+  try {
+    range.setValue(value);
+  } catch (err) {
+    if (!/validation/i.test(String(err && err.message || err))) throw err;
+    var rule = range.getDataValidation();
+    range.clearDataValidations();
+    try {
+      range.setValue(value);
+    } finally {
+      if (rule) range.setDataValidation(rule);
+    }
+  }
 }
 
 /** Last row (1-based) that has something in column `col` (0-based) of `values`; 1 = only the header. */
