@@ -3,6 +3,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { ItemsTable } from '@/components/items-table';
 import { AddTestCaseButton, type VersionOption } from '@/components/new-apk-version';
 import { Card } from '@/components/ui';
+import { inList } from '@/lib/items-url';
 import { versionOptions } from '@/lib/test-cases';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
@@ -26,8 +27,8 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   let items = all;
   if (sp.group) items = items.filter(i => i.groupKey === sp.group);
   if (sp.grade) items = items.filter(i => String(i.grade) === sp.grade);
-  if (sp.cat) items = items.filter(i => i.category === sp.cat);
-  if (sp.status) items = items.filter(i => i.status === sp.status);
+  if (sp.cat) items = items.filter(i => inList(i.category, sp.cat));
+  if (sp.status) items = items.filter(i => inList(i.status, sp.status));
   if (sp.dev) items = items.filter(i => (sp.dev === 'none' ? !i.assigneeId : i.assigneeId === sp.dev));
   if (sp.sme) items = items.filter(i => i.ownerId === sp.sme);
   if (sp.scope === 'mine') items = items.filter(i => i.assigneeId === user.id || i.ownerId === user.id);

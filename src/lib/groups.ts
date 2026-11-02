@@ -25,7 +25,7 @@ export function groupSeries(mod: WorkTypeDefinition, rows: GroupRollupRow[]) {
   const labels = [...new Set(rows.flatMap(r => Object.keys(r.series ?? {})))];
   const fallback = ['#1e88e5', '#43a047', '#fb8c00', '#e53935', '#8e24aa', '#00897b', '#6d4c41'];
   return {
-    series: labels.map((label, i) => ({ label, color: colors[label] ?? fallback[i % fallback.length], count: rows.reduce((s, r) => s + (r.series?.[label] ?? 0), 0) })),
+    series: labels.map((label, i) => ({ label, color: colors[label] ?? fallback[i % fallback.length], count: rows.reduce((s, r) => s + (r.series?.[label] ?? 0), 0), key: mod.groupSummary?.seriesStatuses?.[label]?.join(',') })),
     rows: rows.map(r => ({ name: r.group, ...(r.series ?? {}) })),
   };
 }

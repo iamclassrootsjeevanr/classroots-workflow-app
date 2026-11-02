@@ -81,6 +81,8 @@ export type GroupSummary = {
   compute: (items: GroupSummaryItem[]) => GroupSummaryRow;
   seriesColors?: Record<string, string>;
   /** Series that counts as success; drives the trend line (share of items) in the group chart. */
+  /** Status keys each series stands for, so clicking a chart segment can filter the item list. */
+  seriesStatuses?: Record<string, string[]>;
   successSeries?: string;
   /** Threshold lines on the trend chart, in percent (e.g. the tracker's Good / Stable cut-offs). */
   rateLines?: { label: string; at: number }[];

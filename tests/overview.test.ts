@@ -56,3 +56,26 @@ describe('workTypeTabs', () => {
     expect(apkTesting.icon).not.toBe(journeyApplet.icon);
   });
 });
+
+describe('clickable analytics', () => {
+  it('builds item-list links with comma lists', async () => {
+    const { itemsUrl, inList } = await import('@/lib/items-url');
+    expect(itemsUrl('apk-testing')).toBe('/w/apk-testing/items');
+    expect(itemsUrl('apk-testing', { group: 'v1', status: ['pass', 'fixed'] })).toBe('/w/apk-testing/items?group=v1&status=pass%2Cfixed');
+    expect(inList('fixed', 'pass,fixed')).toBe(true);
+    expect(inList('fail', 'pass,fixed')).toBe(false);
+    expect(inList('fail', undefined)).toBe(true);
+  });
+  it('every module chart series maps to real statuses, so segments can open the list', async () => {
+    const { allModules } = await import('@/modules/registry');
+    for (const mod of allModules()) {
+      const gs = mod.groupSummary;
+      if (!gs) continue;
+      for (const label of Object.keys(gs.seriesColors ?? {})) {
+        const statuses = gs.seriesStatuses?.[label];
+        expect(statuses?.length, `${mod.key}: series "${label}" needs seriesStatuses`).toBeGreaterThan(0);
+        for (const st of statuses!) expect(mod.statuses.some(s => s.key === st), `${mod.key}: unknown status ${st}`).toBe(true);
+      }
+    }
+  });
+});

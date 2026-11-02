@@ -256,7 +256,7 @@ export function GroupTrendChart({
             fill={s.color}
             maxBarSize={44}
             isAnimationActive={false}
-            onClick={(d: { payload?: TrendRow }) => itemsHref && d?.payload?.name && router.push(withQuery(itemsHref, { group: d.payload.name }))}
+            onClick={(d: { payload?: TrendRow }) => itemsHref && d?.payload?.name && router.push(withQuery(itemsHref, { group: d.payload.name, status: s.key }))}
           />
         ))}
         {rate &&

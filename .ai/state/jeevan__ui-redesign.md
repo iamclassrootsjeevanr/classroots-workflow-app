@@ -62,6 +62,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - Overview redesign: icon/accent KPI tiles (links), Latest-versions cards with result bar, pass-rate graph at the bottom, no Unassigned, Done
   removed from status charts; every tile/slice/bar/column opens Items filtered (cat/status/dev/group/overdue). Own-data roles get You vs team
   average (`compareWithTeam`). Sidebar: per-work-type icon + dropdown pages (`NavGroupLink`), phone drawer nests pages. Journey tab = 'Journey chapters'. 84 tests.
+- Click-through everywhere: `itemsUrl` (src/lib/items-url.ts), version chart segments open group+status, dashboard/admin KPI tiles link when one work type
+  is in view, `seriesStatuses` on groupSummary (test enforces it for new modules; rule in AGENTS.md). 86 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

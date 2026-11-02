@@ -4,6 +4,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { getModule } from '@/modules/registry';
 import { WorkloadHeatmap } from '@/components/heatmap';
+import { itemsUrl } from '@/lib/items-url';
 import { ItemsTables } from '@/components/items-table';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct } from '@/components/ui';
 import type { WorkTypeAccess } from '@/lib/access-core';
@@ -51,6 +52,8 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const dueSoon = open.filter(i => i.dueAt && i.dueAt <= addDays(now, 7)).sort((a, b) => a.dueAt!.getTime() - b.dueAt!.getTime());
   // Stage names follow the work type when only one is in view (e.g. "Failed" instead of "Corrections" for APK tests).
   const single = types.length === 1 ? getModule(types[0].workTypeKey) : undefined;
+  /** Tiles open this person's rows of the work type (only when one work type is in view). */
+  const mineLink = (f: Parameters<typeof itemsUrl>[1]) => (single ? itemsUrl(single.key, { dev: user.id, ...f }) : undefined);
   const lbl = (cat: 'queue' | 'active' | 'feedback' | 'review' | 'done', dflt: string) => single?.categoryLabels?.[cat] ?? dflt;
 
   return {
@@ -60,12 +63,12 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         My work <LoadBadge level={load.level} /> <span className="text-xs font-normal text-muted">{load.active}/{user.capacity} active</span>
       </h2>
       <KpiGrid>
-        <Kpi label={lbl('queue', 'To start')} value={load.queued} tone={load.queued ? 'brand' : undefined} />
-        <Kpi label={lbl('active', 'In progress')} value={mine.filter(i => i.category === 'active').length} />
-        <Kpi label={lbl('feedback', 'Corrections')} value={mine.filter(i => i.category === 'feedback').length} tone={mine.some(i => i.category === 'feedback') ? 'bad' : undefined} />
-        <Kpi label={lbl('review', 'Waiting on review')} value={load.inReview} />
-        <Kpi label="Overdue" value={load.overdue} tone={load.overdue ? 'bad' : 'ok'} />
-        <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" />
+        <Kpi label={lbl('queue', 'To start')} value={load.queued} tone={load.queued ? 'brand' : undefined} href={mineLink({ cat: 'queue' })} />
+        <Kpi label={lbl('active', 'In progress')} value={mine.filter(i => i.category === 'active').length} href={mineLink({ cat: 'active' })} />
+        <Kpi label={lbl('feedback', 'Corrections')} value={mine.filter(i => i.category === 'feedback').length} tone={mine.some(i => i.category === 'feedback') ? 'bad' : undefined} href={mineLink({ cat: 'feedback' })} />
+        <Kpi label={lbl('review', 'Waiting on review')} value={load.inReview} href={mineLink({ cat: 'review' })} />
+        <Kpi label="Overdue" value={load.overdue} tone={load.overdue ? 'bad' : 'ok'} href={mineLink({ scope: 'overdue' })} />
+        <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" href={mineLink({ cat: 'done' })} />
         <Kpi label="Avg cycle time" value={formatDuration(flow.cycleTime.avg)} hint="start → done, business hours" />
       </KpiGrid>
       {types.map(t => {
@@ -150,8 +153,8 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">Waiting for my review</h2>
       <KpiGrid>
-        <Kpi label="To review" value={toReview.length} tone={toReview.length ? 'brand' : 'ok'} hint={oldest ? `oldest since ${formatDateTime(oldest, tz)}` : undefined} />
-        <Kpi label="In corrections" value={scoped.filter(i => i.category === 'feedback').length} />
+        <Kpi label="To review" value={toReview.length} href={types.length === 1 ? itemsUrl(types[0].workTypeKey, { scope: 'review' }) : undefined} tone={toReview.length ? 'brand' : 'ok'} hint={oldest ? `oldest since ${formatDateTime(oldest, tz)}` : undefined} />
+        <Kpi label="In corrections" value={scoped.filter(i => i.category === 'feedback').length} href={types.length === 1 ? itemsUrl(types[0].workTypeKey, { cat: 'feedback' }) : undefined} />
         <Kpi label="Approved / done (30 days)" value={scoped.filter(i => (i.approvedAt && i.approvedAt >= monthAgo) || (i.completedAt && i.completedAt >= monthAgo)).length} tone="ok" />
         <Kpi label="Avg review time" value={formatDuration(avgReview)} hint="submitted → reviewed" />
       </KpiGrid>
@@ -169,19 +172,20 @@ async function ReviewSection({ user, access, types, tz }: { user: CurrentUser; a
 async function TeamSection({ access, types, tz }: { access: Access; types: WorkTypeAccess[]; tz: string }) {
   const d = await dashboard({ workTypeKeys: keys(types), where: scopeWhere(access, types), from: addDays(new Date(), -7 * 12) }, { weeks: 12, heatmapDays: 14 });
   const series = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
-  const itemsHref = types.length === 1 ? `/w/${types[0].workTypeKey}/items` : undefined;
+  const one = types.length === 1 ? types[0].workTypeKey : undefined;
+  const itemsHref = one && itemsUrl(one);
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   return {
     top: (
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">Team overview</h2>
       <KpiGrid>
-        <Kpi label="Total items" value={d.kpis.total} />
+        <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
         <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} />
-        <Kpi label="In progress" value={d.kpis.inProgress + d.kpis.corrections} />
-        <Kpi label="In review" value={d.kpis.inReview} />
-        <Kpi label="Done" value={d.kpis.done} tone="ok" />
-        <Kpi label="Overdue" value={d.kpis.overdue} tone={d.kpis.overdue ? 'bad' : 'ok'} />
+        <Kpi label="In progress" value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { cat: ['active', 'feedback'] })} />
+        <Kpi label="In review" value={d.kpis.inReview} href={one && itemsUrl(one, { cat: 'review' })} />
+        <Kpi label="Done" value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { cat: 'done' })} />
+        <Kpi label="Overdue" value={d.kpis.overdue} tone={d.kpis.overdue ? 'bad' : 'ok'} href={one && itemsUrl(one, { scope: 'overdue' })} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`avg cycle ${formatDuration(d.flow.cycleTime.avg)}`} />
       </KpiGrid>
       {types.map(t => {

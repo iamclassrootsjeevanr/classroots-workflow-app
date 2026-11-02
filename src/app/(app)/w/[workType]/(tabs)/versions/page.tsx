@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { NewApkVersionButton } from '@/components/new-apk-version';
 import { Empty } from '@/components/ui';
+import { itemsUrl } from '@/lib/items-url';
 import { versionOptions } from '@/lib/test-cases';
 import { getModule } from '@/modules/registry';
 import { loadWorkTypePage } from '@/server/work-type-page';
@@ -33,7 +34,8 @@ export default async function VersionsPage({ params }: { params: Promise<{ workT
           items={items}
           tz={tz}
           versionEdit={mod.versions && editable && (can('create') || can('manageFields')) ? { workTypeId: wt.id } : undefined}
-          groupHref={g => `/w/${key}/items?group=${encodeURIComponent(g)}`}
+          groupHref={g => itemsUrl(key, { group: g })}
+          itemsHref={itemsUrl(key)}
         />
       ) : (
         <Empty>No {mod.groupSummary.label.toLowerCase()}s yet.</Empty>

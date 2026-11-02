@@ -5,6 +5,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
+import { itemsUrl } from '@/lib/items-url';
 import { addDays, formatDateTime, formatDuration } from '@/lib/time';
 import { allModules, getModule } from '@/modules/registry';
 import { db } from '@/server/db';
@@ -41,7 +42,8 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   const unassigned = d.items.filter(i => !i.assigneeId && i.category !== 'done').slice(0, 12);
   const overdue = d.items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < d.now).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
   const statusSeries = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
-  const itemsHref = sp.wt ? `/w/${sp.wt}/items` : undefined;
+  const one = sp.wt;
+  const itemsHref = one && itemsUrl(one);
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
   const flowHint = 'business hours';
@@ -60,12 +62,12 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
       />
 
       <KpiGrid>
-        <Kpi label="Total items" value={d.kpis.total} />
-        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} />
-        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
-        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} />
-        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" />
-        <Kpi label="Overdue" value={d.kpis.overdue} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
+        <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
+        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { dev: 'none' })} />
+        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
+        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { cat: 'review' })} />
+        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { cat: 'done' })} />
+        <Kpi label="Overdue" value={d.kpis.overdue} href={one && itemsUrl(one, { scope: 'overdue' })} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`first-pass ${pct(d.quality.firstPassRate)}`} />
       </KpiGrid>
 

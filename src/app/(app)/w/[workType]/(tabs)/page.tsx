@@ -6,6 +6,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { Card, Kpi, KpiGrid, ToneChip } from '@/components/ui';
 import type { NavIcon } from '@/components/icons';
 import { formatDuration } from '@/lib/time';
+import { itemsUrl } from '@/lib/items-url';
 import { groupRollup } from '@/lib/groups';
 import { getModule } from '@/modules/registry';
 import type { StatusCategory } from '@/modules/types';
@@ -41,7 +42,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
     dashboard({ workTypeKeys: [key], where: scopeWhere(access, [wtAccess]) }, { weeks: 12 }),
     ownOnly ? comparison(user.id, key) : Promise.resolve(null),
   ]);
-  const itemsHref = `/w/${key}/items`;
+  const itemsHref = itemsUrl(key);
   const present = new Set(mod.statuses.map(s => s.category));
   const count = (c: StatusCategory) => d.items.filter(i => i.category === c).length;
   const noun = (mod.labels?.assignee ?? 'developer').toLowerCase();
@@ -66,11 +67,11 @@ export default async function OverviewPage({ params, searchParams }: { params: P
             icon={s.icon}
             accent={s.accent}
             tone={s.cat === 'done' ? 'ok' : s.cat === 'feedback' && count('feedback') ? 'bad' : undefined}
-            href={`${itemsHref}?cat=${s.cat}`}
+            href={itemsUrl(key, { cat: s.cat })}
           />
         ))}
         {!mod.table?.hide?.includes('delay') && (
-          <Kpi label="Overdue" value={d.kpis.overdue} icon="overdue" accent={d.kpis.overdue ? 'bad' : 'ok'} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} href={`${itemsHref}?scope=overdue`} />
+          <Kpi label="Overdue" value={d.kpis.overdue} icon="overdue" accent={d.kpis.overdue ? 'bad' : 'ok'} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} href={itemsUrl(key, { scope: 'overdue' })} />
         )}
       </KpiGrid>
 
@@ -83,7 +84,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
               return (
                 <Link
                   key={r.group}
-                  href={`${itemsHref}?group=${encodeURIComponent(r.group)}`}
+                  href={itemsUrl(key, { group: r.group })}
                   className="group/v rounded-xl border border-line bg-surface-2/40 p-3.5 transition hover:-translate-y-px hover:border-brand/40 hover:bg-surface-2/70"
                 >
                   <div className="flex items-start justify-between gap-2">

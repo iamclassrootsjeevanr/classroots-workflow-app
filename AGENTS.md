@@ -53,6 +53,7 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 - Business rules in `src/lib/` with a test; DB access in `src/server/`; never write items outside `services/work-items.ts`.
 - Schema change → new folder in `prisma/migrations/` + `npm run db:deploy`; commit the migration.
 - Form controls use `src/components/form.tsx` (Checkbox/Radio/Switch rows, Segmented); nav icons via `src/components/icons.tsx` string keys.
+- Every metric tile, chart slice, bar or column must open the item list (`/w/<key>/items`) with the matching filter. Build links with `itemsUrl` (`src/lib/items-url.ts`). A new work type's `groupSummary` must list `seriesStatuses` for each series (a test enforces it), and new charts take an `itemsHref`.
 - Verify UI in a browser at phone (375px) and desktop widths, light and dark, before calling it done.
 
 **Done means:** code runs, `npm run typecheck && npm test` pass, `.ai/state/<branch>.md` updated via `handoff`, pushed.
