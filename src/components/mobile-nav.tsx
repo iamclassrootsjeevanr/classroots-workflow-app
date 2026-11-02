@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, X } from 'lucide-react';
+import { Bell, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -11,7 +11,7 @@ export type NavChildLink = { href: string; label: string; icon: NavIcon };
 export type NavGroup = { title?: string; links: { href: string; label: string; icon: NavIcon; badge?: string; exact?: boolean; children?: NavChildLink[] }[] };
 
 /** Top bar + slide-over menu below 1024px (phones, tablets, small windows); the sidebar takes over above that. */
-export function MobileNav({ groups, name, email, subtitle, signOut }: { groups: NavGroup[]; name: string; email: string; subtitle: string; signOut: React.ReactNode }) {
+export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups: NavGroup[]; name: string; unread: number; subtitle: string; signOut: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname();
   const openBtn = useRef<HTMLButtonElement>(null);
@@ -113,12 +113,18 @@ export function MobileNav({ groups, name, email, subtitle, signOut }: { groups: 
             ))}
           </div>
           <div className="safe-bottom border-t border-line p-3">
-            <Link href="/account" className="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm">
-              <NavGlyph name="account" className="text-muted" />
-              My account
+            <Link href="/inbox" aria-current={path === '/inbox' ? 'page' : undefined} className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm ${path === '/inbox' ? 'bg-brand-soft font-medium text-brand' : ''}`}>
+              <Bell size={17} strokeWidth={1.8} className="text-muted" aria-hidden="true" />
+              <span className="flex-1">Inbox</span>
+              {unread > 0 && <span className="rounded-full bg-brand px-1.5 py-px text-2xs font-semibold text-white tabular-nums">{unread > 99 ? '99+' : unread}</span>}
             </Link>
-            <div className="mt-1 truncate px-3 text-sm font-medium">{name}</div>
-            <div className="truncate px-3 text-xs text-muted">{email}</div>
+            <Link href="/account" aria-current={path.startsWith('/account') ? 'page' : undefined} className={`mt-1 flex min-h-12 items-center gap-3 rounded-lg px-3 ${path.startsWith('/account') ? 'bg-brand-soft' : ''}`}>
+              <span className="grid size-8 place-items-center rounded-full bg-brand-soft text-sm font-semibold text-brand">{(name.trim()[0] ?? '?').toUpperCase()}</span>
+              <span className="min-w-0 leading-tight">
+                <span className="block truncate text-sm font-medium">{name}</span>
+                <span className="block text-2xs text-muted">My account</span>
+              </span>
+            </Link>
             {signOut}
           </div>
         </nav>

@@ -80,6 +80,7 @@ model User {
   intervals     WorkItemStageInterval[]
   snapshots     WorkloadSnapshot[]
   createdItems  WorkItem[]         @relation("creator")
+  notifications Notification[]
 
   @@index([isAdmin, active])
 }
@@ -395,4 +396,25 @@ model SyncOutbox {
   item      WorkItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+}
+
+// ─── Inbox ──────────────────────────────────────────────────────
+
+/// One message in a person's inbox. Anything in the app can notify someone (a deleted row with Undo, an assignment, feedback, …).
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  /// Dotted event name, e.g. item.deleted, item.restored, item.assigned, item.feedback. New kinds need no migration.
+  kind      String
+  title     String
+  body      String?
+  /// Where clicking the message goes.
+  href      String?
+  /// Kind-specific payload, e.g. { itemId, undoUntil } for item.deleted.
+  data      Json      @default("{}")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
 }

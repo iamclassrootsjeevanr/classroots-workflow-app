@@ -435,3 +435,17 @@ input[type='date']::-webkit-calendar-picker-indicator {
     animation-duration: 0.01ms !important;
   }
 }
+
+@keyframes toast-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [style*='toast-shrink'] {
+    animation: none !important;
+  }
+}

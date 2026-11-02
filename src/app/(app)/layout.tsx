@@ -8,7 +8,9 @@ import { Sidebar, SignOutButton, WhenExpanded } from '@/components/sidebar';
 import { getAccess } from '@/server/access';
 import { signOut } from '@/server/auth';
 import { requireUser } from '@/server/rbac';
-import { NavGroupLink, NavLink } from './nav-link';
+import { InboxMenu } from '@/components/inbox';
+import { unreadCount } from '@/server/services/notifications';
+import { AccountLink, NavGroupLink, NavLink } from './nav-link';
 import { getModule } from '@/modules/registry';
 import { workTypeTabs } from '@/lib/work-type-tabs';
 
@@ -22,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const itemTypes = workTypesWith(access, 'items');
   const hasDashboard = workTypesWith(access, 'dashboard').length > 0;
   const hasReports = workTypesWith(access, 'reports').length > 0;
+  const unread = await unreadCount(user.id);
   const roleNames = [...new Set([...access.byKey.values()].flatMap(a => a.roles.map(r => r.name)))];
   const subtitle = user.isAdmin ? 'Admin' : roleNames.join(' · ') || 'No access yet';
 
@@ -81,11 +84,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const footer = (
     <>
-      <NavLink href="/account" label="My account" icon="account" />
-      <WhenExpanded>
-        <div className="mt-2 truncate px-2.5 text-sm font-medium">{user.name ?? user.email}</div>
-        <div className="truncate px-2.5 text-xs text-muted">{user.email}</div>
-      </WhenExpanded>
+      <InboxMenu unread={unread} />
+      <div className="my-1.5 border-t border-line" />
+      <AccountLink name={user.name ?? user.email ?? 'Account'} />
       <form action={signOutAction}>
         <SignOutButton />
       </form>
@@ -125,7 +126,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileNav
           groups={groups}
           name={user.name ?? user.email ?? ''}
-          email={user.email ?? ''}
+          unread={unread}
           subtitle={subtitle}
           signOut={
             <form action={signOutAction}>

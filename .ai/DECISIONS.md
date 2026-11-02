@@ -40,3 +40,8 @@ By: claude-code
 Decision: delete still archives; `restoreItem` clears `archivedAt` within `UNDO_DELETE_MINUTES` (30) for anyone who may delete, logged as a FIELD_CHANGED 'Restored' event. UI: app-wide toast (localStorage) plus a Recently deleted card on the Items page.
 Why: accidental row deletes; archive already kept the data. Rejected: server-side trash with auto-purge (no purge job needed yet).
 By: claude-code
+
+## 2026-11-02 — Inbox (Notification table) is the home for app messages; delete Undo moves there after a 5 s toast
+Decision: `Notification` rows (kind string, title, body, href, data JSON, readAt) per user, written with `notify()`. Delete creates `item.deleted` with `undoUntil`; restore turns it into `item.restored`. Assignment and feedback also notify. Sidebar: Inbox popover + /inbox page; account is one box (name + My account, no email).
+Why: one extensible place for future events instead of per-feature toasts. Rejected: localStorage-only toasts (lost on other devices).
+By: claude-code

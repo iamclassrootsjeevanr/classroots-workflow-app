@@ -13,6 +13,8 @@ import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, 
 import { createApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
+import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
+import type { NotificationView } from '@/lib/notifications-core';
 import { editFieldsForItem } from '@/server/view';
 import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
@@ -74,6 +76,34 @@ export async function loadEditFieldsAction(itemId: string): Promise<{ ok: true; 
   } catch (e) {
     return { ok: false, error: isUserError(e) ? e.message : 'Could not load the details.' };
   }
+}
+
+// ─── Inbox ──────────────────────────────────────────────────────
+
+/** Latest messages for the Inbox popover. */
+export async function loadInboxAction(): Promise<{ ok: true; items: NotificationView[]; unread: number } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser();
+    const [items, unread] = await Promise.all([listNotifications(user.id, { take: 8 }), unreadCount(user.id)]);
+    return { ok: true, items, unread };
+  } catch {
+    return { ok: false, error: 'Could not load your inbox.' };
+  }
+}
+
+/** Mark messages read or unread; no ids = all of them. */
+export async function markNotificationsAction(read: boolean, ids?: string[]) {
+  return run(async () => {
+    const user = await requireUser();
+    await setRead(user.id, read, ids);
+  });
+}
+
+export async function deleteNotificationsAction(ids: string[]) {
+  return run(async () => {
+    const user = await requireUser();
+    await removeNotifications(user.id, ids);
+  });
 }
 
 /** Undo a delete (allowed for 30 minutes). */

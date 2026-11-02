@@ -7,6 +7,8 @@ import { canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTra
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
+import { notify } from './notifications';
+import { shortKey, undoDeadline } from '@/lib/notifications-core';
 
 type Tx = Prisma.TransactionClient;
 
@@ -126,6 +128,9 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   });
   const col = columnFor(mod, 'assignee');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP') {
+    await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+  }
 
   const fresh = await loadItem(tx, item.id);
   // First assignment moves a queued item to the module's "assigned" status.
@@ -229,6 +234,16 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
     });
+    // The person who deleted it gets an inbox message with Undo for the next 30 minutes.
+    if (actor.userId && actor.source === 'APP') {
+      await notify(tx, actor.userId, {
+        kind: 'item.deleted',
+        title: `Deleted ${shortKey(item.externalKey)}`,
+        body: item.title,
+        href: `/w/${item.workType.key}/items`,
+        data: { itemId, itemKey: item.externalKey, workTypeKey: item.workType.key, undoUntil: undoDeadline(now).toISOString() },
+      });
+    }
   });
 }
 
@@ -244,6 +259,11 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
     await saveItem(tx, item, { archivedAt: null });
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt.toISOString(), toValue: null, source: actor.source, note: 'Restored', at: now },
+    });
+    // The delete notice becomes a "Restored" notice (no more Undo button).
+    await tx.notification.updateMany({
+      where: { kind: 'item.deleted', data: { path: ['itemId'], equals: itemId } },
+      data: { kind: 'item.restored', title: `Restored ${shortKey(item.externalKey)}`, readAt: now },
     });
   });
 }
@@ -268,6 +288,9 @@ export async function addFeedback(
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
+    if (item.assigneeId && item.assigneeId !== actor.userId && actor.source === 'APP') {
+      await notify(tx, item.assigneeId, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
+    }
     if (input.requestCorrections) {
       const target = mod.statuses.find(s => s.category === 'feedback');
       const fresh = await loadItem(tx, itemId);

@@ -67,6 +67,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - Dashboard order for every role: cards, then analytics/graphs, then tables and lists (version table, due, activity), then item tables (/my sections return {cards, analytics, others, items}); admin overview puts both KPI rows first.
 - Speed + undo: Items page paged (50), /my capped per type, Edit dialog loads fields on open, optimistic status/assign selects (Items page 7 MB/6 s -> 1.4 MB/1.2 s in dev).
   Delete is undoable for 30 min (toast + Recently deleted card, `restoreItem`). 89 tests.
+- Inbox: Notification model (migration 20261102180000), `notify()`, sidebar Inbox popover + /inbox page, delete toast 5 s then Undo in Inbox for 30 min,
+  assignment/feedback notices; account is one box (name + My account). 92 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.
@@ -78,5 +80,3 @@ Nothing mid-edit. Code is not broken.
 - None.
 
 ## Key files
-- `src/app/globals.css` — all colour/size/density tokens; add new colours here, never raw Tailwind palette classes.
-- `src/lib/prefs.ts`, `src/app/layout.tsx` — preference model and first-paint theme attributes.

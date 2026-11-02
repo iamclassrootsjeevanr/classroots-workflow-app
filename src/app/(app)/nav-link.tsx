@@ -83,3 +83,26 @@ export function NavGroupLink({ href, label, icon, badge, children }: { href: str
     </div>
   );
 }
+
+/** One box for the person: avatar, name and "My account". The email is not shown. */
+export function AccountLink({ name }: { name: string }) {
+  const path = usePathname();
+  const { collapsed } = useSidebar();
+  const active = path === '/account' || path.startsWith('/account/');
+  return (
+    <Link
+      href="/account"
+      aria-current={active ? 'page' : undefined}
+      title={collapsed ? `${name} · My account` : undefined}
+      className={`flex min-h-12 items-center gap-2.5 rounded-lg transition-colors ${collapsed ? 'justify-center px-0' : 'px-2'} ${active ? 'bg-brand-soft' : 'hover:bg-surface-2'}`}
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-semibold text-brand">{(name.trim()[0] ?? '?').toUpperCase()}</span>
+      {!collapsed && (
+        <span className="min-w-0 leading-tight">
+          <span className={`block truncate text-sm font-medium ${active ? 'text-brand' : 'text-ink'}`}>{name}</span>
+          <span className="block truncate text-2xs text-muted">My account</span>
+        </span>
+      )}
+    </Link>
+  );
+}
