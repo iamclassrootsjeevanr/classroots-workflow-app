@@ -27,7 +27,7 @@ const view = (n: { id: string; kind: string; title: string; body: string | null;
 /** A delete notice whose 30 minutes of Undo are over has nothing left to do: move it to Read. */
 export async function expireUndoNotices(userId: string, now: Date = new Date()) {
   await db.notification.updateMany({
-    where: { userId, kind: 'item.deleted', readAt: null, createdAt: { lt: new Date(now.getTime() - UNDO_DELETE_MINUTES * 60_000) } },
+    where: { userId, kind: { in: ['item.deleted', 'version.deleted'] }, readAt: null, createdAt: { lt: new Date(now.getTime() - UNDO_DELETE_MINUTES * 60_000) } },
     data: { readAt: now },
   });
 }

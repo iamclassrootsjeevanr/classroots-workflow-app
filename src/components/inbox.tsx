@@ -8,11 +8,13 @@ import { createPortal } from 'react-dom';
 import { deleteNotificationsAction, loadInboxAction, markNotificationsAction } from '@/app/actions';
 import { timeAgo, undoMinutesLeft, undoOpen, type NotificationView } from '@/lib/notifications-core';
 import { useSidebar } from './sidebar';
-import { UndoButton } from './undo-toasts';
+import { UndoButton, UndoVersionButton } from './undo-toasts';
 
 const ICONS: Record<string, typeof Bell> = {
   'item.deleted': Trash2,
   'item.restored': RotateCcw,
+  'version.deleted': Trash2,
+  'version.restored': RotateCcw,
   'item.assigned': UserPlus,
   'item.feedback': MessageSquare,
 };
@@ -27,7 +29,8 @@ export function NotificationRow({ n, selected, onSelect, onChanged, compact }: {
     if (!n.read) void markNotificationsAction(true, [n.id]).then(() => onChanged?.());
   };
   // A delete notice with Undo left does not navigate: clicking it reveals the Undo button.
-  const expandable = canUndo && typeof n.data.itemId === 'string';
+  const isVersion = n.kind === 'version.deleted';
+  const expandable = canUndo && (isVersion ? typeof n.data.version === 'string' && typeof n.data.deletedAt === 'string' : typeof n.data.itemId === 'string');
   const titleEl = expandable ? (
     <button type="button" className="text-left font-medium text-ink hover:text-brand" aria-expanded={shown} onClick={() => setShown(v => !v)}>
       {n.title}
@@ -54,17 +57,29 @@ export function NotificationRow({ n, selected, onSelect, onChanged, compact }: {
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
           <span>{timeAgo(n.createdAt)}</span>
           {expandable && !shown && <span>Click to undo · {undoMinutesLeft(n)} min left</span>}
-          {n.kind === 'item.deleted' && !canUndo && <span>Undo time is over</span>}
+          {(n.kind === 'item.deleted' || isVersion) && !canUndo && <span>Undo time is over</span>}
         </div>
         {expandable && shown && (
           <div className="mt-2 flex flex-wrap items-center gap-3">
-            <UndoButton
-              itemId={String(n.data.itemId)}
-              onDone={() => {
-                onChanged?.();
-                router.refresh();
-              }}
-            />
+            {isVersion ? (
+              <UndoVersionButton
+                workTypeId={String(n.data.workTypeId)}
+                version={String(n.data.version)}
+                deletedAt={String(n.data.deletedAt)}
+                onDone={() => {
+                  onChanged?.();
+                  router.refresh();
+                }}
+              />
+            ) : (
+              <UndoButton
+                itemId={String(n.data.itemId)}
+                onDone={() => {
+                  onChanged?.();
+                  router.refresh();
+                }}
+              />
+            )}
             <span className="text-2xs text-muted">{undoMinutesLeft(n)} min left</span>
           </div>
         )}

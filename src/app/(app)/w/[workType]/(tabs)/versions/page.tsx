@@ -33,7 +33,7 @@ export default async function VersionsPage({ params }: { params: Promise<{ workT
           mod={mod}
           items={items}
           tz={tz}
-          versionEdit={mod.versions && editable && (can('create') || can('manageFields')) ? { workTypeId: wt.id } : undefined}
+          versionEdit={mod.versions && editable && (can('create') || can('manageFields')) ? { workTypeId: wt.id, canDelete: can('manageFields') } : undefined}
           groupHref={g => itemsUrl(key, { group: g })}
           itemsHref={itemsUrl(key)}
         />

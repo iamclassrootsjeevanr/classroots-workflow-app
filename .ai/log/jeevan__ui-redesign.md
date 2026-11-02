@@ -26,3 +26,4 @@
 - 2026-11-02T12:47Z | claude-code | Clear sync error when a sheet tab is missing
 - 2026-11-02T12:50Z | claude-code | Apps Script finds the sheet tab without a spreadsheet ID
 - 2026-11-02T13:01Z | claude-code | Apps Script: fall back when a sheet has no time zone
+- 2026-11-02T13:11Z | claude-code | Delete APK version with Undo; remove test version

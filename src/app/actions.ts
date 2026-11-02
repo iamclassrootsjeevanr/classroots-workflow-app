@@ -10,7 +10,7 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, restoreItem, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
-import { createApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
+import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
@@ -182,6 +182,23 @@ export async function createApkVersionAction(workTypeId: string, input: NewApkVe
     const canTest = ctx.isAdmin || ctx.capabilities.has('work');
     const r = await createApkVersion(actor, workTypeId, { ...input, assigneeId: input.assigneeId || (canTest ? user.id : null) });
     return `Created ${r.version} with ${r.count} tests`;
+  });
+}
+
+/** Delete (deactivate) a whole APK version and its tests. Undo for 30 minutes from the Inbox. */
+export async function deleteApkVersionAction(workTypeId: string, version: string) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await deleteApkVersion(actor, workTypeId, version);
+    return { message: `Deleted ${version} (${r.count} tests)`, id: r.deletedAt };
+  });
+}
+
+export async function restoreApkVersionAction(workTypeId: string, version: string, deletedAt: string) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await restoreApkVersion(actor, workTypeId, version, deletedAt);
+    return `Restored ${version} (${r.count} tests)`;
   });
 }
 

@@ -19,7 +19,7 @@ export const undoDeadline = (deletedAt: Date) => new Date(deletedAt.getTime() + 
 
 /** Whether a message still offers Undo: a delete notice, before its deadline. */
 export function undoOpen(n: Pick<NotificationView, 'kind' | 'data'>, now: Date = new Date()): boolean {
-  if (n.kind !== 'item.deleted') return false;
+  if (n.kind !== 'item.deleted' && n.kind !== 'version.deleted') return false;
   const until = typeof n.data.undoUntil === 'string' ? Date.parse(n.data.undoUntil) : NaN;
   return Number.isFinite(until) && until > now.getTime();
 }

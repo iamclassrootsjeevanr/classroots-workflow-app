@@ -2,10 +2,11 @@
 
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
-import { createApkVersionAction, createItemAction, updateApkVersionAction, type ActionResult } from '@/app/actions';
+import { createApkVersionAction, createItemAction, deleteApkVersionAction, updateApkVersionAction, type ActionResult } from '@/app/actions';
 import { ActionMessage, type PersonOption } from './controls';
 import { Checkbox, Field, GroupLabel, OptionList } from './form';
 import { Modal } from './modal';
+import { rememberVersionDeletion } from './undo-toasts';
 
 export type VersionOption = { name: string; releaseDate: string; apkUrl: string; releaseNotes: string; cases: { id: string; title: string }[] };
 
@@ -290,6 +291,47 @@ export function AddTestCaseButton({ workTypeId, versions, assigneeId }: { workTy
               <ActionMessage result={result} />
             </div>
           </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
+/** Delete (deactivate) a whole APK version with all its tests. Asks first; Undo for 30 minutes from the Inbox. */
+export function DeleteApkVersionButton({ workTypeId, version, count }: { workTypeId: string; version: string; count: number }) {
+  const [open, setOpen] = useState(false);
+  const { pending, result, exec } = useRun();
+  return (
+    <>
+      <button type="button" className="btn-icon hover:bg-bad-soft hover:text-bad" aria-label={`Delete ${version}`} title="Delete version" onClick={() => setOpen(true)}>
+        <Trash2 size={14} aria-hidden="true" />
+      </button>
+      {open && (
+        <Modal title={`Delete ${version}?`} subtitle={`This removes the version and its ${count} test${count === 1 ? '' : 's'} from every list, chart and report.`} onClose={() => setOpen(false)}>
+          <p className="text-sm text-muted">The history is kept. You can undo this for 30 minutes from your Inbox.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={pending}
+              onClick={() =>
+                exec(
+                  async () => {
+                    const r = await deleteApkVersionAction(workTypeId, version);
+                    if (r.ok && r.id) rememberVersionDeletion(workTypeId, version, r.id);
+                    return r;
+                  },
+                  () => setOpen(false),
+                )
+              }
+            >
+              {pending ? 'Deleting…' : 'Delete version'}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+            <ActionMessage result={result} />
+          </div>
         </Modal>
       )}
     </>

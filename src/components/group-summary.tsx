@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { GroupTrendChart } from '@/components/charts';
 import { LinkButton } from '@/components/controls';
-import { EditApkVersionButton } from '@/components/new-apk-version';
+import { DeleteApkVersionButton, EditApkVersionButton } from '@/components/new-apk-version';
 import { Sheet } from '@/components/sheet';
 import { Card, ToneChip } from '@/components/ui';
 import { groupRollup, groupTrend, type GroupableItem } from '@/lib/groups';
@@ -9,7 +9,7 @@ import { formatDate, normalizeDate } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 
 /** "By APK version"-style summary table plus a stacked bar per group. Renders nothing for work types without a groupSummary. */
-export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref, only, itemsHref }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string }; /** Makes each group name a link (e.g. to the item list filtered to it). */ groupHref?: (group: string) => string; /** Render just the chart (or just the table). */ only?: 'chart' | 'table'; /** Chart columns open the item list filtered to a group. */ itemsHref?: string }) {
+export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref, only, itemsHref }: { mod: WorkTypeDefinition; items: GroupableItem[]; tz: string; title?: string; versionEdit?: { workTypeId: string; canDelete?: boolean }; /** Makes each group name a link (e.g. to the item list filtered to it). */ groupHref?: (group: string) => string; /** Render just the chart (or just the table). */ only?: 'chart' | 'table'; /** Chart columns open the item list filtered to a group. */ itemsHref?: string }) {
   const summary = mod.groupSummary;
   if (!summary) return null;
   const rows = groupRollup(mod, items);
@@ -65,7 +65,10 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref
                   )}
                   {versionEdit && (
                     <td className="pin-end">
-                      <EditApkVersionButton key={r.group} workTypeId={versionEdit.workTypeId} version={r.group} {...metaOf(r.group)} />
+                      <span className="inline-flex items-center gap-1">
+                        <EditApkVersionButton key={r.group} workTypeId={versionEdit.workTypeId} version={r.group} {...metaOf(r.group)} />
+                        {versionEdit.canDelete && <DeleteApkVersionButton workTypeId={versionEdit.workTypeId} version={r.group} count={r.count} />}
+                      </span>
                     </td>
                   )}
                 </tr>

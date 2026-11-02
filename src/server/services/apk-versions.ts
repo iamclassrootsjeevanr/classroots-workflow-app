@@ -1,9 +1,11 @@
 import { requireModule } from '@/modules/registry';
 import { checkVersionMeta, KEY_SEP, planVersionTests, type SourceTest, type VersionInput } from '@/lib/apk-versions';
-import { hasCap } from '@/lib/workflow';
+import { canDeleteItem, canUndoDelete, hasCap, UNDO_DELETE_MINUTES } from '@/lib/workflow';
+import { undoDeadline } from '@/lib/notifications-core';
 import { db } from '../db';
 import { ForbiddenError, PausedError } from '../errors';
 import { createItemTx, internals, type ChangeActor } from './work-items';
+import { notify } from './notifications';
 
 const MODULE = 'apk-testing';
 
@@ -68,5 +70,63 @@ export async function updateApkVersion(actor: ChangeActor, workTypeId: string, v
       await internals.updateFieldsTx(tx, item, { ...actor, ctx: null }, patch, now);
     }
     return { count: rows.length };
+  });
+}
+
+/**
+ * Delete (deactivate) an APK version: all its tests are archived together, so they leave every list, chart and report.
+ * History stays in the database and the actor can undo for 30 minutes from the Inbox.
+ */
+export async function deleteApkVersion(actor: ChangeActor, workTypeId: string, version: string) {
+  if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t delete APK versions here.');
+  return db.$transaction(async tx => {
+    const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
+    if (wt.key !== MODULE) throw new Error('Versions are only for APK Testing.');
+    if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
+    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: null }, select: { id: true } });
+    if (!rows.length) throw new Error(`APK version ${version} has no tests to delete.`);
+    const ids = rows.map(r => r.id);
+    const now = new Date();
+    await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: now, version: { increment: 1 } } });
+    await tx.syncOutbox.deleteMany({ where: { itemId: { in: ids }, status: 'PENDING' } });
+    await tx.workItemEvent.createMany({
+      data: ids.map(itemId => ({ itemId, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: `Deleted with APK version ${version}`, at: now })),
+    });
+    if (actor.userId && actor.source === 'APP') {
+      await notify(tx, actor.userId, {
+        kind: 'version.deleted',
+        title: `Deleted APK version ${version}`,
+        body: `${ids.length} tests removed`,
+        href: `/w/${wt.key}/versions`,
+        data: { workTypeId, version, deletedAt: now.toISOString(), undoUntil: undoDeadline(now).toISOString() },
+      });
+    }
+    return { count: ids.length, deletedAt: now.toISOString() };
+  });
+}
+
+/** Undo deleteApkVersion within 30 minutes: only the tests removed by that delete come back. */
+export async function restoreApkVersion(actor: ChangeActor, workTypeId: string, version: string, deletedAtIso: string) {
+  if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t restore APK versions here.');
+  const deletedAt = new Date(deletedAtIso);
+  if (Number.isNaN(deletedAt.getTime())) throw new Error('Unknown delete.');
+  if (!canUndoDelete(deletedAt)) throw new Error(`Undo is only possible for ${UNDO_DELETE_MINUTES} minutes after deleting.`);
+  return db.$transaction(async tx => {
+    const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
+    if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
+    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: deletedAt }, select: { id: true } });
+    const ids = rows.map(r => r.id);
+    const now = new Date();
+    if (ids.length) {
+      await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null, version: { increment: 1 } } });
+      await tx.workItemEvent.createMany({
+        data: ids.map(itemId => ({ itemId, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: deletedAt.toISOString(), toValue: null, source: actor.source, note: `Restored with APK version ${version}`, at: now })),
+      });
+    }
+    await tx.notification.updateMany({
+      where: { kind: 'version.deleted', data: { path: ['deletedAt'], equals: deletedAtIso } },
+      data: { kind: 'version.restored', title: `Restored APK version ${version}`, readAt: now },
+    });
+    return { count: ids.length };
   });
 }

@@ -62,6 +62,8 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
 - Inbox: Notification model (migration 20261102180000), `notify()`, sidebar Inbox popover + /inbox page, delete toast 5 s then Undo in Inbox for 30 min,
   assignment/feedback notices; account is one box (name + My account). 92 tests.
 - Roles per work type: migration 20261102210000, module `roles`/`rolesForModule`, `ensureModuleRoles`, Roles page tabs per work type, user form filters roles by work type, APK Test Lead role. 99 tests.
+- Delete APK version: `deleteApkVersion`/`restoreApkVersion` (archive all tests together, Inbox 'version.deleted' with Undo); bin button in version table.
+  Removed the user's test version v_2026-11-02 (archived).
 
 ## In progress
 Nothing mid-edit. Code is not broken.
