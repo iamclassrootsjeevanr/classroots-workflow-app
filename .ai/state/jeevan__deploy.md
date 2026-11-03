@@ -11,7 +11,8 @@ email for invites / forgot password, and real people. Follow `docs/DEPLOY.md` st
 - All go-live work merged: PR #6 → development (squash 64df768), PR #7 development → staging (merge). Production build passes.
 - PR #8 "Release to production" (staging → main) open, checks green, waits for Jeevan (1 approval / admin merge).
 - Local DB: 18 APK versions (17 tested + 2.0.1.14_2026-11-02, 20 tests Not Tested, Jeevan); emails Jeevan →
-  jeevan@classrootsedu.com, Swathi → swathi@classrootsedu.com, Demo Admin → etp4.creates@gmail.com (admin).
+  jeevan@classrootsedu.com, Swathi → swathi@classrootsedu.com, Demo Admin → etp4.creates@gmail.com (admin). Admins: Jeevan + Kishor (kishor@classrootsedu.com, new) too;
+  ADMIN_EMAILS (local .env + Railway) = jeevan@classrootsedu.com,kishor@classrootsedu.com.
 - `docs/DEPLOY.md`: the one ordered checklist (this branch, not yet in development).
 
 ## In progress
@@ -23,7 +24,7 @@ Nothing mid-edit. jeevan/go-live is merged (its state file is history).
 3. `npm run db:copy -- --to <DATABASE_PUBLIC_URL>`; sign in as etp4.creates@gmail.com, change the demo password.
 4. Google OAuth client (Internal) with the Railway address → AUTH_GOOGLE_ID/SECRET.
 5. Gmail app password → EMAIL_SERVER/EMAIL_FROM; test Forgot password.
-6. People: Jeevan admin?, deactivate @demo accounts, add/invite real people.
+6. People: deactivate @demo accounts, add/invite real people.
 7. Open a PR jeevan/deploy → development for docs/DEPLOY.md (and any fixes found while deploying).
 8. Next build: app → sheet only sync for APK; later Journey from the real tracker.
 

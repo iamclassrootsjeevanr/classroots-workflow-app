@@ -25,7 +25,7 @@ On GitHub open pull request **#8 "Release to production"** → **Merge pull requ
    DATABASE_URL=${{Postgres.DATABASE_URL}}?connection_limit=10&pool_timeout=20
    AUTH_SECRET=<output of step 5>
    AUTH_URL=<app address from step 4>
-   ADMIN_EMAILS=jeevan@classrootsedu.com
+   ADMIN_EMAILS=jeevan@classrootsedu.com,kishor@classrootsedu.com
    OFFICE_DOMAINS=classrootsedu.com
    APP_TIMEZONE=Asia/Kolkata
    ```
@@ -77,11 +77,11 @@ Signed in to the browser with your `@classrootsedu.com` Google account:
 
 Signed in as admin → **People & access**:
 
-1. **Jeevan** → **Edit access** → switch on **Admin** if Jeevan should manage everything → **Save changes**.
+1. Admins already in the copied data: **Jeevan** (`jeevan@classrootsedu.com`) and **Kishor** (`kishor@classrootsedu.com`), both with Google, plus `etp4.creates@gmail.com` and `etp2.creates@gmail.com`. More admins: their name → **Edit access** → **Admin** → **Save changes**.
 2. **Deactivate** every remaining `@demo.classroots.local` account (Demo Client, Coordinator, Lead, Viewer). Their history stays.
 3. Real office people (`@classrootsedu.com`): **+ Add user** → name, email → APK Testing role → keep **Email them an invite now** → **Add user**. If they are already in the list without an email (from the sheet), use **"Already in the system from the sheet?"** to pick them so their past work links up.
 4. Others (Gmail etc.): **+ Add user** → name, email → **Generate** password → role → keep **Email them an invite now** → **Add user**. The email contains their password.
-5. Swathi (`swathi@classrootsedu.com`) and Jeevan already have office emails: press **Send invite** next to them.
+5. Swathi, Jeevan and Kishor already have office emails: press **Send invite** next to them.
 
 ## Step 7 — Optional: daily workload history
 
