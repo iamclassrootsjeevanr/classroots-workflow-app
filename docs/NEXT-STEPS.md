@@ -6,9 +6,19 @@ Written at the end of the redesign + APK database session. Do them top to bottom
 
 The redesign, work type pages, roles per work type, inbox, APK database tables and Railway files are in `main` (squashed commit `4abce15`, PR #5). The old branches `jeevan/ui-redesign` and `jeevan/apk-database` are deleted on GitHub and on this machine.
 
-Start any new work from `main` on a new branch: `git checkout main && git pull && git checkout -b <your-name>/<topic>`. The next topic is `jeevan/go-live` (steps 2 to 6 below); its state file is `.ai/state/jeevan__go-live.md`.
+### Branches (since 3 Nov 2026)
 
-Note: `main` requires one approval on pull requests. PR #5 was merged with admin rights. For later PRs ask a teammate to approve, or use `gh pr merge <number> --squash --admin` as the owner.
+| Branch | Is | Gets code from |
+| --- | --- | --- |
+| `development` | default branch, daily integration | your feature branch (PR, **Squash and merge**) |
+| `staging` | Railway **staging** | `development` only (PR "Release to staging", **Create a merge commit**) |
+| `main` | Railway **production** | `staging` only (PR "Release to production", **Create a merge commit**, 1 approval) |
+
+Start new work: `git checkout development && git pull && git checkout -b <your-name>/<topic>`. Open the pull request into `development`.
+
+Release: `gh pr create --base staging --head development --title "Release to staging"`, test the staging site, then `gh pr create --base main --head staging --title "Release to production"`.
+
+GitHub enforces this: CI (`checks`) must pass, `branch-flow` blocks wrong source branches, no force-push or delete. `main` needs one approval; as the owner you can merge anyway with `gh pr merge <number> --merge --admin`. Details: README "Branches and environments".
 
 ## 2. Make the APK tracker a Google Sheet the script can use
 
@@ -60,7 +70,8 @@ If you see an error:
 
 Full steps with variable names are in the README under **Deploy → Railway**. Short version:
 
-1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin.
+1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin. App service → Settings → Source → branch **`main`** (this is **production**).
+   Then Environments → New environment → **Duplicate production** → name `staging` → in it set the app's branch to **`staging`**. Staging gets its own database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for both environments. Test on staging first; production only gets what was merged `staging → main`.
 2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
@@ -179,7 +190,7 @@ Office staff use Google, so they never reset a password here.
 ## 9. How to resume in a new session or another tool
 
 ```bash
-git checkout main && git pull           # or: git checkout jeevan/go-live
+git checkout development && git pull    # or: git checkout jeevan/go-live
 npm install
 npm run db:start                        # terminal 1: local database
 npm run db:deploy && npm run db:seed    # once: migrations, roles, work types

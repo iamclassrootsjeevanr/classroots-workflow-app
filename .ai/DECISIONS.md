@@ -71,3 +71,8 @@ Decision: adding a person emails them by default (`notify`): office → Google s
 Why: Jeevan's flow; outsiders must recover without the admin. Rejected: storing plaintext passwords, new tables (VerificationToken already exists).
 By: cursor
 
+## 2026-11-03 — Branches: development → staging → main (production)
+Decision: `development` is the default branch (feature PRs, squash). `staging` deploys Railway staging (own DB, own AUTH_URL/AUTH_SECRET), `main` deploys production. Promotion only by merge-commit PRs development → staging → main; `hotfix/*` → main then back-merge main → staging/development. GitHub rulesets "Development" / "Staging" / "Production (main)": no delete/force-push, PR only, required checks `checks` (.github/workflows/ci.yml) and `branch-flow` (.github/workflows/branch-flow.yml, staging/main only); main needs 1 approval; admins may bypass in a PR. `.ai/config.json` protects `development` too.
+Why: Jeevan wants separate development, staging and production. Merge commits (not squash) for promotions keep the three histories identical so releases never conflict.
+By: cursor
+

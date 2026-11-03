@@ -6,3 +6,4 @@
 - 2026-11-03T06:19Z | cursor | Sign-in setup: invites, shared mailer, Google account picker, setup warnings, step-by-step docs
 - 2026-11-03T06:56Z | cursor | Sign-in: admin-added only; Google for office domain, admin-set passwords for others; remove email link; simple setup steps
 - 2026-11-03T07:06Z | cursor | Invite email on add (office: Google, others: generated password), forgot/reset password by email link, docs
+- 2026-11-03T07:18Z | cursor | Branches: development (default) → staging → main; rulesets, CI and branch-flow workflows; docs

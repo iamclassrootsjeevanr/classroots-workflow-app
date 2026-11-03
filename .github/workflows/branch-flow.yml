@@ -1,0 +1,26 @@
+name: Branch flow
+
+# Code moves feature → development → staging → main. Only these pull requests may target staging and main:
+#   staging ← development, main (back-merge after a hotfix), hotfix/*
+#   main    ← staging, hotfix/*
+on:
+  pull_request:
+    branches: [staging, main]
+
+jobs:
+  branch-flow:
+    name: branch-flow
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source branch
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+        run: |
+          case "$BASE:$HEAD" in
+            staging:development|staging:main|staging:hotfix/*|main:staging|main:hotfix/*)
+              echo "OK: $HEAD → $BASE" ;;
+            *)
+              echo "::error::$HEAD can't merge into $BASE. Flow: feature → development → staging → main (urgent fixes: hotfix/* → main, then main → staging and development)."
+              exit 1 ;;
+          esac

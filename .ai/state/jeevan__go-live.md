@@ -9,7 +9,7 @@ app → sheet sync for the APK tracker, deploy on Railway, real people with role
 
 ## What exists (main + this branch, tsc clean, 119 tests)
 - All feature work from PR #5 (UI, work type pages, roles per work type, inbox, APK on tables, Railway files).
-- This branch (PR #6, needs one approval): theme fix after sign-in (`ThemeWatcher` gets `theme` prop), tile labels wrap,
+- This branch (PR #6 → development): theme fix after sign-in (`ThemeWatcher` gets `theme` prop), tile labels wrap,
   "Journey Applets" → "Journey" (migration 20261103120000_rename_journey), sign-in/invite work below, docs.
 
 ## Done this stretch (cursor) — sign-in model Jeevan asked for
@@ -29,6 +29,9 @@ app → sheet sync for the APK tracker, deploy on Railway, real people with role
   VerificationToken). Sign-in page has "Forgot password?" + "Password changed" note. Tested end to end locally (token → new password works,
   old fails, link used up). 119 tests.
 
+- Branches: created `development` (now GitHub default) and `staging` from main 4abce15; rulesets + CI (`checks`) + `branch-flow`
+  workflows; PR #6 retargeted to `development`. Docs: README "Branches and environments", NEXT-STEPS § 1/§ 5, AGENTS.md.
+
 ## In progress
 Nothing mid-edit.
 
@@ -43,7 +46,7 @@ Nothing mid-edit.
 5. Later, only when Jeevan asks: build the Journey work type from the real Journey tracker.
 
 ## Blockers / open questions
-- Needs Jeevan: Google Cloud + Workspace admin, a mailbox app password (or Resend), Railway account, approval of PR #6.
+- Needs Jeevan: Google Cloud + Workspace admin, a mailbox app password (or Resend), Railway account. PR #6 → development can be squash-merged once CI is green, then release development → staging → main.
 - Unverified: real Google sign-in, real SMTP send, live sheet sync, Railway deploy.
 
 ## Key files

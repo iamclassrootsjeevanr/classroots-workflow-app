@@ -33,11 +33,12 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 12. [Add a new kind of work](#add-a-new-kind-of-work)
 13. [Database and migrations](#database-and-migrations)
 14. [Tests and checks](#tests-and-checks)
-15. [Deploy](#deploy)
-16. [Scripts reference](#scripts-reference)
-17. [Troubleshooting](#troubleshooting)
-18. [Working with AI coding tools](#working-with-ai-coding-tools)
-19. [Contributing](#contributing)
+15. [Branches and environments](#branches-and-environments)
+16. [Deploy](#deploy)
+17. [Scripts reference](#scripts-reference)
+18. [Troubleshooting](#troubleshooting)
+19. [Working with AI coding tools](#working-with-ai-coding-tools)
+20. [Contributing](#contributing)
 
 ---
 
@@ -546,6 +547,41 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 
 ---
 
+## Branches and environments
+
+| Branch | Environment | Who merges into it | How |
+| --- | --- | --- | --- |
+| `<your-name>/<topic>` | your machine | you, every day | push freely; AI handoffs checkpoint here |
+| `development` (default branch) | local / optional Railway "development" | feature branches | pull request, **Squash and merge**, CI must pass |
+| `staging` | Railway **staging** (its own database) | only `development` | pull request "Release to staging", **Create a merge commit**, CI + branch-flow must pass |
+| `main` | Railway **production** | only `staging` | pull request "Release to production", **Create a merge commit**, 1 approval, CI + branch-flow must pass |
+
+**Daily flow**
+
+```bash
+git checkout development && git pull
+git checkout -b jeevan/<topic>            # work, commit, push
+gh pr create --base development           # squash-merge when CI is green
+```
+
+**Release** (when development is ready to test, then to ship):
+
+```bash
+gh pr create --base staging --head development --title "Release to staging"
+# test on the staging URL, then
+gh pr create --base main --head staging --title "Release to production"
+```
+
+Use **Create a merge commit** for these two (the rulesets allow nothing else), so the three branches keep the same history and the next release has no conflicts.
+
+**Urgent fix in production:** branch `hotfix/<topic>` from `main`, pull request into `main`, then open pull requests `main → staging` and `main → development` so the fix is not lost.
+
+**Enforced on GitHub** (Settings → Rules → Rulesets): no deleting or force-pushing `development`, `staging` or `main`; changes only by pull request; required checks `checks` (`.github/workflows/ci.yml`: install, `prisma generate`, typecheck, tests) and, for `staging` and `main`, `branch-flow` (`.github/workflows/branch-flow.yml`: rejects any other source branch). Repository admins can bypass in a pull request when needed.
+
+**Railway:** one project with two environments, each with its own Postgres and variables. Production deploys from `main`, staging from `staging` (see [Railway](#railway-app--postgres)).
+
+---
+
 ## Deploy
 
 > **What to do next, step by step** (merge, Google Sheet tabs, Apps Script, Railway, going live): see [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
@@ -573,7 +609,8 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 
 The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
 
-1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project.
+1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project. In the app service → Settings → Source, set the branch to **`main`**: this environment is **production**.
+   Then **Environments → New environment → Duplicate `production`** and name it `staging`. In `staging`, set the app's branch to **`staging`**; it gets its own Postgres and its own variables (its own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings). Add the staging URL to the Google OAuth client too. Every merge into `staging` or `main` deploys that environment by itself.
 2. In the app service → Variables, set:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
    - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).
@@ -672,7 +709,7 @@ A `/` in the branch name becomes `__` in the file name: branch `jeevan/ui-redesi
 
 ## Contributing
 
-1. **Branch** from `main`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `main`).
+1. **Branch** from `development`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `development`, `staging` and `main`). Pull requests go into `development`; releases move `development → staging → main` (see [Branches and environments](#branches-and-environments)).
 2. **Keep the layers:**
    - business rules go in `src/lib/` (pure and tested)
    - database access goes in `src/server/`
