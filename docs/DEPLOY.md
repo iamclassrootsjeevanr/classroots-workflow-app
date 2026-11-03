@@ -6,6 +6,10 @@ About 1 hour. Keep this page open and tick each step.
 Already done for you: the code is merged into `development` and `staging` (PRs #6, #7), the production build passes, and the
 release pull request **#8 (staging → main)** is open with all checks green.
 
+**Who does what:** Jeevan does step 1 (GitHub). **Kishor** (`kishor@classrootsedu.com`, Google Workspace and Railway admin) can do steps 2, 4 and 5. For step 2 Railway must see the GitHub repo, so first either
+Jeevan adds Kishor on GitHub (repo → **Settings → Collaborators → Add people**), or Jeevan creates the Railway project and invites Kishor (Railway → project → **Settings → Members**).
+Step 3 runs on Jeevan's Mac (the local database is there). Both Jeevan and Kishor are admins in the app.
+
 ---
 
 ## Step 1 — Put the code on `main` (2 min)
@@ -86,9 +90,11 @@ Signed in as admin → **People & access**:
 ## Step 7 — Optional: daily workload history
 
 The workload chart fills from a job. Railway → **+ Create** → **Empty Service** → **Settings** → **Source: Docker Image** `curlimages/curl` → **Cron Schedule** `0 * * * *` → **Custom Start Command**:
+
 ```
 curl -fsS -H "Authorization: Bearer <CRON_SECRET>" <app address>/api/cron/run
 ```
+
 and add `CRON_SECRET=<another openssl rand -base64 32>` to the **app's** Variables (same value in the command).
 
 ---
