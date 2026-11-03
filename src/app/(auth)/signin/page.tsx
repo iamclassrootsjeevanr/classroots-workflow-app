@@ -1,4 +1,5 @@
 import { AuthError } from 'next-auth';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PasswordField } from '@/components/password-field';
 import { signIn } from '@/server/auth';
@@ -8,7 +9,7 @@ import { currentUser } from '@/server/rbac';
 export const metadata = { title: 'Sign in' };
 
 const ERRORS: Record<string, string> = {
-  CredentialsSignin: 'Email or password is incorrect. Forgot your password? Ask your admin to set a new one.',
+  CredentialsSignin: 'Email or password is incorrect. Forgot it? Use “Forgot password?” below.',
   GoogleNotConfigured: 'Google sign-in isn’t set up on this server yet. Ask your admin.',
   GoogleOfficeOnly: 'Google sign-in is only for office accounts. Sign in with your email and the password your admin gave you.',
   NotInvited: 'This account has not been added yet. Ask an admin to add you.',
@@ -40,9 +41,9 @@ function GoogleIcon() {
   );
 }
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string }> }) {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string; reset?: string }> }) {
   if (await currentUser()) redirect('/');
-  const { error, callbackUrl, email: invitedEmail } = await searchParams;
+  const { error, callbackUrl, email: invitedEmail, reset } = await searchParams;
   const emailValue = invitedEmail?.includes('@') ? invitedEmail.trim().toLowerCase() : undefined;
   const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/';
   const office = env().OFFICE_DOMAINS;
@@ -59,6 +60,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         <div className="rounded-2xl border border-line bg-surface px-5 py-6 shadow-[var(--shadow-card)] sm:px-8 sm:py-7">
           <p className="mb-6 text-center text-md text-muted">Sign in to your account</p>
           {error && <p className="note-bad mb-5">{ERRORS[error] ?? 'Sign-in failed. Try again.'}</p>}
+          {reset && !error && <p className="note-ok mb-5">Password changed. Sign in with your new password.</p>}
 
           {/* Office staff: Google sign-in (the admin must have added them) */}
           <section>
@@ -110,17 +112,22 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 <input className="input py-2.5" id="email" name="email" type="email" required autoComplete="username" defaultValue={emailValue} />
               </div>
               <PasswordField id="password" name="password" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 rounded accent-brand" />
-                Remember me
-              </label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 rounded accent-brand" />
+                  Remember me
+                </label>
+                <Link href={emailValue ? `/forgot-password?email=${encodeURIComponent(emailValue)}` : '/forgot-password'} className="link text-sm">
+                  Forgot password?
+                </Link>
+              </div>
               <button className="btn-primary w-full py-2.5" type="submit">
                 Sign in
               </button>
             </form>
           </section>
         </div>
-        <p className="mt-4 text-center text-xs text-muted">Only people an admin has added can sign in. Forgot your password? Ask your admin.</p>
+        <p className="mt-4 text-center text-xs text-muted">Only people an admin has added can sign in.</p>
       </div>
     </main>
   );

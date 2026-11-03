@@ -65,3 +65,9 @@ By: cursor
 Decision: invite-only (existing active user or `ADMIN_EMAILS`); no self sign-up (`ALLOWED_DOMAINS` removed) and no email magic link (provider and /signin/check-email removed). `OFFICE_DOMAINS=classrootsedu.com`: these sign in with Google (OAuth client, Internal consent screen); Google is refused for other domains. Everyone else signs in with email + a password the admin sets (Generate + Copy login details in the user form); saving a non-office person without a password is refused (`missingPasswordProblem`). Optional `EMAIL_SERVER` only powers **Send invite** (never contains a password). APK sheet sync will be app → sheet only (to build).
 Why: Jeevan's model: admin controls who gets in; office staff have Workspace accounts, outsiders don't; magic links confused users. Rejected: domain auto sign-up, emailing passwords.
 By: cursor
+
+## 2026-11-03 — Invite on add (with the generated password) and self-service forgot password
+Decision: adding a person emails them by default (`notify`): office → Google steps; others → email + the password the admin just generated (Jeevan wants the password sent). Re-sending later (Send invite) gives password users a 72 h set-password link instead (old password unknown). Forgot password: /forgot-password → 1 h one-time link → /reset-password; tokens hashed (SHA-256) in VerificationToken as `pwreset:<reset|invite>:<email>`, new link replaces old, max one per 2 min, response never reveals whether the email exists; office (Google) users get no link. Needs EMAIL_SERVER in production.
+Why: Jeevan's flow; outsiders must recover without the admin. Rejected: storing plaintext passwords, new tables (VerificationToken already exists).
+By: cursor
+

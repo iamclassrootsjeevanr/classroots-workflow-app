@@ -7,7 +7,7 @@ Updated: 2026-11-03T06:40:00Z · by: cursor · owner: Jeevan
 Take Classroots Work live for APK Testing: sign-in for the Google organisation (classrootsedu.com) and for normal email users,
 app → sheet sync for the APK tracker, deploy on Railway, real people with roles. Journey is NOT built now (only renamed).
 
-## What exists (main + this branch, tsc clean, 117 tests)
+## What exists (main + this branch, tsc clean, 119 tests)
 - All feature work from PR #5 (UI, work type pages, roles per work type, inbox, APK on tables, Railway files).
 - This branch (PR #6, needs one approval): theme fix after sign-in (`ThemeWatcher` gets `theme` prop), tile labels wrap,
   "Journey Applets" → "Journey" (migration 20261103120000_rename_journey), sign-in/invite work below, docs.
@@ -23,12 +23,18 @@ app → sheet sync for the APK tracker, deploy on Railway, real people with role
 - Docs: `docs/NEXT-STEPS.md` § 7 rewritten as simple click-by-click steps + checklist; README, .env.example, AGENTS.md.
 - Local `.env` now has OFFICE_DOMAINS=classrootsedu.com. Browser-checked Add user (Gmail → password + Generate) and sign-in page.
 
+- Invite on add: user form step 4 "Email them an invite now" (default on) → `sendAccessEmail` (`src/server/invites.ts`): office → Google
+  steps; others → email + generated password. Edit + new password → "Email them the new password". Send invite → set-password link (72 h).
+- Forgot password: `/forgot-password` → 1 h one-time link → `/reset-password` (`src/server/password-reset.ts`, hashed tokens in
+  VerificationToken). Sign-in page has "Forgot password?" + "Password changed" note. Tested end to end locally (token → new password works,
+  old fails, link used up). 119 tests.
+
 ## In progress
 Nothing mid-edit.
 
 ## Next steps
 1. Jeevan: NEXT-STEPS § 7 steps 1–2 (OFFICE_DOMAINS, ADMIN_EMAILS, Google OAuth client → AUTH_GOOGLE_ID/SECRET), test Google
-   sign-in with an @classrootsedu.com account; optional step 4 (Gmail app password → EMAIL_SERVER) for Send invite.
+   sign-in with an @classrootsedu.com account; step 3 (Gmail app password → EMAIL_SERVER) — needed for invites and Forgot password.
 2. Sheet sync is two-way today. Jeevan wants **app → sheet only** for APK (existing versions pushed too). Build a push-only mode
    (per work type sync config, skip pull/3-way diff) in `src/server/sync/google-sheet.ts` + Admin → Sheet sync toggle; then sheet steps § 2–4.
 3. Railway (README § Railway, NEXT-STEPS § 5): Postgres, variables (incl. sign-in ones), domain + `AUTH_URL`, cron, move data, `/api/health`.

@@ -96,6 +96,7 @@ export function UserAccessForm({
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [notify, setNotify] = useState(true);
   const [v, setV] = useState<UserInput>(() => ({
     ...initial,
     access: workTypes.map(wt => initial.access.find(a => a.workTypeId === wt.id) ?? emptyAccess(wt.id)),
@@ -106,6 +107,7 @@ export function UserAccessForm({
   };
   const setAccess = (workTypeId: string, patch: Partial<AccessRow>) =>
     setV(s => ({ ...s, access: s.access.map(a => (a.workTypeId === workTypeId ? { ...a, ...patch } : a)) }));
+  const usesGoogle = googleOn && Boolean(v.email) && isOfficeEmail(v.email, officeDomains);
   const roleById = useMemo(() => new Map(roles.map(r => [r.id, r])), [roles]);
   const rolesOf = (a: AccessRow) => a.roleIds.map(id => roleById.get(id)).filter((r): r is RoleOption => Boolean(r));
   const applyAccess = (access?: UserInput['access']) => {
@@ -114,10 +116,10 @@ export function UserAccessForm({
 
   const save = () =>
     start(async () => {
-      const google = googleOn && Boolean(v.email) && isOfficeEmail(v.email, officeDomains);
-      const r = await saveUserAction({ ...v, password: (!google && v.password) || undefined });
+      const password = (!usesGoogle && v.password) || undefined;
+      const r = await saveUserAction({ ...v, password, notify: notify && (isNew || Boolean(password)) });
       setResult(r);
-      if (r.ok && isNew && r.id) router.push(`/admin/users/${r.id}?added=1`);
+      if (r.ok && isNew && r.id) router.push(`/admin/users/${r.id}?added=1${r.invite ? `&invite=${r.invite}` : ''}`);
       else if (r.ok) router.refresh();
     });
 
@@ -175,7 +177,7 @@ export function UserAccessForm({
       <Section n={2} title="How they sign in" help={`Office emails${officeDomains.length ? ` (@${officeDomains.join(', @')})` : ''} sign in with Google. Everyone else signs in with their email and a password you give them.`}>
         {!v.email ? (
           <p className="text-sm text-muted">Add their email in step 1 so they can sign in.</p>
-        ) : googleOn && isOfficeEmail(v.email, officeDomains) ? (
+        ) : usesGoogle ? (
           <p className="text-sm">
             <b>Sign in with Google</b> using {v.email}. No password needed.
           </p>
@@ -200,7 +202,9 @@ export function UserAccessForm({
               </span>
             </label>
             <div className="self-end text-xs text-muted">
-              <p>{hasPassword ? 'A password is set. ' : ''}Send them their email and this password yourself (WhatsApp, call or email). They can change it under My account.</p>
+              <p>
+                {hasPassword ? 'A password is set. ' : ''}Step 4 can email it to them, or copy the login details and send them yourself. They can change it under My account, or with “Forgot password?” on the sign-in page.
+              </p>
               {v.password && (
                 <button
                   type="button"
@@ -322,6 +326,22 @@ export function UserAccessForm({
           <p className="text-sm text-warn">No work type ticked – they will be able to sign in but see “No access yet”.</p>
         )}
         {!v.email && <p className="mt-2 text-xs text-warn">No email: they can be assigned work but can’t sign in yet.</p>}
+        {v.email && v.active && (isNew || (!usesGoogle && v.password)) && (
+          <OptionList className="mt-4">
+            <Checkbox
+              checked={notify}
+              onChange={setNotify}
+              label={isNew ? 'Email them an invite now' : 'Email them the new password'}
+              help={
+                usesGoogle
+                  ? `${v.email} gets the app address and “Sign in with Google”.`
+                  : v.password
+                    ? `${v.email} gets the app address, their email and this password.`
+                    : `${v.email} gets the app address and a link to choose a password.`
+              }
+            />
+          </OptionList>
+        )}
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button className="btn-primary px-5 py-2" disabled={pending}>
             {pending ? 'Saving…' : isNew ? 'Add user' : 'Save changes'}

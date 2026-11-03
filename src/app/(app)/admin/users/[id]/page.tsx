@@ -16,10 +16,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: u ? `Edit ${u.name ?? u.email}` : 'Not found' };
 }
 
-export default async function EditUserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ added?: string }> }) {
+const INVITE_NOTE: Record<string, string> = {
+  sent: 'Invite emailed.',
+  log: 'Email is not set up on the server, so the invite was only printed in the server log. Send them their login details yourself.',
+  failed: 'The invite email could not be sent. Check EMAIL_SERVER, then press Send invite.',
+};
+
+export default async function EditUserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ added?: string; invite?: string }> }) {
   const admin = await requireAdmin();
   const { id } = await params;
-  const { added } = await searchParams;
+  const { added, invite } = await searchParams;
   const user = await db.user.findUnique({
     where: { id },
     include: { _count: { select: { assignedItems: true, ownedItems: true, events: true } }, accounts: { select: { provider: true } } },
@@ -42,8 +48,8 @@ export default async function EditUserPage({ params, searchParams }: { params: P
         actions={<PeopleActions userId={user.id} active={user.active} isSelf={user.id === admin.id} canInvite={user.active && Boolean(user.email)} afterRemove="/admin/users" />}
       />
       {added && (
-        <p className="note-ok mb-4">
-          Added. {user.email ? 'Press Send invite to email them how to sign in.' : 'Add their email so they can sign in.'}
+        <p className={`${invite === 'sent' || !invite ? 'note-ok' : 'note-warn'} mb-4`}>
+          Added. {invite ? INVITE_NOTE[invite] : user.email ? 'Press Send invite to email them how to sign in.' : 'Add their email so they can sign in.'}
         </p>
       )}
       <UserAccessForm {...data} isSelf={user.id === admin.id} key={`${user.updatedAt.getTime()}`} />

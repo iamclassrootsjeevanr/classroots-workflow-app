@@ -165,8 +165,8 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `ADMIN_EMAILS` | yes | Comma-separated emails that are always admins. |
 | `OFFICE_DOMAINS` | yes for Google | Comma-separated office email domains (e.g. `classrootsedu.com`). These people sign in with Google; everyone else with email + password. |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | no | Enables "Sign in with Google". |
-| `EMAIL_SERVER` | no | SMTP URL for **Send invite** emails. Empty means invites are printed in the server log. |
-| `EMAIL_FROM` | no | Sender for invite emails. |
+| `EMAIL_SERVER` | yes in prod | SMTP URL for invite and forgot-password emails. Empty means they are printed in the server log. |
+| `EMAIL_FROM` | no | Sender for invite and reset emails. |
 | `APP_TIMEZONE` | no | Team time zone for dates and business hours (default `Asia/Kolkata`). |
 | `APPS_SCRIPT_URL` | for sync | `/exec` URL of the deployed `apps-script/Code.gs`. |
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
@@ -363,9 +363,15 @@ Only people an admin added in **People & access** can sign in (plus `ADMIN_EMAIL
 | Who | Method | Notes |
 | --- | --- | --- |
 | Office staff (email domain in `OFFICE_DOMAINS`, e.g. `classrootsedu.com`) | **Sign in with Google** | Shown when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set. No password. Google sign-in is refused for other domains. |
-| Everyone else | **Email + password** | The admin sets the password when adding them (**Generate**, **Copy login details**) and shares it. They change it under **My account**. "Remember me" keeps the session 30 days, otherwise 12 hours. |
+| Everyone else | **Email + password** | The admin generates the password when adding them. "Remember me" keeps the session 30 days, otherwise 12 hours. |
 
-There is no email sign-in link. Forgotten password: the admin sets a new one (Edit access → How they sign in). Saving someone outside the office domains without a password is refused, because they could not sign in.
+**Invite on add.** Saving a new person with **Email them an invite now** ticked emails them the app address, their work types and roles, and how to sign in: Google for office emails, or their email and the password just generated. When an admin sets a new password later, **Email them the new password** does the same. **Send invite** (People list or person page) re-sends it; for password users it contains a link to choose a password instead (valid 72 hours), because the old password is not known.
+
+**Forgot password.** Sign-in page → **Forgot password?** → email → a one-time link valid for 1 hour (`/reset-password`) → new password. The answer never reveals whether an email exists, a link is sent at most every 2 minutes per email, and links are stored hashed in `VerificationToken` (`src/server/password-reset.ts`). Office staff use Google and get no link.
+
+Saving someone outside the office domains without a password is refused, because they could not sign in.
+
+Email (invites and reset links) needs `EMAIL_SERVER` (SMTP URL, e.g. `smtps://you%40yourdomain.com:<app password>@smtp.gmail.com:465`) and `EMAIL_FROM`; without it mails are printed in the server log. Mail goes through `src/server/mail.ts`; wording and rules in `src/lib/invite.ts` (tested).
 
 **First admin on a fresh server:** put your office email in `ADMIN_EMAILS` and use Google, or set a password from the terminal:
 
@@ -380,10 +386,6 @@ npm run user:password -- you@company.com
 3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`, set `OFFICE_DOMAINS`, restart. Google always shows the account picker.
 
 Click-by-click: `docs/NEXT-STEPS.md` § 7.
-
-### Invites (optional email)
-
-**People & access → Send invite** emails a person the app address, their work types and roles, and how to sign in (Google for office emails, otherwise "email + the password your admin gives you"). Passwords are never emailed. It needs `EMAIL_SERVER` (SMTP URL, e.g. `smtps://you%40yourdomain.com:<app password>@smtp.gmail.com:465`) and `EMAIL_FROM`; without it the invite is printed in the server log. Mail goes through `src/server/mail.ts`; rules and wording in `src/lib/invite.ts` (tested).
 
 ---
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generatePassword, inviteEmail, loginDetailsText, missingPasswordProblem, signInMethod, signInUrl } from '@/lib/invite';
+import { generatePassword, inviteEmail, loginDetailsText, missingPasswordProblem, resetEmail, resetPasswordUrl, signInMethod, signInUrl } from '@/lib/invite';
 import { passwordProblem } from '@/lib/password';
 
 const office = ['classrootsedu.com'];
@@ -46,8 +46,24 @@ describe('invite and login details', () => {
     expect(m.text).toContain('APK Testing (Tester)');
     expect(m.text).toContain('Sign in with Google');
   });
-  it('never puts a password in the invite email', () => {
-    expect(inviteEmail({ ...invite, method: 'password' }).text).toContain('the password Jeevan gives you');
+  it('gives a password user the temporary password the admin just set', () => {
+    const m = inviteEmail({ ...invite, email: 'client@gmail.com', method: 'password', password: 'Temp12345abc' });
+    expect(m.text).toContain('Email: client@gmail.com');
+    expect(m.text).toContain('Password: Temp12345abc');
+    expect(m.text).toContain('Forgot password?');
+  });
+  it('gives a set-password link when no new password was set, and never a password for Google users', () => {
+    const link = inviteEmail({ ...invite, email: 'client@gmail.com', method: 'password', setPasswordUrl: 'https://w/reset-password?token=t' });
+    expect(link.text).toContain('https://w/reset-password?token=t');
+    expect(link.text).not.toContain('Password:');
+    expect(inviteEmail({ ...invite, method: 'google', password: 'ignored1234' }).text).not.toContain('ignored1234');
+  });
+  it('builds the reset email with a one-hour link', () => {
+    const url = resetPasswordUrl('https://work.example.com/', 'a/b+c');
+    expect(url).toBe('https://work.example.com/reset-password?token=a%2Fb%2Bc');
+    const m = resetEmail({ name: 'Asha', url });
+    expect(m.text).toContain(url);
+    expect(m.text).toContain('1 hour');
   });
   it('generates temporary passwords that pass the password rules', () => {
     for (let i = 0; i < 50; i++) {

@@ -87,7 +87,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <div className="note-warn mb-4 space-y-1 text-xs">
           {!office.length && <p>Office domain is not set: add OFFICE_DOMAINS (e.g. classrootsedu.com) on the server. Until then everyone signs in with email + password.</p>}
           {!googleEnabled() && <p>Google sign-in is not set up: add AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on the server. Until then office people can’t use Google; give them a password for now.</p>}
-          {!emailEnabled() && <p>Email sending is not set up (EMAIL_SERVER), so Send invite can’t email anyone. Tell people yourself: the app address, their email, and their password if they are not office staff.</p>}
+          {!emailEnabled() && <p>Email sending is not set up (EMAIL_SERVER): invites and “Forgot password?” links are only printed in the server log. Until then, use Copy login details and send people their details yourself.</p>}
         </div>
       )}
       <FilterBar

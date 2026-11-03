@@ -56,21 +56,56 @@ export type InviteInput = {
   method: SignInMethod;
   /** e.g. "APK Testing (Tester)" */
   access: string[];
+  /** Password users: the temporary password the admin just set (only known at that moment). */
+  password?: string;
+  /** Password users without a new password: a link to choose one (see password-reset). */
+  setPasswordUrl?: string;
 };
+
+const button = (url: string, label: string) =>
+  `<p><a href="${esc(url)}" style="display:inline-block;padding:10px 18px;background:#1976d2;color:#fff;border-radius:6px;text-decoration:none">${esc(label)}</a></p>`;
 
 export function inviteEmail(p: InviteInput): { subject: string; text: string; html: string } {
   const url = signInUrl(p.appUrl, p.email);
-  const how =
-    p.method === 'google'
-      ? `Press “Sign in with Google” and choose your ${p.email} account. No password is needed.`
-      : `Sign in with your email ${p.email} and the password ${p.invitedBy} gives you. You can change it under My account.`;
   const access = p.access.length ? ` for ${p.access.join(', ')}` : '';
   const hello = p.name ? `Hi ${p.name},` : 'Hi,';
-  const text = `${hello}\n\n${p.invitedBy} gave you access to Classroots Work${access}.\n\nOpen: ${url}\n${how}\n`;
+  let steps: string[];
+  if (p.method === 'google') {
+    steps = [`Open ${url}`, `Press “Sign in with Google” and choose your ${p.email} account. No password is needed.`];
+  } else if (p.password) {
+    steps = [
+      `Open ${url}`,
+      `Under “Everyone else”, sign in with:\nEmail: ${p.email}\nPassword: ${p.password}`,
+      'Then choose your own password: your name (bottom left) → My account → Change password.',
+    ];
+  } else if (p.setPasswordUrl) {
+    steps = [`Choose your password here (the link works for ${RESET_LINK_HOURS.invite} hours): ${p.setPasswordUrl}`, `Then sign in at ${url} with ${p.email} and that password.`];
+  } else {
+    steps = [`Open ${url}`, `Sign in with ${p.email} and the password ${p.invitedBy} gives you.`];
+  }
+  const text = `${hello}\n\n${p.invitedBy} gave you access to Classroots Work${access}.\n\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nForgot your password later? Use “Forgot password?” on the sign-in page.\n`;
   const html =
     `<p>${esc(hello)}</p>` +
     `<p>${esc(p.invitedBy)} gave you access to <b>Classroots Work</b>${esc(access)}.</p>` +
-    `<p><a href="${esc(url)}" style="display:inline-block;padding:10px 18px;background:#1976d2;color:#fff;border-radius:6px;text-decoration:none">Open Classroots Work</a></p>` +
-    `<p>${esc(how)}</p>`;
+    (p.method !== 'google' && !p.password && p.setPasswordUrl ? button(p.setPasswordUrl, 'Choose your password') : button(url, 'Open Classroots Work')) +
+    `<ol>${steps.map(s => `<li style="margin-bottom:6px">${esc(s).replace(/\n/g, '<br>')}</li>`).join('')}</ol>` +
+    (p.method === 'google' ? '' : `<p style="color:#666;font-size:12px">Forgot your password later? Use “Forgot password?” on the sign-in page.</p>`);
   return { subject: 'You have access to Classroots Work', text, html };
+}
+
+/** How long emailed password links work, in hours. */
+export const RESET_LINK_HOURS = { reset: 1, invite: 72 } as const;
+
+export function resetPasswordUrl(appUrl: string, token: string) {
+  return `${appUrl.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+export function resetEmail(p: { name: string | null; url: string }): { subject: string; text: string; html: string } {
+  const hello = p.name ? `Hi ${p.name},` : 'Hi,';
+  const note = `This link works for ${RESET_LINK_HOURS.reset} hour and only once. If you did not ask for it, ignore this email: your password stays the same.`;
+  return {
+    subject: 'Reset your Classroots Work password',
+    text: `${hello}\n\nChoose a new password here:\n${p.url}\n\n${note}\n`,
+    html: `<p>${esc(hello)}</p><p>Choose a new password for <b>Classroots Work</b>:</p>${button(p.url, 'Choose a new password')}<p style="color:#666;font-size:12px">${esc(note)}</p>`,
+  };
 }
