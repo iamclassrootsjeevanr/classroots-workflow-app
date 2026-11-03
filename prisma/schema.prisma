@@ -80,6 +80,7 @@ model User {
   intervals     WorkItemStageInterval[]
   snapshots     WorkloadSnapshot[]
   createdItems  WorkItem[]         @relation("creator")
+  notifications Notification[]
 
   @@index([isAdmin, active])
 }
@@ -137,6 +138,9 @@ model WorkType {
   archivedAt  DateTime?
 
   members   WorkTypeMember[]
+  roles     AccessRole[]
+  apkVersions  ApkVersion[]
+  apkCases     ApkTestCase[]
   items     WorkItem[]
   syncState SyncState?
 }
@@ -144,7 +148,9 @@ model WorkType {
 /// Admin-managed role: a named set of capabilities, given to people per work type.
 model AccessRole {
   id              String   @id @default(cuid())
-  key             String   @unique
+  /// The work type whose flow this role belongs to. A work type has many roles; a role belongs to one work type.
+  workTypeId      String
+  key             String
   name            String
   description     String?
   color           String   @default("#1976d2")
@@ -171,6 +177,9 @@ model AccessRole {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   members         WorkTypeMemberRole[]
+  workType        WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([workTypeId, key])
 }
 
 /// A person's access to one work type = the roles they hold there. Data scope, edit right and pages come from the roles.
@@ -268,9 +277,13 @@ model WorkItem {
   intervals WorkItemStageInterval[]
   feedback  Feedback[]
   outbox    SyncOutbox[]
+  /// APK Testing only: which version and test case this row is a run of.
+  apkTest   ApkTest?
 
   @@unique([workTypeId, externalKey])
   @@index([workTypeId, status])
+  @@index([workTypeId, archivedAt, groupKey, sortOrder])
+  @@index([workTypeId, groupKey])
   @@index([assigneeId, status])
   @@index([ownerId])
   @@index([dueAt])
@@ -395,4 +408,86 @@ model SyncOutbox {
   item      WorkItem     @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+}
+
+// ─── Inbox ──────────────────────────────────────────────────────
+
+/// One message in a person's inbox. Anything in the app can notify someone (a deleted row with Undo, an assignment, feedback, …).
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  /// Dotted event name, e.g. item.deleted, item.restored, item.assigned, item.feedback. New kinds need no migration.
+  kind      String
+  title     String
+  body      String?
+  /// Where clicking the message goes.
+  href      String?
+  /// Kind-specific payload, e.g. { itemId, undoUntil } for item.deleted.
+  data      Json      @default("{}")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+// ─── APK Testing (relational) ───────────────────────────────────
+// A test run (WorkItem) = one APK version x one test case. Versions and case definitions live once, here, instead of being
+// copied into every row's JSON. Workflow, events, timers and sheet sync still work on WorkItem.
+
+/// One APK build. Shared by all its test runs.
+model ApkVersion {
+  id          String    @id @default(cuid())
+  workTypeId  String
+  /// Version name, e.g. 2.0.1.14_2026-10-27
+  key         String
+  releaseDate DateTime? @db.Date
+  link        String?
+  notes       String?
+  /// Set when the whole version is deleted (its runs are archived with it).
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workType WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  tests    ApkTest[]
+
+  @@unique([workTypeId, key])
+  @@index([workTypeId, releaseDate])
+}
+
+/// One test case definition (the "Test Cases" tab). Shared by every version that runs it.
+model ApkTestCase {
+  id              String    @id @default(cuid())
+  workTypeId      String
+  /// Test case id, e.g. TC_001
+  code            String
+  /// Feature / module
+  title           String
+  scenario        String?
+  expected        String?
+  steps           String?
+  defaultPriority String?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workType WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  tests    ApkTest[]
+
+  @@unique([workTypeId, code])
+}
+
+/// Links a WorkItem (the run, with its status, tester, bug, remarks and time log) to its version and test case.
+model ApkTest {
+  itemId     String @id
+  versionId  String
+  testCaseId String
+
+  item     WorkItem    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  version  ApkVersion  @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  testCase ApkTestCase @relation(fields: [testCaseId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, testCaseId])
+  @@index([testCaseId])
 }

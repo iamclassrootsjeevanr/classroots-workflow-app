@@ -9,7 +9,7 @@ import { ActionMessage } from './controls';
 import { Checkbox, GroupLabel, OptionList, Switch } from './form';
 
 export type WorkTypeOption = { id: string; name: string; state: string };
-export type RoleOption = { id: string; name: string; description: string | null; color: string; capabilities: Capability[]; dataScope: DataScope; canEdit: boolean; pages: PageKey[] };
+export type RoleOption = { id: string; workTypeId: string; name: string; description: string | null; color: string; capabilities: Capability[]; dataScope: DataScope; canEdit: boolean; pages: PageKey[] };
 export type PersonChoice = { id: string; name: string; note?: string; access?: UserInput['access'] };
 type AccessRow = UserInput['access'][number];
 
@@ -209,7 +209,7 @@ export function UserAccessForm({
                     <div>
                       <GroupLabel note={`${a.roleIds.length} picked`}>Roles (one or more)</GroupLabel>
                       <OptionList>
-                        {roles.map(r => {
+                        {roles.filter(r => r.workTypeId === wt.id).map(r => {
                           const on = a.roleIds.includes(r.id);
                           return (
                             <Checkbox
@@ -240,7 +240,7 @@ export function UserAccessForm({
                       </OptionList>
                       <p className="mt-2 text-xs text-muted">
                         Change what a role brings under{' '}
-                        <Link href="/admin/roles" className="link">
+                        <Link href={`/admin/roles?wt=${wt.id}`} className="link">
                           Roles
                         </Link>
                         .

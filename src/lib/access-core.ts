@@ -7,11 +7,11 @@ export const CAPABILITIES = ['work', 'review', 'assign', 'create', 'manageFields
 export type Capability = (typeof CAPABILITIES)[number];
 
 export const CAPABILITY_LABELS: Record<Capability, { label: string; help: string }> = {
-  work: { label: 'Do the work', help: 'Can be assigned items, start them, submit and re-submit for review.' },
-  review: { label: 'Review', help: 'Can approve, request corrections and give feedback.' },
-  assign: { label: 'Assign people', help: 'Can assign or reassign who works on an item.' },
-  create: { label: 'Create items', help: 'Can add new items.' },
-  manageFields: { label: 'Edit owner fields', help: 'Can edit due dates and SME / owner details.' },
+  work: { label: 'Work on items', help: 'Pick up items assigned to them, start them and send them for review.' },
+  review: { label: 'Review items', help: 'Approve, send back for corrections and give feedback.' },
+  assign: { label: 'Assign people', help: 'Choose who works on each item.' },
+  create: { label: 'Add new items', help: 'Create new items in the list.' },
+  manageFields: { label: 'Edit item details', help: 'Change due dates, owner details and other item fields.' },
 };
 
 export const PAGES = ['dashboard', 'items', 'reports', 'export'] as const;

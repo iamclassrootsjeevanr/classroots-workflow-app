@@ -1,12 +1,17 @@
 'use client';
 
-import { ExternalLink } from 'lucide-react';
-import { useState, useTransition } from 'react';
+import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
+import { useEffect, useState, useTransition } from 'react';
+import { rememberDeletion } from './undo-toasts';
 import {
   assignAction,
   changeStatusAction,
+  deleteItemAction,
   commentAction,
   feedbackAction,
+  loadEditFieldsAction,
   resolveFeedbackAction,
   updateFieldsAction,
   type ActionResult,
@@ -47,6 +52,11 @@ export function StatusSelect({
   compact?: boolean;
 }) {
   const { pending, result, exec } = useAction();
+  // Show the chosen status at once; the server round trip finishes in the background.
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) setNext(null);
+  }, [pending]);
   const style = { '--status': current.color } as React.CSSProperties;
   if (!options.length) {
     return (
@@ -56,15 +66,16 @@ export function StatusSelect({
     );
   }
   return (
-    <div>
+    <div className="min-w-0">
       <select
         aria-label="Change status"
-        className={`status-control cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
+        className={`status-control max-w-full cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'} disabled:cursor-wait disabled:opacity-60`}
         style={style}
-        value={current.key}
+        value={next ?? current.key}
         disabled={pending}
         onChange={e => {
           const to = e.target.value;
+          setNext(to);
           exec(() => changeStatusAction(itemId, to, version));
         }}
       >
@@ -84,14 +95,21 @@ export type PersonOption = { id: string; name: string; hint?: string };
 
 export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean }) {
   const { pending, result, exec } = useAction();
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) setNext(null);
+  }, [pending]);
   return (
-    <div>
+    <div className="min-w-0">
       <select
         aria-label="Assign developer"
         className={`input ${compact ? 'w-auto py-1 text-xs' : ''}`}
-        value={assigneeId ?? ''}
+        value={next ?? assigneeId ?? ''}
         disabled={pending}
-        onChange={e => exec(() => assignAction(itemId, e.target.value || null))}
+        onChange={e => {
+          setNext(e.target.value);
+          exec(() => assignAction(itemId, e.target.value || null));
+        }}
       >
         <option value="">Unassigned</option>
         {people.map(p => (
@@ -108,66 +126,288 @@ export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: 
 
 export type EditableField = { key: string; label: string; type: string; value: string; editable: boolean; linkLabel?: string };
 
-export function FieldsForm({ itemId, fields }: { itemId: string; fields: EditableField[] }) {
-  const { pending, result, exec } = useAction();
-  const [values, setValues] = useState(() => Object.fromEntries(fields.map(f => [f.key, f.value])));
-  const dirty = fields.filter(f => f.editable && (values[f.key] ?? '') !== f.value);
+/** A link field shown as a button that opens the URL in a new tab. */
+export function LinkButton({ href, label, size = 'sm' }: { href: string; label: string; size?: 'xs' | 'sm' }) {
   return (
-    <form
-      className="space-y-3"
-      onSubmit={e => {
-        e.preventDefault();
-        if (!dirty.length) return;
-        exec(() => updateFieldsAction(itemId, Object.fromEntries(dirty.map(f => [f.key, values[f.key] || null]))));
-      }}
+    <a
+      className={`btn-ghost ${size === 'xs' ? 'min-h-7 gap-1 px-2 py-0.5 text-xs' : 'min-h-8 px-3 text-xs'}`}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={href}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map(f => (
-          <div key={f.key} className={f.type === 'longtext' ? 'sm:col-span-2' : ''}>
-            <label className="label" htmlFor={`f-${f.key}`}>
-              {f.label}
-            </label>
-            {!f.editable ? (
-              <div className="min-h-9 rounded-lg bg-surface-2 px-3 py-1.5 text-sm break-all">
-                {f.type === 'url' && f.value ? (
-                  <a className="link" href={f.value} target="_blank" rel="noopener noreferrer">
-                    {f.linkLabel ?? 'Open'} <ExternalLink size={12} className="inline" aria-hidden="true" />
-                  </a>
-                ) : (
-                  f.value || <span className="text-muted">—</span>
-                )}
-              </div>
-            ) : f.type === 'longtext' ? (
-              <textarea id={`f-${f.key}`} className="input min-h-20" value={values[f.key]} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} />
+      {label} <ExternalLink size={12} aria-hidden="true" />
+    </a>
+  );
+}
+
+function inputType(type: string) {
+  return type === 'date' ? 'date' : type === 'number' ? 'number' : type === 'url' ? 'url' : 'text';
+}
+
+/** One data field as a row: label · value · Edit / Delete. Each row saves on its own. */
+function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
+  const { pending, result, exec, clear } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [draft, setDraft] = useState(field.value);
+  const id = `f-${field.key}`;
+  const has = field.value !== '';
+
+  const startEdit = () => {
+    clear();
+    setConfirming(false);
+    setDraft(field.value);
+    setEditing(true);
+  };
+  const cancel = () => {
+    setEditing(false);
+    clear();
+  };
+  const save = () => {
+    const next = draft.trim();
+    if (next === field.value) return cancel();
+    exec(() => updateFieldsAction(itemId, { [field.key]: next || null }), () => setEditing(false));
+  };
+  const remove = () =>
+    exec(
+      async () => {
+        const r = await updateFieldsAction(itemId, { [field.key]: null });
+        return r.ok ? { ...r, message: 'Deleted' } : r;
+      },
+      () => setConfirming(false),
+    );
+
+  const display = !has ? (
+    <span className="text-muted">—</span>
+  ) : field.type === 'url' ? (
+    <LinkButton href={field.value} label={field.linkLabel ?? 'Open link'} />
+  ) : (
+    <span className={field.type === 'longtext' ? 'whitespace-pre-wrap' : 'break-words'}>{field.value}</span>
+  );
+
+  return (
+    <li className="flex flex-wrap items-start gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0">
+      <label htmlFor={id} className="order-1 shrink-0 pt-1.5 text-xs font-medium text-muted sm:w-40">
+        {field.label}
+      </label>
+      <div className="order-3 min-w-0 basis-full sm:order-2 sm:min-w-0 sm:flex-1 sm:basis-0">
+        {editing ? (
+          <div className="space-y-2">
+            {field.type === 'longtext' ? (
+              <textarea
+                id={id}
+                className="input min-h-24"
+                autoFocus
+                value={draft}
+                disabled={pending}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => e.key === 'Escape' && cancel()}
+              />
             ) : (
-              <div className="flex gap-2">
-                <input
-                  id={`f-${f.key}`}
-                  className="input"
-                  type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'url' ? 'url' : 'text'}
-                  value={values[f.key]}
-                  placeholder={f.type === 'url' ? 'https://…' : ''}
-                  onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
-                />
-                {f.type === 'url' && f.value && (
-                  <a className="btn-ghost shrink-0" href={f.value} target="_blank" rel="noopener noreferrer" title={f.linkLabel}>
-                    <ExternalLink size={15} aria-hidden="true" />
-                  </a>
-                )}
-              </div>
+              <input
+                id={id}
+                className="input"
+                type={inputType(field.type)}
+                autoFocus
+                value={draft}
+                placeholder={field.type === 'url' ? 'https://…' : ''}
+                disabled={pending}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    save();
+                  }
+                  if (e.key === 'Escape') cancel();
+                }}
+              />
             )}
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-primary min-h-8 px-3 text-xs" disabled={pending} onClick={save}>
+                {pending ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="btn-ghost min-h-8 px-3 text-xs" disabled={pending} onClick={cancel}>
+                Cancel
+              </button>
+              <ActionMessage result={result} />
+            </div>
           </div>
-        ))}
+        ) : (
+          <div className="min-h-8 py-1 text-sm">
+            {display}
+            {result && <ActionMessage result={result} />}
+          </div>
+        )}
       </div>
-      {fields.some(f => f.editable) && (
-        <div className="flex items-center gap-3">
-          <button className="btn-primary" disabled={pending || !dirty.length}>
-            {pending ? 'Saving…' : 'Save changes'}
-          </button>
-          <ActionMessage result={result} />
+      {field.editable && !editing && (
+        <div className="order-2 ml-auto flex shrink-0 items-center gap-0.5 self-start sm:order-3 sm:ml-0 sm:pt-0.5">
+          {confirming ? (
+            <>
+              <span className="mr-1 text-xs text-muted">Delete this value?</span>
+              <button type="button" className="btn-danger min-h-8 px-2.5 text-xs" disabled={pending} onClick={remove}>
+                {pending ? 'Deleting…' : 'Delete'}
+              </button>
+              <button type="button" className="btn-ghost min-h-8 px-2.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} title="Edit" disabled={pending} onClick={startEdit}>
+                <Pencil size={15} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="btn-icon hover:bg-bad-soft hover:text-bad"
+                aria-label={`Delete ${field.label}`}
+                title="Delete"
+                disabled={pending || !has}
+                onClick={() => {
+                  clear();
+                  setConfirming(true);
+                }}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+              </button>
+            </>
+          )}
         </div>
       )}
-    </form>
+    </li>
+  );
+}
+
+/** All data fields of an item as rows. Editable rows have Edit and Delete; link rows open in a new tab. */
+export function FieldsForm({ itemId, fields }: { itemId: string; fields: EditableField[] }) {
+  if (!fields.length) return <p className="text-sm text-muted">No fields for this work type.</p>;
+  return (
+    <ul className="divide-y divide-line">
+      {fields.map(f => (
+        <FieldRow key={f.key} itemId={itemId} field={f} />
+      ))}
+    </ul>
+  );
+}
+
+/** Trash on a row (or the item page): asks first, then deletes the whole item. Deleted items leave every list and report. */
+export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { itemId: string; itemKey: string; compact?: boolean; redirectTo?: string }) {
+  const { pending, result, exec, clear } = useAction();
+  const [confirming, setConfirming] = useState(false);
+  const router = useRouter();
+  if (confirming) {
+    return (
+      <span className="confirm inline-flex items-center gap-1.5 text-xs">
+        <span className="text-muted">{compact ? 'Delete row?' : `Delete ${itemKey}?`}</span>
+        <button
+          type="button"
+          className="btn-danger min-h-7 px-2.5 py-0.5 text-xs"
+          disabled={pending}
+          onClick={() =>
+            exec(
+              () => deleteItemAction(itemId),
+              () => {
+                rememberDeletion(itemId, itemKey);
+                if (redirectTo) router.push(redirectTo);
+                else setConfirming(false);
+              },
+            )
+          }
+        >
+          {pending ? 'Deleting…' : 'Delete'}
+        </button>
+        <button type="button" className="btn-ghost min-h-7 px-2.5 py-0.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
+          Cancel
+        </button>
+        {result && !result.ok && <span className="text-bad">{result.error}</span>}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={compact ? 'btn-icon hover:bg-bad-soft hover:text-bad' : 'btn-danger min-h-8 gap-1 px-2.5 text-xs'}
+      aria-label={`Delete ${itemKey}`}
+      title={compact ? 'Delete row' : undefined}
+      onClick={() => {
+        clear();
+        setConfirming(true);
+      }}
+    >
+      <Trash2 size={14} aria-hidden="true" />
+      {!compact && 'Delete'}
+    </button>
+  );
+}
+
+/** Pencil on a list row: opens a panel with that item's fields (same Edit / Delete rows as the item page). Fields load on open. */
+export function EditItemButton({ itemId, itemKey, title, compact }: { itemId: string; itemKey: string; title: string; compact?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [fields, setFields] = useState<EditableField[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setError(null);
+    loadEditFieldsAction(itemId).then(r => {
+      if (!live) return;
+      if (r.ok) setFields(r.fields);
+      else setError(r.error);
+    });
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      live = false;
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [open, itemId]);
+  const editable = fields?.filter(f => f.editable).length ?? 0;
+  return (
+    <>
+      <button
+        type="button"
+        className={compact ? 'btn-icon' : 'btn-ghost min-h-8 gap-1 px-2.5 text-xs'}
+        aria-label={`Edit ${itemKey}`}
+        title={compact ? 'Edit details' : undefined}
+        onClick={() => setOpen(true)}
+      >
+        <Pencil size={14} aria-hidden="true" />
+        {!compact && 'Edit'}
+      </button>
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-0 text-left backdrop-blur-[2px] sm:items-center sm:p-6" onClick={() => setOpen(false)}>
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`edit-${itemId}`}
+              className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-[var(--shadow-pop)] sm:rounded-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono text-2xs text-muted">{itemKey}</div>
+                  <h2 id={`edit-${itemId}`} className="text-md leading-snug font-semibold text-ink">
+                    {title}
+                  </h2>
+                  {fields && (
+                    <p className="mt-0.5 text-xs text-muted">
+                      {editable} of {fields.length} details editable by you · each row saves on its own
+                    </p>
+                  )}
+                </div>
+                <button type="button" className="btn-icon" aria-label="Close" onClick={() => setOpen(false)}>
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </div>
+              {error ? <p className="text-sm text-bad">{error}</p> : fields ? <FieldsForm itemId={itemId} fields={fields} /> : <p className="py-6 text-center text-sm text-muted">Loading…</p>}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

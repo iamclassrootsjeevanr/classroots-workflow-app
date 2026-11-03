@@ -2,6 +2,7 @@
  * Client for the Google Apps Script web app in apps-script/Code.gs.
  * The URL and token stay on the server (same rule as the old serve.py).
  */
+import type { LinkedPayload } from '@/lib/sheet-core';
 import { env } from '../env';
 
 export type SheetRead = {
@@ -66,4 +67,21 @@ export async function batchUpdate(tab: string, keyColumns: string[], updates: Ce
     appended: Number(data.appended ?? 0),
     failed: (data.failed as BatchResult['failed']) ?? [],
   };
+}
+
+export type LinkedResult = { added: number; updated: number };
+
+/**
+ * Update a tab that lives next to the main tab (a dropdown list or reference table). `sibling` is the main tab: the script finds
+ * the spreadsheet that has it and uses that spreadsheet's other tab, so same-named tabs elsewhere are never touched.
+ */
+export async function ensureLinked(payload: LinkedPayload, sibling: string, spreadsheetId?: string): Promise<LinkedResult> {
+  const base = { sibling, ...(spreadsheetId ? { sheetId: spreadsheetId } : {}) };
+  const data =
+    payload.kind === 'values'
+      ? await postJson({ action: 'ensureValues', tab: payload.tab, column: payload.column, values: payload.values, ...base })
+      : payload.kind === 'summary'
+        ? await postJson({ action: 'ensureSummary', tab: payload.tab, keyHeader: payload.keyHeader, totalLabel: payload.totalLabel, values: payload.values, ...base })
+        : await postJson({ action: 'ensureRows', tab: payload.tab, keyHeader: payload.keyHeader, mode: payload.mode, rows: payload.rows, ...base });
+  return { added: Number(data.added ?? 0), updated: Number(data.updated ?? 0) };
 }

@@ -272,6 +272,8 @@ Every change to an item goes through `src/server/services/work-items.ts`, whethe
 4. **Closes and opens a stage interval.** This records time in each status in calendar minutes and business minutes.
 5. **Queues a sheet write.** The changed cells go to `SyncOutbox`, if sync is on.
 
+On the item page every detail field is its own row with **Edit** and **Delete** buttons (`FieldsForm` in `src/components/controls.tsx`). The same editor opens from the pencil at the end of every list row (`EditItemButton`), so details can be fixed without leaving the list; the server decides per item which fields the viewer may edit (`editableFieldsFor` in `src/server/view.ts`). Saving or deleting one field is one transaction and one `FIELD_CHANGED` event; Delete clears the value (sets it to empty) after an inline confirmation. Link fields (CMS, AI Tutor, build, APK) render as buttons that open in a new tab, on the item page and in the item lists.
+
 ```mermaid
 flowchart LR
   ui["Button or select in the UI"] --> action["Server action (actions.ts)"]
@@ -325,6 +327,8 @@ One item per **APK version × test case**, grouped by APK version.
 ---
 
 ## People, roles and access
+
+The Roles editor (Admin → Roles) is built from plain choices: can they make changes or only view, what they can do (work on, review, assign, add, edit details), which items they see, which pages they open. A panel beside each role, **What this means in the flow**, lists for every active work type the exact status moves and item details those choices unlock (`src/lib/role-preview.ts`), so a new role can be checked against the workflow before it is saved.
 
 Everything is managed in the app under **Admin → People & access** and **Admin → Roles**. No code changes are needed.
 
@@ -402,7 +406,71 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 
 ---
 
+### APK version chart and table
+
+On the APK Testing list, the dashboards and Reports, the per-version summary is a full-width chart with the table underneath. Versions run left to right in release order. Each column stacks that build's test results (Pass, Fail, Pending retest, Not tested, Other). A line on the right-hand 0 to 100% axis shows the pass rate per build, with dashed lines at the tracker's Good (80%) and Stable (90%) cut-offs, so improving or regressing builds stand out at a glance. Hover a column for the full version name and every count. A work type opts in through `groupSummary` (`successSeries`, `rateLines`) in its module definition; the data comes from `groupTrend` in `src/lib/groups.ts`.
+
+### Roles follow the work type
+
+Roles are made from a work type's flow, not the other way round. A work type has many roles; a role belongs to exactly one work type (`AccessRole.workTypeId`). A module lists its roles in `roles` in its definition (see `src/modules/apk-testing/definition.ts`); if it lists none, they are derived from who may move statuses and edit fields (`rolesForModule` in `src/modules/roles.ts`). Roles are created when a work type is enabled and again whenever its module gains a role (`ensureModuleRoles`); existing roles are never overwritten. Admin → Roles shows one tab per work type with only that work type's roles, and when giving someone access you pick from that work type's roles. A test fails if a flow needs a capability that none of its roles has.
+
+To add a work type: write its module (statuses, transitions, fields, and optionally `roles`), register it, enable it. Its roles appear on their own.
+
+### Work type pages
+
+Each work type has its own pages, shown as tabs under its name (code: `src/app/(app)/w/[workType]/(tabs)/`):
+
+| Page | Content | APK Testing name |
+|---|---|---|
+| Overview | Metrics and graphs only: KPIs, status, work per person, weekly flow, needs attention | Overview |
+| Groups (if the module has a group summary) | Full-width chart, then the table; versions are added and edited here | APK versions |
+| Items | Filters and the item table; single items are added here | Test execution |
+| Cases (if the module has `versions`) | One row per test case across versions; edit a case here | Test cases |
+
+Tab names come from `pages` in the module definition. Item pages open without tabs. Old links like `/w/apk-testing?status=fail` redirect to the Items page. On My dashboard every section's metrics and graphs come first and the item tables follow, one table per work type.
+
+**Clickable analytics.** On every Overview, KPI tiles, By status slices, per-person bars, version columns and Latest-version cards open the Items page with the matching filter applied (`cat`, `status`, `dev`, `group`, `scope=overdue`). The same links work on My dashboard and the admin overview when one work type is in view. By status and the per-person bars leave Done out; Done is on its own tile.
+
+**Own-data roles.** A person whose role sees only their own data gets "You vs team average" instead of the per-person chart. The team side is aggregates only; no colleague appears anywhere on the page.
+
+**Sidebar.** Each work type has its own icon (`icon` in the module definition) and a dropdown of its pages. Tab names and icons come from `workTypeTabs` in `src/lib/work-type-tabs.ts`.
+
+### APK Testing data model
+
+APK Testing stores its shared facts in real tables instead of copying them into every row:
+
+| Table | Holds | Used by |
+| --- | --- | --- |
+| `ApkVersion` | version name, release date, APK link, notes | version table, New / Edit / Delete version |
+| `ApkTestCase` | test case id, feature, scenario, expected result, steps, default priority | Test cases page, "copy from an earlier version" |
+| `ApkTest` | links one run (`WorkItem`) to its version and test case; each pair exists once | everything that reads a run |
+
+A run is still a `WorkItem`, so status, assignment, comments, bug, developer remarks, the time log, sheet sync and permissions work as before. Its own `data` keeps only its result (priority, comments, bug, remarks, log date, test case id). Reads merge the shared fields back in (`hydrateApkData`); editing a shared field (scenario, APK link, ...) writes to the shared row, so the whole version or test case changes together and the change is logged on the run. New runs from the importer, the New version dialog or the sheet find or create their version and test case (`src/server/apk/store.ts`). Both testers and app developers can add versions and test cases and each writes their own comment column.
+
+### APK Testing: versions, bugs and the time log
+
+- **Add a version.** Testers (the Tester role has "Add new items") and admins press **New APK version**: version name, APK link, release date and notes, then pick an earlier version to copy test cases from (untick any, add extra cases). The tests start as Not Tested, with bug, comments and remarks empty, and the creator is the tester unless an assigner picks someone else. **Add test case** adds one test to an existing version. The pencil in the By APK version table edits the link, date and notes of every test in that version. The bin next to it deletes (deactivates) the whole version and its tests, for admins and anyone who can edit test details. It asks first, then offers Undo for 5 seconds and from the Inbox for 30 minutes. History is kept. Code: `src/lib/apk-versions.ts` (pure planner), `src/server/services/apk-versions.ts`, `src/components/new-apk-version.tsx`.
+- **Lean list.** The APK list drops Owner, Expected and Delay and shows Priority, Bug / issue, Developer remarks and Last update instead. A module controls this with `table: { hide, extra }`.
+- **Bug and remarks.** On a test's page, the tester writes the bug / issue and the developer writes remarks in their own cards. Each shows who edited last and when.
+- **Time log.** Every test has a log of status changes, bug and remark edits, comments and assignments, each with who and when, plus how long the test sat in the status it left. Totals show time to first result, times failed, waiting for fix and waiting for retest. Code: `src/lib/time-log.ts`, `src/components/time-log.tsx`; a module opts in with `timeLog: true`.
+
+### Data grids (spreadsheet feel, modern look)
+
+The item lists, the per-group summary (for example By APK version) and the report tables share one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). It has no gridlines; it behaves like a spreadsheet instead. Columns keep their natural width and the grid scrolls sideways with always-visible scrollbars and a fade at the right edge. The header row, the first column and the Actions column stay pinned. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, and put `className="pin"` on the first column's cells (and `pin-end` on an actions column).
+
+**Inbox and undo.** After a delete, a toast (bottom left) offers Undo for 5 seconds, then the message lives in your **Inbox** (sidebar, above your name) where Undo stays for 30 minutes: click the message to show its Undo button. After Undo, or when the 30 minutes are over, the message moves to Read. The Inbox popover shows the latest unread messages and links to the full `/inbox` page (All / Unread / Read, search, select, mark read, delete). The same inbox also tells you when you are assigned something or get feedback. To notify someone from new code call `notify(db, userId, { kind, title, body, href, data })` from `src/server/services/notifications.ts`; new kinds need no migration. After 30 minutes a row can no longer be restored from the app (`UNDO_DELETE_MINUTES` in `src/lib/workflow.ts`).
+
+**Speed.** Item tables are paged (50 per page on the Items page; the first 50 per work type on My dashboard, with an Open all link). The Edit dialog loads a row's fields only when opened, and status and assignee selects update instantly while the save finishes. Dev mode (`npm run dev`) is slower than the real thing; check speed with `npm run build && npm start`.
+
+Every item row has **Edit** (opens that item's fields) and **Delete** (asks first). Delete is for admins and anyone who can edit item details. It archives the item: it leaves every list, report and dashboard and its page returns 404, but its history stays in the database. The Google Sheet row is not touched and will not bring the item back.
+
+---
+
 ## Google Sheet two-way sync
+
+> **No spreadsheet ID needed.** `apps-script/Code.gs` finds a work type's tab by name: first in the default tracker, then in any Google Sheet the script owner can open (it remembers where it found it). After pasting a new `Code.gs`, deploy a new version and approve the Drive permission once. To pin a tab to one sheet, add the script property `TAB_SHEET::<tab name>` with the sheet's ID.
+>
+> **Linked tabs are updated first.** The APK tracker's tabs depend on each other, so a push goes in this order: **Lists** (new tester names; the APK Versions column is a formula over APK Releases, so the script never types into it), **Test Cases** (a row for each new test case, empty cells filled), **APK Releases** (the version's date, link and notes, kept in step), **Version Summary** (a build with no row gets a copy of the last row and the Total row grows by one), then **Test Execution**. A work type declares this in `sheet.linked` in its module. A tracker without one of those tabs just skips it. The script never changes dropdowns or formatting. Paste the latest `apps-script/Code.gs` and deploy a new version for this to work.
 
 Postgres is the source of truth. Sync is **off** until an admin turns it on, so nothing touches the live sheet by accident.
 
@@ -475,6 +543,8 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 
 ## Deploy
 
+> **What to do next, step by step** (merge, Google Sheet tabs, Apps Script, Railway, going live): see [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
+
 ### Docker (any server)
 
 ```bash
@@ -493,6 +563,23 @@ No seed step is needed:
 - turning on sync pulls every row in
 
 To load the Excel files instead, run the import scripts from a checkout whose `DATABASE_URL` points at the server database.
+
+### Railway (app + Postgres)
+
+The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
+
+1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project.
+2. In the app service → Variables, set:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
+   - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).
+   - `ADMIN_EMAILS`, `APP_TIMEZONE`, and, for sheet sync, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`.
+   - Optional: `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, `EMAIL_SERVER` / `EMAIL_FROM`.
+3. **Generate a domain** for the service, then set `AUTH_URL` to it and redeploy. For Google sign-in add `<AUTH_URL>/api/auth/callback/google` as a redirect URI.
+4. **Schedule** sheet sync: add a second service from the same repo as a **Cron** job (every 5 minutes) with the start command
+   `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"` (set `APP_URL` to the public URL, `CRON_SECRET` to the same value as the app).
+5. **Move your existing data** (one time): `pg_dump "$LOCAL_DATABASE_URL" | psql "$RAILWAY_DATABASE_PUBLIC_URL"`, or start empty and run `npm run import:apk -- <file>` against the Railway database. The APK tables (`ApkVersion`, `ApkTestCase`, `ApkTest`) are created and filled by migrations automatically.
+
+**Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
 ### Vercel + managed Postgres (Neon, Supabase, …)
 

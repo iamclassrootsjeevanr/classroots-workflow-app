@@ -15,7 +15,7 @@ export function hasCap(ctx: ActorContext, cap: Capability): boolean {
   return ctx.isAdmin || (ctx.canEdit && ctx.capabilities.has(cap));
 }
 
-function actorMatches(by: Actor[], ctx: ActorContext): boolean {
+export function actorMatches(by: Actor[], ctx: ActorContext): boolean {
   if (ctx.isAdmin) return true;
   if (!ctx.canEdit) return false;
   return by.some(a => (a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : ctx.capabilities.has(a)));
@@ -40,6 +40,19 @@ export function canTransition(mod: WorkTypeDefinition, from: string, to: string,
 
 export function canEditField(field: FieldDef, ctx: ActorContext): boolean {
   return actorMatches(field.editableBy, ctx);
+}
+
+/** Whether someone may delete (archive) items: admins and anyone who can edit item details. null = trusted system change. */
+export function canDeleteItem(ctx: ActorContext | null): boolean {
+  return !ctx || ctx.isAdmin || hasCap(ctx, 'manageFields');
+}
+
+/** A deleted item can be brought back for this long. */
+export const UNDO_DELETE_MINUTES = 30;
+
+/** True while a deleted item may still be restored. */
+export function canUndoDelete(archivedAt: Date | null | undefined, now: Date = new Date()): boolean {
+  return Boolean(archivedAt) && now.getTime() - archivedAt!.getTime() <= UNDO_DELETE_MINUTES * 60_000;
 }
 
 export type StageState = {

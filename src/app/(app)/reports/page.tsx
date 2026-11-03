@@ -1,6 +1,7 @@
 import { FilterBar } from '@/components/filter-bar';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { getModule } from '@/modules/registry';
+import { Sheet } from '@/components/sheet';
 import { Card, PageHeader } from '@/components/ui';
 import { db } from '@/server/db';
 import { localDayBoundary } from '@/lib/time';
@@ -18,20 +19,22 @@ function SummaryTable({ rows, highlightFirst }: { rows: SummaryRow[]; highlightF
   if (!rows.length) return <p className="text-sm text-muted">No data.</p>;
   const headers = Object.keys(rows[0]);
   return (
-    <div className="overflow-x-auto">
-      <table className="table">
+    <Sheet maxHeight="60vh">
+      <table className="sheet">
         <thead>
           <tr>
-            {headers.map(h => (
-              <th key={h}>{h}</th>
+            {headers.map((h, j) => (
+              <th key={h} className={j === 0 ? 'pin' : ''}>
+                {h}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i} className={highlightFirst && i === 0 ? 'font-semibold' : ''}>
-              {headers.map(h => (
-                <td key={h} className="whitespace-nowrap tabular-nums">
+              {headers.map((h, j) => (
+                <td key={h} className={`tabular-nums ${j === 0 ? 'pin' : ''}`}>
                   {r[h] === '' ? '—' : r[h]}
                 </td>
               ))}
@@ -39,7 +42,7 @@ function SummaryTable({ rows, highlightFirst }: { rows: SummaryRow[]; highlightF
           ))}
         </tbody>
       </table>
-    </div>
+    </Sheet>
   );
 }
 
@@ -95,7 +98,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <SummaryTable rows={[report.combined, ...report.workTypes]} highlightFirst />
         </Card>
         {groupMods.map(m => (
-          <GroupSummaryCard key={m!.key} mod={m!} items={scopedItems.filter(i => i.workTypeKey === m!.key)} tz={appTz()} title={`${m!.name} · by ${m!.groupSummary!.label}`} />
+          <GroupSummaryCard key={m!.key} itemsHref={`/w/${m!.key}/items`} mod={m!} items={scopedItems.filter(i => i.workTypeKey === m!.key)} tz={appTz()} title={`${m!.name} · by ${m!.groupSummary!.label}`} />
         ))}
         <Card title="Per developer">
           <SummaryTable rows={report.developers} />

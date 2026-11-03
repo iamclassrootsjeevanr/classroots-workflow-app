@@ -4,13 +4,20 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import type { WorkTypeState } from '@prisma/client';
 import { z } from 'zod';
+import type { EditableField } from '@/components/controls';
 import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, resolveFeedback, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, restoreItem, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
+import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
+import type { NotificationView } from '@/lib/notifications-core';
+import { loadVersionCases } from '@/server/apk/queries';
+import { editFieldsForItem } from '@/server/view';
+import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
@@ -54,6 +61,60 @@ export async function updateFieldsAction(itemId: string, patch: Record<string, F
   });
 }
 
+export async function deleteItemAction(itemId: string) {
+  return run(async () => {
+    await deleteItem(await itemActor(itemId), itemId);
+    return 'Deleted';
+  });
+}
+
+/** Fields of one item for the list Edit dialog (loaded on open so list pages stay small). */
+export async function loadEditFieldsAction(itemId: string): Promise<{ ok: true; fields: EditableField[] } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser();
+    await itemActorContext(user, itemId);
+    return { ok: true, fields: await editFieldsForItem(user, itemId, appTz()) };
+  } catch (e) {
+    return { ok: false, error: isUserError(e) ? e.message : 'Could not load the details.' };
+  }
+}
+
+// ─── Inbox ──────────────────────────────────────────────────────
+
+/** Latest messages for the Inbox popover. */
+export async function loadInboxAction(): Promise<{ ok: true; items: NotificationView[]; unread: number } | { ok: false; error: string }> {
+  try {
+    const user = await requireUser();
+    const [items, unread] = await Promise.all([listNotifications(user.id, { tab: 'unread', take: 8 }), unreadCount(user.id)]);
+    return { ok: true, items, unread };
+  } catch {
+    return { ok: false, error: 'Could not load your inbox.' };
+  }
+}
+
+/** Mark messages read or unread; no ids = all of them. */
+export async function markNotificationsAction(read: boolean, ids?: string[]) {
+  return run(async () => {
+    const user = await requireUser();
+    await setRead(user.id, read, ids);
+  });
+}
+
+export async function deleteNotificationsAction(ids: string[]) {
+  return run(async () => {
+    const user = await requireUser();
+    await removeNotifications(user.id, ids);
+  });
+}
+
+/** Undo a delete (allowed for 30 minutes). */
+export async function restoreItemAction(itemId: string) {
+  return run(async () => {
+    await restoreItem(await itemActor(itemId), itemId);
+    return 'Restored';
+  });
+}
+
 export async function feedbackAction(itemId: string, input: { body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
   return run(async () => {
     await addFeedback(await itemActor(itemId), itemId, input);
@@ -72,7 +133,7 @@ export async function commentAction(itemId: string, body: string) {
   return run(async () => addComment(await itemActor(itemId), itemId, body));
 }
 
-export async function createItemAction(workTypeId: string, input: { externalKey: string; title: string; ownerId?: string; assigneeId?: string; dueAt?: string; groupKey?: string }) {
+export async function createItemAction(workTypeId: string, input: { externalKey: string; title: string; ownerId?: string; assigneeId?: string; dueAt?: string; groupKey?: string; data?: Record<string, string> }) {
   return run(async () => {
     const user = await requireUser();
     const access = await getAccess(user);
@@ -89,9 +150,79 @@ export async function createItemAction(workTypeId: string, input: { externalKey:
       dueAt: input.dueAt ? dueDateToInstant(input.dueAt) : null,
       groupKey: input.groupKey?.trim() || null,
       chapterId: chapter?.id ?? null,
-      data: chapter ? { chapterTitle: chapter.title } : {},
+      data: { ...(chapter ? { chapterTitle: chapter.title } : {}), ...Object.fromEntries(Object.entries(input.data ?? {}).filter(([, v]) => typeof v === 'string' && v.trim())) },
     });
     return 'Created';
+  });
+}
+
+export type NewApkVersionInput = {
+  version: string;
+  apkUrl?: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+  copyFrom?: string;
+  includeCaseIds: string[];
+  extraCases: { testCaseId: string; title: string; scenario?: string; expected?: string; steps?: string; priority?: string }[];
+  assigneeId?: string;
+};
+
+async function workTypeActor(workTypeId: string) {
+  const user = await requireUser();
+  const access = await getAccess(user);
+  const wt = [...access.byKey.values()].find(a => a.workTypeId === workTypeId);
+  if (!wt) throw new ForbiddenError('You don’t have access to this work type.');
+  const ctx = { isAdmin: access.isAdmin, capabilities: wt.capabilities, isAssignee: false, canEdit: wt.canEdit };
+  return { user, ctx, actor: { userId: user.id, ctx, source: 'APP' } as ChangeActor };
+}
+
+/** Add an APK version with tests copied from an earlier version. New tests go to the creator when they can test. */
+export async function createApkVersionAction(workTypeId: string, input: NewApkVersionInput) {
+  return run(async () => {
+    const { user, ctx, actor } = await workTypeActor(workTypeId);
+    const canTest = ctx.isAdmin || ctx.capabilities.has('work');
+    const r = await createApkVersion(actor, workTypeId, { ...input, assigneeId: input.assigneeId || (canTest ? user.id : null) });
+    return `Created ${r.version} with ${r.count} tests`;
+  });
+}
+
+/** Delete (deactivate) a whole APK version and its tests. Undo for 30 minutes from the Inbox. */
+export async function deleteApkVersionAction(workTypeId: string, version: string) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await deleteApkVersion(actor, workTypeId, version);
+    return { message: `Deleted ${version} (${r.count} tests)`, id: r.deletedAt };
+  });
+}
+
+export async function restoreApkVersionAction(workTypeId: string, version: string, deletedAt: string) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await restoreApkVersion(actor, workTypeId, version, deletedAt);
+    return `Restored ${version} (${r.count} tests)`;
+  });
+}
+
+/** Test cases of one version, loaded when the New APK version dialog picks a version to copy from. */
+export async function loadVersionCasesAction(workTypeId: string, versionKey: string): Promise<{ id: string; title: string }[]> {
+  await workTypeActor(workTypeId);
+  return loadVersionCases(workTypeId, versionKey);
+}
+
+/** Edit a test case's scenario, expected result, steps or default priority (applies to every version that runs it). */
+export async function updateTestCaseAction(workTypeId: string, caseId: string, patch: TestCasePatch) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    await updateTestCase(actor, workTypeId, caseId, patch);
+    return 'Saved';
+  });
+}
+
+export async function updateApkVersionAction(workTypeId: string, version: string, meta: VersionMeta) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    const r = await updateApkVersion(actor, workTypeId, version, meta);
+    return `Updated ${version} (${r.count} tests)`;
   });
 }
 
@@ -139,6 +270,11 @@ export async function saveUserAction(raw: UserInput) {
     }
     for (const a of input.access) {
       if (a.enabled && !a.roleIds.length) throw new Error('Pick at least one role for each work type you give access to.');
+      // Roles belong to one work type: every picked role must be a role of that work type.
+      if (a.enabled) {
+        const ok = await db.accessRole.count({ where: { id: { in: a.roleIds }, workTypeId: a.workTypeId } });
+        if (ok !== new Set(a.roleIds).size) throw new Error('A picked role does not belong to that work type.');
+      }
     }
     let pw = {};
     if (input.password) {
@@ -181,6 +317,8 @@ export async function setUserActiveAction(userId: string, active: boolean) {
 
 const roleInput = z.object({
   id: z.string().optional(),
+  /** The work type this role belongs to (fixed once created). */
+  workTypeId: z.string().min(1),
   name: z.string().trim().min(1, 'Name is required').max(60),
   description: z.string().trim().max(240).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Pick a colour'),
@@ -202,14 +340,18 @@ export type RoleInput = z.infer<typeof roleInput>;
 export async function saveRoleAction(raw: RoleInput) {
   return run(async () => {
     await requireAdmin();
-    const { id, ...parsed } = roleInput.parse(raw);
+    const { id, workTypeId, ...parsed } = roleInput.parse(raw);
     const data = { ...parsed, pageExport: parsed.pageReports && parsed.pageExport };
+    await db.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (!data.pageDashboard && !data.pageItems && !data.pageReports) throw new Error('Tick at least one page this role can see.');
     const key = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const clash = await db.accessRole.findFirst({ where: { OR: [{ key }, { name: { equals: data.name, mode: 'insensitive' } }], ...(id ? { NOT: { id } } : {}) } });
-    if (clash) throw new Error(`A role called “${clash.name}” already exists.`);
-    if (id) await db.accessRole.update({ where: { id }, data });
-    else await db.accessRole.create({ data: { ...data, key } });
+    const clash = await db.accessRole.findFirst({ where: { workTypeId, OR: [{ key }, { name: { equals: data.name, mode: 'insensitive' } }], ...(id ? { NOT: { id } } : {}) } });
+    if (clash) throw new Error(`A role called “${clash.name}” already exists in this work type.`);
+    if (id) {
+      const own = await db.accessRole.count({ where: { id, workTypeId } });
+      if (!own) throw new Error('That role belongs to another work type.');
+      await db.accessRole.update({ where: { id }, data });
+    } else await db.accessRole.create({ data: { ...data, key, workTypeId } });
     return id ? 'Role saved' : `Role “${data.name}” added`;
   });
 }

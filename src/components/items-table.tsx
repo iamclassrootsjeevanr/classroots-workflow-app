@@ -1,14 +1,22 @@
-import { AlertTriangle, ExternalLink } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { getModule } from '@/modules/registry';
-import { formatDate } from '@/lib/time';
+import { itemsUrl, type ItemsFilter } from '@/lib/items-url';
+import { PAGE_SIZE } from '@/lib/paging';
+import { formatDate, formatDateTime } from '@/lib/time';
+import type { WorkTypeDefinition } from '@/modules/types';
 import type { ItemRow } from '@/server/services/analytics';
-import { AssignSelect, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { Sheet } from './sheet';
 import { Delay, Empty, StatusBadge } from './ui';
 
 type Props = {
   items: ItemRow[];
   statusOptions?: Map<string, StatusOption[]>;
+  /** Per item, the fields the viewer may edit; rows with an entry get an Edit button. */
+  fieldEdits?: ReadonlySet<string>;
+  /** Ids of items the viewer may delete; those rows get a Delete button. */
+  deletable?: ReadonlySet<string>;
   people?: PersonOption[];
   showWorkType?: boolean;
   showAssignee?: boolean;
@@ -19,16 +27,39 @@ type Props = {
   linkable?: ReadonlySet<string>;
   /** Column names for this work type (mixed lists keep the defaults). */
   labels?: { assignee?: string; owner?: string };
+  /** Hide default columns / add data columns (from the work type definition). */
+  table?: WorkTypeDefinition['table'];
 };
 
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
-  const cols = 7 + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0);
+  const anyActions = Boolean(fieldEdits?.size || deletable?.size);
+  const hide = new Set(table?.hide ?? []);
+  const extra = table?.extra ?? [];
+  const showOwner = !hide.has('owner');
+  const showExpected = !hide.has('expected');
+  const showDelay = !hide.has('delay');
+  const showUpdated = extra.length > 0;
+  const cols = 4 + (showOwner ? 1 : 0) + (showExpected ? 1 : 0) + (showDelay ? 1 : 0) + extra.length + (showUpdated ? 1 : 0) + (showWorkType ? 1 : 0) + (showAssignee ? 1 : 0) + (anyActions ? 1 : 0);
+  const text = (it: ItemRow, field: string) => (it.data[field] == null ? '' : String(it.data[field]));
+  const rowActions = (it: ItemRow, compact: boolean) => {
+    const f = fieldEdits?.has(it.id);
+    const canDelete = deletable?.has(it.id);
+    if (!f && !canDelete) return null;
+    return (
+      <span className={compact ? 'row-actions' : 'inline-flex items-center gap-1.5'}>
+        {f && <EditItemButton itemId={it.id} itemKey={it.externalKey} title={it.title} compact={compact} />}
+        {canDelete && <DeleteItemButton itemId={it.id} itemKey={it.externalKey} compact={compact} />}
+      </span>
+    );
+  };
+  /** Keys like "<version> | TC_001" show only the test case when the version is already the group heading. */
+  const keyOf = (it: ItemRow) => (groupByChapter && it.groupKey && it.externalKey.startsWith(`${it.groupKey} | `) ? it.externalKey.slice(it.groupKey.length + 3) : it.externalKey);
   const groupOf = (it: ItemRow) => (groupByChapter ? [it.groupKey, it.chapterTitle].filter(Boolean).join(' · ') : '');
   const canOpen = (it: ItemRow) => !linkable || linkable.has(it.workTypeKey);
   const linksOf = (it: ItemRow) => Object.entries(LINK_FIELDS).filter(([k]) => typeof it.data[k] === 'string' && it.data[k]);
@@ -68,8 +99,8 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
               <div className="rounded-xl border border-line bg-surface p-3.5 shadow-[var(--shadow-card)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-mono text-2xs text-muted">
-                      {it.externalKey}
+                    <div className="font-mono text-2xs text-muted" title={it.externalKey}>
+                      {keyOf(it)}
                       {showWorkType && <span className="ml-1.5 font-sans">· {it.workTypeName}</span>}
                       {it.sheetMissing && (
                         <span className="ml-1 inline-flex align-middle text-warn" title="Not found in the Google Sheet on the last sync">
@@ -79,36 +110,50 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                     </div>
                     {title(it, 'mt-0.5 block text-md leading-snug font-medium text-ink')}
                   </div>
-                  <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>
+                  {showDelay && <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>}
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-muted">Status</dt>
                     <dd className="mt-0.5">{status(it, false)}</dd>
                   </div>
                   {showAssignee && (
-                    <div>
+                    <div className="min-w-0">
                       <dt className="text-muted">{assigneeLabel}</dt>
                       <dd className="mt-0.5 text-sm">{assignee(it, false)}</dd>
                     </div>
                   )}
-                  <div>
-                    <dt className="text-muted">{ownerLabel}</dt>
-                    <dd className="mt-0.5 text-sm">{it.ownerName ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted">Expected</dt>
-                    <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
-                  </div>
-                </dl>
-                {(links.length > 0 || it.reviewRounds > 1) && (
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs">
-                    {links.map(([k, label]) => (
-                      <a key={k} className="link inline-flex items-center gap-1" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                        {label} <ExternalLink size={11} aria-hidden="true" />
-                      </a>
+                  {showOwner && (
+                    <div className="min-w-0">
+                      <dt className="text-muted">{ownerLabel}</dt>
+                      <dd className="mt-0.5 text-sm">{it.ownerName ?? '—'}</dd>
+                    </div>
+                  )}
+                  {showExpected && (
+                    <div className="min-w-0">
+                      <dt className="text-muted">Expected</dt>
+                      <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
+                    </div>
+                  )}
+                  {extra
+                    .filter(c => text(it, c.field))
+                    .map(c => (
+                      <div key={c.field} className="col-span-2 min-w-0">
+                        <dt className="text-muted">{c.label}</dt>
+                        <dd className="mt-0.5 line-clamp-3 text-sm whitespace-pre-wrap">{text(it, c.field)}</dd>
+                      </div>
                     ))}
-                    {it.reviewRounds > 1 && <span className="text-muted">{it.reviewRounds} review rounds</span>}
+                  {showUpdated && (
+                    <div className="col-span-2 min-w-0 text-muted tabular-nums">Updated {formatDateTime(it.updatedAt, tz)}</div>
+                  )}
+                </dl>
+                {(links.length > 0 || it.reviewRounds > 1 || fieldEdits?.has(it.id) || deletable?.has(it.id)) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line pt-2.5 text-xs">
+                    {rowActions(it, false)}
+                    {links.map(([k, label]) => (
+                      <LinkButton key={k} href={String(it.data[k])} label={label} size="xs" />
+                    ))}
+                    {it.reviewRounds > 1 && <span className="ml-auto text-muted">{it.reviewRounds} review rounds</span>}
                   </div>
                 )}
               </div>
@@ -118,19 +163,24 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
       </ul>
 
       {/* Wider screens: table */}
-      <div className="hidden max-h-[70vh] overflow-auto rounded-xl border border-line bg-surface shadow-[var(--shadow-card)] md:block">
-        <table className="table">
+      <Sheet className="hidden md:block">
+        <table className="sheet">
           <thead>
             <tr>
               {showWorkType && <th>Work type</th>}
-              <th>Key</th>
+              <th className="pin">Key</th>
               <th>Title</th>
-              <th>{ownerLabel}</th>
+              {showOwner && <th>{ownerLabel}</th>}
               {showAssignee && <th>{assigneeLabel}</th>}
               <th>Status</th>
-              <th>Expected</th>
-              <th>Delay</th>
+              {extra.map(c => (
+                <th key={c.field}>{c.label}</th>
+              ))}
+              {showUpdated && <th>Last update</th>}
+              {showExpected && <th>Expected</th>}
+              {showDelay && <th>Delay</th>}
               <th>Links</th>
+              {anyActions && <th className="pin-end">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -142,20 +192,20 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
               return [
                 header && (
                   <tr key={`g-${it.id}`}>
-                    <td colSpan={cols} className="bg-surface-2 py-1.5 text-2xs font-semibold tracking-wide text-muted uppercase">
-                      {g || 'No chapter'}
+                    <td colSpan={cols} className="group">
+                      <div className="sticky left-3 w-max">{g || 'No chapter'}</div>
                     </td>
                   </tr>
                 ),
                 <tr key={it.id}>
                   {showWorkType && <td className="text-xs text-muted">{it.workTypeName}</td>}
-                  <td className="font-mono text-xs whitespace-nowrap">
+                  <td className="pin font-mono text-xs">
                     {canOpen(it) ? (
-                      <Link className="link" href={`/w/${it.workTypeKey}/${it.id}`}>
-                        {it.externalKey}
+                      <Link className="link" href={`/w/${it.workTypeKey}/${it.id}`} title={it.externalKey}>
+                        {keyOf(it)}
                       </Link>
                     ) : (
-                      it.externalKey
+                      keyOf(it)
                     )}
                     {it.sheetMissing && (
                       <span className="ml-1 inline-flex items-center gap-0.5 align-middle text-[0.625rem] text-warn" title="Not found in the Google Sheet on the last sync">
@@ -164,32 +214,88 @@ export function ItemsTable({ items, statusOptions, people, showWorkType, showAss
                     )}
                   </td>
                   <td className="min-w-48">
-                    {title(it, 'font-medium text-ink')}
-                    {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
+                    <div className="max-w-[28rem] truncate" title={it.title}>
+                      {title(it, 'font-medium text-ink')}
+                      {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
+                    </div>
                   </td>
-                  <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>
+                  {showOwner && <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>}
                   {showAssignee && <td className="whitespace-nowrap">{assignee(it, true)}</td>}
                   <td>{status(it, true)}</td>
-                  <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>
-                  <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>
+                  {extra.map(c => (
+                    <td key={c.field} className="max-w-56 text-xs">
+                      {text(it, c.field) ? (
+                        <div className="truncate" title={text(it, c.field)}>
+                          {text(it, c.field)}
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                  ))}
+                  {showUpdated && <td className="whitespace-nowrap text-xs text-muted tabular-nums">{formatDateTime(it.updatedAt, tz)}</td>}
+                  {showExpected && <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>}
+                  {showDelay && <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>}
                   <td className="whitespace-nowrap text-xs">
                     {links.length ? (
-                      links.map(([k, label]) => (
-                        <a key={k} className="link mr-2 inline-flex items-center gap-0.5" href={String(it.data[k])} target="_blank" rel="noopener noreferrer">
-                          {label} <ExternalLink size={11} aria-hidden="true" />
-                        </a>
-                      ))
+                      <span className="inline-flex flex-wrap gap-1">
+                        {links.map(([k, label]) => (
+                          <LinkButton key={k} href={String(it.data[k])} label={label} size="xs" />
+                        ))}
+                      </span>
                     ) : (
                       <span className="text-muted">—</span>
                     )}
                     {!getModule(it.workTypeKey) && <span className="text-bad">module missing</span>}
                   </td>
+                  {anyActions && <td className="pin-end">{rowActions(it, true)}</td>}
                 </tr>,
               ];
             })}
           </tbody>
         </table>
-      </div>
+      </Sheet>
     </>
+  );
+}
+
+/** Mixed lists: one table per work type, each with that work type's own columns and labels. A single type renders one plain table. */
+export function ItemsTables({ items, empty, moreFilter, ...rest }: Omit<Props, 'labels' | 'table' | 'showWorkType'> & { /** Filter for the "open all" link when a list is cut short. */ moreFilter?: ItemsFilter }) {
+  if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
+  const byType = new Map<string, ItemRow[]>();
+  for (const it of items) byType.set(it.workTypeKey, [...(byType.get(it.workTypeKey) ?? []), it]);
+  const render = (key: string, list: ItemRow[]) => {
+    const mod = getModule(key);
+    const shown = list.slice(0, PAGE_SIZE);
+    return (
+      <>
+        <ItemsTable {...rest} items={shown} labels={mod?.labels} table={mod?.table} showWorkType={false} empty={empty} />
+        {list.length > shown.length && (
+          <p className="mt-2 text-xs text-muted">
+            Showing the first {shown.length} of {list.length}.{' '}
+            <Link className="link" href={itemsUrl(key, moreFilter)}>
+              Open all {list.length}
+            </Link>
+          </p>
+        )}
+      </>
+    );
+  };
+  if (byType.size === 1) {
+    const [[key, list]] = [...byType];
+    return render(key, list);
+  }
+  return (
+    <div className="space-y-6">
+      {[...byType].map(([key, list]) => (
+        <section key={key}>
+          <h3 className="mb-2 flex items-baseline gap-2 text-sm font-semibold text-ink">
+            {getModule(key)?.name ?? key}
+            <span className="text-xs font-normal text-muted">{list.length}</span>
+          </h3>
+          {render(key, list)}
+        </section>
+      ))}
+    </div>
   );
 }

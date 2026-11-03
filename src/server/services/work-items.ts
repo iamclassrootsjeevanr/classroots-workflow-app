@@ -3,10 +3,13 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dueDateToInstant, minutesBetween, normalizeDate, type WorkCalendar } from '@/lib/time';
-import { canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
+import { canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
+import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
+import { notify } from './notifications';
+import { shortKey, undoDeadline } from '@/lib/notifications-core';
 
 type Tx = Prisma.TransactionClient;
 
@@ -126,6 +129,9 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   });
   const col = columnFor(mod, 'assignee');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP') {
+    await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+  }
 
   const fresh = await loadItem(tx, item.id);
   // First assignment moves a queued item to the module's "assigned" status.
@@ -177,6 +183,9 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   const update: Prisma.WorkItemUncheckedUpdateInput = {};
   const events: Prisma.WorkItemEventCreateManyInput[] = [];
   const columns: string[] = [];
+  // Fields stored in the shared version / test case tables (APK Testing) are written there, not into this run's data.
+  const shared: Record<string, string | null> = {};
+  let sharedBefore: Record<string, string> | null = null;
 
   for (const [key, raw] of Object.entries(patch)) {
     const field = mod.fields.find(f => f.key === key);
@@ -184,7 +193,11 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     if (actor.ctx && !canEditField(field, actor.ctx)) throw new ForbiddenError(`You can't edit ${field.label}.`);
     const value = coerce(field, raw);
     let before: string | null;
-    if (field.source === 'core' && key === 'dueAt') {
+    if (field.source === 'version' || field.source === 'case') {
+      sharedBefore ??= await currentApkFields(tx, item.id);
+      before = sharedBefore[key] ? sharedBefore[key] : null;
+      shared[key] = value === null ? null : String(value);
+    } else if (field.source === 'core' && key === 'dueAt') {
       before = item.dueAt ? normalizeDate(item.dueAt) : null;
       update.dueAt = value ? dueDateToInstant(String(value)) : null;
     } else {
@@ -199,6 +212,7 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     if (col) columns.push(col);
   }
   if (!events.length) return;
+  if (Object.keys(shared).length) await writeApkFields(tx, item.id, shared);
   mod.dataSchema.parse(data);
   await saveItem(tx, item, { ...update, data: data as Prisma.InputJsonValue });
   await tx.workItemEvent.createMany({ data: events });
@@ -210,6 +224,56 @@ export async function updateFields(actor: ChangeActor, itemId: string, patch: Re
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     await updateFieldsTx(tx, item, actor, patch, new Date());
+  });
+}
+
+/**
+ * Delete a row. The item is archived, not erased: it disappears from every list, report and dashboard, its history
+ * stays in the database, and the Google Sheet row (if any) is left alone and will not bring it back.
+ */
+export async function deleteItem(actor: ChangeActor, itemId: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t delete items in this work type.');
+    if (item.archivedAt) return;
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: now });
+    await tx.syncOutbox.deleteMany({ where: { itemId, status: 'PENDING' } });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
+    });
+    // The person who deleted it gets an inbox message with Undo for the next 30 minutes.
+    if (actor.userId && actor.source === 'APP') {
+      await notify(tx, actor.userId, {
+        kind: 'item.deleted',
+        title: `Deleted ${shortKey(item.externalKey)}`,
+        body: item.title,
+        href: `/w/${item.workType.key}/items`,
+        data: { itemId, itemKey: item.externalKey, workTypeKey: item.workType.key, undoUntil: undoDeadline(now).toISOString() },
+      });
+    }
+  });
+}
+
+/** Bring back a deleted row, within the undo window (30 minutes). */
+export async function restoreItem(actor: ChangeActor, itemId: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (!canDeleteItem(actor.ctx)) throw new ForbiddenError('You can’t restore items in this work type.');
+    if (!item.archivedAt) return;
+    if (!canUndoDelete(item.archivedAt)) throw new Error(`Undo is only possible for ${UNDO_DELETE_MINUTES} minutes after deleting.`);
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: null });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt.toISOString(), toValue: null, source: actor.source, note: 'Restored', at: now },
+    });
+    // The delete notice becomes a "Restored" notice (no more Undo button).
+    await tx.notification.updateMany({
+      where: { kind: 'item.deleted', data: { path: ['itemId'], equals: itemId } },
+      data: { kind: 'item.restored', title: `Restored ${shortKey(item.externalKey)}`, readAt: now },
+    });
   });
 }
 
@@ -233,6 +297,9 @@ export async function addFeedback(
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
+    if (item.assigneeId && item.assigneeId !== actor.userId && actor.source === 'APP') {
+      await notify(tx, item.assigneeId, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
+    }
     if (input.requestCorrections) {
       const target = mod.statuses.find(s => s.category === 'feedback');
       const fresh = await loadItem(tx, itemId);
@@ -277,7 +344,9 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
   const status = input.status ?? (input.assigneeId ? mod.assignedStatus : mod.initialStatus);
   const def = statusDef(mod, status);
   const marks = new Set(def.marks ?? []);
-  const data = mod.dataSchema.parse(input.data ?? {}) as Prisma.InputJsonValue;
+  // APK Testing: version and test case facts go to their own tables; the run keeps only its own data.
+  const apk = mod.storage === 'apk' ? await prepareApkCreate(tx, workType, input) : null;
+  const data = mod.dataSchema.parse(apk?.data ?? input.data ?? {}) as Prisma.InputJsonValue;
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
@@ -309,6 +378,7 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       sheetSnapshot: (input.sheetSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
+  await apk?.link(item.id);
   await tx.workItemEvent.create({
     data: {
       itemId: item.id,
@@ -340,4 +410,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem };
+export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue };

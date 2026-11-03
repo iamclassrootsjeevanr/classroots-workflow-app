@@ -51,7 +51,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       },
     }),
     db.workType.findMany({ where: { state: { not: 'ARCHIVED' } }, orderBy: { name: 'asc' } }),
-    db.accessRole.findMany({ orderBy: { name: 'asc' } }),
+    db.accessRole.findMany({ orderBy: [{ workType: { name: 'asc' } }, { name: 'asc' }], include: { workType: { select: { name: true } } } }),
   ]);
 
   const q = sp.q?.toLowerCase();
@@ -87,7 +87,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
           { name: 'wt', label: 'Work type', options: workTypes.map(w => ({ value: w.key, label: w.name })) },
-          { name: 'role', label: 'Role', options: roles.map(r => ({ value: r.id, label: r.name })) },
+          { name: 'role', label: 'Role', options: roles.map(r => ({ value: r.id, label: `${r.workType.name} · ${r.name}` })) },
           {
             name: 'status',
             label: 'Show',

@@ -1,12 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CommentForm, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
+import { TimeLog } from '@/components/time-log';
+import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
 import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
-import { allowedTransitions, canEditField, hasCap } from '@/lib/workflow';
+import { allowedTransitions, canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from '@/server/apk/store';
 import { getModule, statusDef } from '@/modules/registry';
 import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
@@ -42,6 +46,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     where: { id: itemId },
     include: {
       workType: true,
+      ...APK_INCLUDE,
       assignee: { select: { id: true, name: true } },
       owner: { select: { name: true } },
       chapter: true,
@@ -50,7 +55,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       feedback: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
     },
   });
-  if (!mod || !item || item.workType.key !== key) notFound();
+  if (!mod || !item || item.archivedAt || item.workType.key !== key) notFound();
   if (!canSeeItem(access, key, item)) notFound();
 
   const tz = appTz();
@@ -63,7 +68,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     ? allowedTransitions(mod, item.status, ctx).map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }))
     : [];
   const people = hasCap(ctx, 'assign') && editable ? await assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null;
-  const data = (item.data ?? {}) as Record<string, unknown>;
+  const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   const fields: EditableField[] = mod.fields.map(f => ({
     key: f.key,
     label: f.label,
@@ -90,6 +95,24 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     };
   });
 
+  // Bug and remarks get their own card (and the time log) for work types that track them.
+  const NOTE_KEYS = ['bug', 'comments', 'developerRemarks'];
+  const noteFields = mod.timeLog ? fields.filter(f => NOTE_KEYS.includes(f.key)) : [];
+  const detailFields = mod.timeLog ? fields.filter(f => !NOTE_KEYS.includes(f.key)) : fields;
+  const lastEdit = (key: string) => {
+    const e = item.events.find(ev => ev.type === 'FIELD_CHANGED' && ev.field === key);
+    return e ? `${e.actor?.name ?? e.actor?.email ?? 'System'} · ${formatDateTime(e.at, tz)}` : null;
+  };
+  const logIntervals = intervals.map(iv => ({ status: iv.status, enteredAt: iv.enteredAt, exitedAt: iv.exitedAt, businessMinutes: iv.businessMinutes }));
+  const lookup = { label: (s: string) => statusDef(mod, s).label, category: (s: string) => statusDef(mod, s).category, fieldLabel: (f: string) => mod.fields.find(x => x.key === f)?.label ?? f };
+  const logEntries = mod.timeLog
+    ? buildTimeLog(
+        item.events.map(e => ({ id: e.id, at: e.at, type: e.type, field: e.field, fromValue: e.fromValue, toValue: e.toValue, note: e.note, who: e.actor?.name ?? e.actor?.email ?? (e.source === 'SHEET' ? 'Google Sheet' : e.source === 'IMPORT' ? 'Import' : 'System') })),
+        logIntervals,
+        lookup,
+      )
+    : [];
+
   const milestones: [string, Date | null][] = [
     ['Received', item.receivedAt],
     ['Assigned', item.assignedAt],
@@ -108,6 +131,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
         <Link href={`/w/${key}`} className="link">
           {mod.name}
         </Link>{' '}
+        /{' '}
+        <Link href={`/w/${key}/items`} className="link">
+          {mod.pages?.items ?? 'Items'}
+        </Link>{' '}
         / <span className="font-mono">{item.externalKey}</span>
       </nav>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -115,7 +142,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{item.title}</h1>
           <p className="mt-1 text-sm text-muted">
             {[item.groupKey, item.chapter?.title ?? (data.chapterTitle as string | undefined), item.chapter?.grade ? `Grade ${item.chapter.grade}` : null].filter(Boolean).join(' · ')}
-            {item.owner?.name && <> · SME {item.owner.name}</>}
+            {item.owner?.name && !mod.table?.hide?.includes('owner') && <> · SME {item.owner.name}</>}
           </p>
           {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
@@ -128,6 +155,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
             {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
           </div>
+          {editable && canDeleteItem(ctx) && (
+            <div className="sm:ml-3 sm:border-l sm:border-line sm:pl-4">
+              <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}/items`} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -146,8 +178,25 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <StageTimeline intervals={intervals} now={now} tz={tz} />
           </Card>
 
+          {noteFields.length > 0 && (
+            <div className="space-y-5">
+              <Card title="Tester: bug / issue" description={lastEdit('bug') ? `Last edit ${lastEdit('bug')}` : 'Describe what went wrong. Saved with your name and time.'}>
+                <FieldsForm itemId={item.id} fields={noteFields.filter(f => f.key !== 'developerRemarks')} />
+              </Card>
+              <Card title="Developer remarks" description={lastEdit('developerRemarks') ? `Last edit ${lastEdit('developerRemarks')}` : 'Reply to the bug: cause, fix, build.'}>
+                <FieldsForm itemId={item.id} fields={noteFields.filter(f => f.key === 'developerRemarks')} />
+              </Card>
+            </div>
+          )}
+
+          {mod.timeLog && (
+            <Card title="Time log" description="Every status change and edit, with who did it and how long the test sat in the previous status.">
+              <TimeLog entries={logEntries} totals={timeLogTotals(logIntervals, lookup.category)} tz={tz} />
+            </Card>
+          )}
+
           <Card title="Details & links">
-            <FieldsForm itemId={item.id} fields={fields} />
+            <FieldsForm itemId={item.id} fields={detailFields} />
           </Card>
 
           <Card title={`Feedback (${item.feedback.length})`}>

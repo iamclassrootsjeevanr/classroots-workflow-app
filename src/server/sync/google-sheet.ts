@@ -12,12 +12,14 @@
 import type { Prisma, WorkType } from '@prisma/client';
 import { requireModule } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
-import { diffRow, itemSheetValues, keyColumns, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
+import { diffRow, itemSheetValues, keyColumns, linkedPayloads, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
 import { dueDateToInstant } from '@/lib/time';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 import { createItemTx, internals, workTypeConfig, type ChangeActor, type NewItem } from '../services/work-items';
-import { batchUpdate, readSheet } from './apps-script';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from '../apk/store';
+import { batchUpdate, ensureLinked, readSheet } from './apps-script';
 
 const SHEET_ACTOR: ChangeActor = { userId: null, ctx: null, source: 'SHEET' };
 
@@ -39,7 +41,7 @@ export class PeopleDirectory {
   async load() {
     const [users, roles] = await Promise.all([
       this.tx.user.findMany({ select: { id: true, name: true } }),
-      this.tx.accessRole.findMany({ select: { id: true, key: true } }),
+      this.tx.accessRole.findMany({ where: { workTypeId: this.workTypeId }, select: { id: true, key: true } }),
     ]);
     for (const u of users) if (u.name) this.byName.set(norm(u.name), u.id);
     for (const r of roles) this.roleIds.set(r.key, r.id);
@@ -116,6 +118,24 @@ async function push(wt: WorkType, mod: WorkTypeDefinition, tab: string, spreadsh
     take: 500,
   });
   if (!pending.length) return { pushed: 0, failed: 0 };
+
+  // The sheet's tabs are linked: lists, then reference tables, then the main tab. Update them in that order first.
+  if (mod.sheet?.linked?.length) {
+    const itemIds = [...new Set(pending.map(p => p.itemId))];
+    const rows = await db.workItem.findMany({ where: { id: { in: itemIds } }, select: { title: true, groupKey: true, data: true, assignee: { select: { name: true } }, ...APK_INCLUDE } });
+    const payloads = linkedPayloads(mod, rows.map(r => ({ title: r.title, groupKey: r.groupKey, assigneeName: r.assignee?.name ?? null, data: hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest) })));
+    for (const payload of payloads) {
+      try {
+        await ensureLinked(payload, tab, spreadsheetId);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // A tracker without that tab simply has nothing to keep in step; any other problem stops the push so order is kept.
+        if (/^Tab not found/i.test(msg)) continue;
+        throw new Error(`Updating the “${payload.tab}” tab first failed: ${msg}`);
+      }
+    }
+  }
+
   const result = await batchUpdate(
     tab,
     keyColumns(mod),
@@ -306,9 +326,13 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
     });
     return result;
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    let message = e instanceof Error ? e.message : String(e);
+    if (/^Tab not found/i.test(message) && !/Share the sheet/.test(message)) {
+      // The deployed Apps Script is the old one: it only looks in its default spreadsheet.
+      message = `The tab “${tab}” was not found. Paste the latest apps-script/Code.gs into Apps Script and deploy a new version: it finds the tab in any Google Sheet the script owner can open, so no spreadsheet ID is needed.`;
+    }
     await db.syncState.update({ where: { workTypeId }, data: { lastError: message } });
-    throw e;
+    throw e instanceof Error ? Object.assign(e, { message }) : new Error(message);
   }
 }
 

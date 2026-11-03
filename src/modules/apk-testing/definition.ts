@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { VIEWER } from '../roles';
 import type { GroupSummaryRow, WorkTypeDefinition } from '../types';
 
 /**
@@ -25,11 +26,30 @@ export const apkTesting: WorkTypeDefinition = {
   key: 'apk-testing',
   name: 'APK Testing',
   description: 'Each APK build run through the test-case list: tested, failures fixed, retested, passed.',
+  icon: 'smartphone',
+  storage: 'apk',
   itemNoun: 'test',
   labels: { assignee: 'Tested by', owner: 'Owner', group: 'APK version' },
+  table: {
+    hide: ['owner', 'expected', 'delay'],
+    extra: [
+      { field: 'priority', label: 'Priority' },
+      { field: 'bug', label: 'Bug / issue' },
+      { field: 'developerRemarks', label: 'Developer remarks' },
+    ],
+  },
+  pages: { groups: 'APK versions', items: 'Test execution', cases: 'Test cases' },
+  versions: true,
+  timeLog: true,
   importRoles: { assignee: 'tester', owner: 'app-developer' },
   categoryLabels: { queue: 'Not tested', active: 'In process', feedback: 'Failed', review: 'Fixed / pending retest', done: 'Passed', hold: 'Not reported' },
 
+  roles: [
+    { key: 'tester', name: 'Tester', description: 'Runs test cases on APK builds: tests, logs failures, retests, adds new APK versions.', color: '#00897b', capabilities: ['work', 'create'], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'app-developer', name: 'App Developer', description: 'Responds to test failures: marks them fixed, adds developer remarks, and can add APK versions and test cases like a tester.', color: '#6d4c41', capabilities: ['review', 'create'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'test-lead', name: 'Test Lead', description: 'Plans the test runs: adds versions and cases, assigns testers, edits test details and the APK file.', color: '#ef6c00', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    VIEWER,
+  ],
   statuses: [
     { key: 'not_tested', label: 'Not Tested', color: '#90a4ae', category: 'queue', marks: ['assigned'], sheetValue: 'Not Tested' },
     { key: 'in_process', label: 'In Process', color: '#fb8c00', category: 'active', marks: ['started'], sheetValue: 'In Process' },
@@ -63,17 +83,18 @@ export const apkTesting: WorkTypeDefinition = {
 
   fields: [
     { key: 'testCaseId', label: 'Test case', type: 'text', source: 'data', editableBy: [] },
-    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
-    { key: 'priority', label: 'Priority', type: 'text', source: 'data', editableBy: ['ASSIGNEE', 'manageFields'] },
+    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'defaultPriority', label: 'Default priority (test case)', type: 'text', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'priority', label: 'Priority', type: 'text', source: 'data', editableBy: ['ASSIGNEE', 'manageFields', 'create'] },
     { key: 'comments', label: 'Tester comments', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'bug', label: 'Bug / issue', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'developerRemarks', label: 'Developer remarks', type: 'longtext', source: 'data', editableBy: ['review'] },
     { key: 'logDate', label: 'Log date', type: 'date', source: 'data', editableBy: ['ASSIGNEE'] },
-    { key: 'releaseDate', label: 'APK release date', type: 'date', source: 'data', editableBy: ['manageFields'] },
-    { key: 'apkUrl', label: 'APK file', type: 'url', source: 'data', editableBy: ['manageFields'], linkLabel: 'Open APK' },
-    { key: 'releaseNotes', label: 'Release notes', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
+    { key: 'releaseDate', label: 'APK release date', type: 'date', source: 'version', editableBy: ['manageFields', 'create'] },
+    { key: 'apkUrl', label: 'APK file', type: 'url', source: 'version', editableBy: ['manageFields', 'create'], linkLabel: 'Open APK' },
+    { key: 'releaseNotes', label: 'Release notes', type: 'longtext', source: 'version', editableBy: ['manageFields', 'create'] },
   ],
 
   dataSchema: z
@@ -131,18 +152,59 @@ export const apkTesting: WorkTypeDefinition = {
       const inProgress = count('in_process');
       const other = total - pass - fail - pendingRetest - notTested;
       const releaseDate = String(items.find(i => i.data.releaseDate)?.data.releaseDate ?? '');
+      const apkUrl = String(items.find(i => i.data.apkUrl)?.data.apkUrl ?? '');
       return {
         cells: { releaseDate, total, pass, fail, pendingRetest, notTested, other, passRate: total ? `${Math.round((pass / total) * 1000) / 10}%` : '—' },
         result: apkVersionResult({ total, pass, fail, notTested, inProgress }),
+        links: apkUrl ? [{ label: 'Open APK', url: apkUrl }] : undefined,
         series: { Pass: pass, Fail: fail, 'Pending retest': pendingRetest, 'Not tested': notTested, Other: other },
       };
     },
     seriesColors: { Pass: '#43a047', Fail: '#e53935', 'Pending retest': '#fdd835', 'Not tested': '#90a4ae', Other: '#8d6e63' },
+    seriesStatuses: { Pass: ['pass'], Fail: ['fail'], 'Pending retest': ['pending_retest', 'fixed'], 'Not tested': ['not_tested'], Other: ['in_process', 'not_reported'] },
+    successSeries: 'Pass',
+    rateLines: [
+      { label: `Good ${APK_RESULT_RULES.goodAtLeast * 100}%`, at: APK_RESULT_RULES.goodAtLeast * 100 },
+      { label: `Stable ${APK_RESULT_RULES.stableAtLeast * 100}%`, at: APK_RESULT_RULES.stableAtLeast * 100 },
+    ],
   },
 
   sheet: {
     defaultTab: 'Test Execution',
     updatedAtColumn: 'App Updated At',
+    // The tracker's tabs are linked: Test Execution picks its version, case and tester from these. Update them first, in this order.
+    linked: [
+      // Lists → APK Versions is a formula that lists every row of APK Releases, so it fills itself once the release row exists.
+      { tab: 'Lists', kind: 'values', column: 'Tested By', from: 'assignee' },
+      {
+        tab: 'Test Cases',
+        kind: 'rows',
+        mode: 'fill',
+        keyHeader: 'Test Case ID',
+        key: { field: 'testCaseId' },
+        columns: [
+          { header: 'Feature / Module', from: 'title' },
+          { header: 'Test Scenario', from: { field: 'scenario' } },
+          { header: 'Expected Result', from: { field: 'expected' } },
+          { header: 'Default Priority', from: { field: 'defaultPriority' } },
+          { header: 'Test Steps', from: { field: 'steps' } },
+        ],
+      },
+      {
+        tab: 'APK Releases',
+        kind: 'rows',
+        mode: 'update',
+        keyHeader: 'APK Version',
+        key: 'group',
+        columns: [
+          { header: 'Release Date', from: { field: 'releaseDate' } },
+          { header: 'APK Link', from: { field: 'apkUrl' } },
+          { header: 'Notes', from: { field: 'releaseNotes' } },
+        ],
+      },
+      // Version Summary is a fixed table with one formula row per release and a Total row: a new build gets a row of its own.
+      { tab: 'Version Summary', kind: 'summary', keyHeader: 'APK Version', totalLabel: 'Total', from: 'group' },
+    ],
     columns: [
       { column: 'APK Version', kind: 'key' },
       { column: 'Test Case ID', kind: 'key' },

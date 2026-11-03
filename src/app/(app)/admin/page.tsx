@@ -5,6 +5,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
+import { itemsUrl } from '@/lib/items-url';
 import { addDays, formatDateTime, formatDuration } from '@/lib/time';
 import { allModules, getModule } from '@/modules/registry';
 import { db } from '@/server/db';
@@ -40,7 +41,9 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
   const unassigned = d.items.filter(i => !i.assigneeId && i.category !== 'done').slice(0, 12);
   const overdue = d.items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < d.now).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
-  const statusSeries = d.statusSlices.map(s => ({ label: s.label, color: s.color, count: s.count }));
+  const statusSeries = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
+  const one = sp.wt;
+  const itemsHref = one && itemsUrl(one);
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
   const flowHint = 'business hours';
@@ -59,19 +62,14 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
       />
 
       <KpiGrid>
-        <Kpi label="Total items" value={d.kpis.total} />
-        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} />
-        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
-        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} />
-        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" />
-        <Kpi label="Overdue" value={d.kpis.overdue} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
+        <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
+        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { dev: 'none' })} />
+        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
+        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { cat: 'review' })} />
+        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { cat: 'done' })} />
+        <Kpi label="Overdue" value={d.kpis.overdue} href={one && itemsUrl(one, { scope: 'overdue' })} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`first-pass ${pct(d.quality.firstPassRate)}`} />
       </KpiGrid>
-
-      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
-        const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard key={key} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
-      })}
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="Avg lead time" value={formatDuration(d.flow.leadTime.avg)} hint="received → done" />
@@ -82,14 +80,26 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         <Kpi label="Correction time" value={formatDuration(d.review.correctionTime.avg)} hint={`p90 ${formatDuration(d.review.correctionTime.p90)}`} />
       </div>
 
+      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
+        const mod = getModule(key);
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+      })}
+
+
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status">
-          <StatusPie slices={statusSeries} />
+          <StatusPie slices={statusSeries} itemsHref={itemsHref} />
         </Card>
         <Card title="Work per developer" className="lg:col-span-2">
-          <StackedByPerson rows={d.byDeveloper} series={statusSeries} />
+          <StackedByPerson rows={d.byDeveloper} series={statusSeries} itemsHref={itemsHref} />
         </Card>
       </div>
+
+
+      {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
+        const mod = getModule(key);
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.items.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+      })}
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Workload now" actions={<span className="text-xs text-muted">active items ÷ capacity</span>}>

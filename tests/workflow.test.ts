@@ -109,3 +109,28 @@ describe('stage timestamps', () => {
     expect(p.approvedAt).toBeNull();
   });
 });
+
+describe('deleting items', () => {
+  const ctx = (o: Partial<import('@/lib/workflow').ActorContext>) => ({ isAdmin: false, capabilities: new Set<import('@/lib/access-core').Capability>(), isAssignee: false, canEdit: true, ...o });
+  it('is allowed for admins, system changes and people who edit item details', async () => {
+    const { canDeleteItem } = await import('@/lib/workflow');
+    expect(canDeleteItem(null)).toBe(true);
+    expect(canDeleteItem(ctx({ isAdmin: true }))).toBe(true);
+    expect(canDeleteItem(ctx({ capabilities: new Set(['manageFields']) }))).toBe(true);
+  });
+  it('is refused for workers, reviewers and view-only roles', async () => {
+    const { canDeleteItem } = await import('@/lib/workflow');
+    expect(canDeleteItem(ctx({ capabilities: new Set(['work', 'review', 'assign', 'create']) }))).toBe(false);
+    expect(canDeleteItem(ctx({ capabilities: new Set(['manageFields']), canEdit: false }))).toBe(false);
+  });
+});
+
+describe('undoing a delete', () => {
+  it('works for 30 minutes and not after', async () => {
+    const { canUndoDelete } = await import('@/lib/workflow');
+    const at = new Date('2026-11-02T10:00:00Z');
+    expect(canUndoDelete(at, new Date('2026-11-02T10:29:59Z'))).toBe(true);
+    expect(canUndoDelete(at, new Date('2026-11-02T10:30:01Z'))).toBe(false);
+    expect(canUndoDelete(null)).toBe(false);
+  });
+});

@@ -338,3 +338,23 @@ export function stageFunnel(items: ItemLite[]) {
     { stage: 'Completed', count: c(i => i.completedAt) },
   ];
 }
+
+export type CompareRow = { label: string; hint: string; kind: 'minutes' | 'count'; me: number | null; team: number | null };
+
+/**
+ * "You vs team average": the person's flow times against the whole work type, plus items finished in the last 30 days
+ * against the average per person. Only aggregates leave this function, never other people's items.
+ */
+export function compareWithTeam(mine: ItemLite[], all: ItemLite[], now: Date, cal: WorkCalendar = DEFAULT_CALENDAR): CompareRow[] {
+  const me = flowTimes(mine, cal);
+  const team = flowTimes(all, cal);
+  const since = addDays(now, -30);
+  const done30 = (list: ItemLite[]) => list.filter(i => i.completedAt && i.completedAt >= since).length;
+  const people = new Set(all.filter(i => i.assigneeId && i.completedAt && i.completedAt >= since).map(i => i.assigneeId));
+  return [
+    { label: 'Done in 30 days', hint: 'team: average per person', kind: 'count', me: done30(mine), team: people.size ? Math.round((done30(all) / people.size) * 10) / 10 : null },
+    { label: 'Wait before start', hint: 'assigned → started', kind: 'minutes', me: me.waitBeforeStart.avg, team: team.waitBeforeStart.avg },
+    { label: 'Cycle time', hint: 'started → done', kind: 'minutes', me: me.cycleTime.avg, team: team.cycleTime.avg },
+    { label: 'Lead time', hint: 'received → done', kind: 'minutes', me: me.leadTime.avg, team: team.leadTime.avg },
+  ];
+}
