@@ -1,0 +1,100 @@
+# Next steps (simple, in order)
+
+Written at the end of the redesign + APK database session. Do them top to bottom. Each step says where to click and what you should see.
+
+## 1. Merge the work into `main`
+
+Everything is on pull request **#5** (`jeevan/ui-redesign` into `main`). GitHub blocks it until someone approves it ("review required").
+
+- Easiest: open the PR on GitHub, look through "Files changed", and click **Approve**, then **Squash and merge**. A repo owner cannot approve their own PR, so ask a teammate, or:
+- As owner you can allow yourself to bypass: GitHub → Settings → Branches (or Rules) → the rule for `main` → untick "Require approvals" for now, merge, then tick it again. Or run `gh pr merge 5 --squash --admin`.
+- After the merge: `git checkout main && git pull`, then start new work on a new branch (`git checkout -b <your-name>/<topic>`).
+
+## 2. Make the APK tracker a Google Sheet the script can use
+
+The app syncs with the **APK Testing Tracker**. It must be a real Google Sheet (not an uploaded Excel file).
+
+1. Upload `APK Testing Tracker.xlsx` to Google Drive, open it, and choose File → **Save as Google Sheets**.
+2. File → Settings → set the **Time zone** (Asia/Kolkata).
+3. Check that these tabs and **exact column headers** exist (row 1):
+
+| Tab | Row 1 headers | Notes |
+| --- | --- | --- |
+| **Test Execution** | APK Version, Test Case ID, Feature / Module, Tested By, Status, Comments, Bug / Issue, Priority, Developer Remarks, Log Date | The app adds an **App Updated At** column by itself. Dropdowns here can stay as they are. |
+| **APK Releases** | APK Version, Release Date, APK Link, Notes | One row per APK version. |
+| **Test Cases** | Test Case ID, Feature / Module, Test Scenario, Expected Result, Default Priority, Test Steps | One row per test case. |
+| **Lists** | A: Tested By, B: Status, C: Priority, D: APK Versions | **Column D is a formula** (FILTER over APK Releases). Never type in it. Tested By names go in column A. |
+| **Version Summary** | APK Version, Release Date, Total Tests, Pass, Fail, … | One formula row per release, then a **Total** row. The app copies the last row for a new version. |
+
+4. Share this Google Sheet with the **same Google account that owns the Apps Script** (Editor).
+
+## 3. Put the latest script in Google Apps Script
+
+1. Open your Apps Script project (the one whose web-app URL is in `.env` as `APPS_SCRIPT_URL`). If you made a new "Untitled project", use that one and replace the URL in step 4.
+2. Open `apps-script/Code.gs` from this repo, copy **everything**, paste it over the project's code, save.
+3. Project Settings (gear) → **Script properties** → add `SYNC_TOKEN` with the same value as `SYNC_TOKEN` in the app's `.env`.
+4. Click **Run** once (function `doGet`) → Review permissions → Advanced → "Go to project" → Allow (this includes Google Drive; the script needs it to find tabs by name).
+5. **Deploy → Manage deployments → pencil → New version → Deploy**. (New project: Deploy → New deployment → Web app → Execute as **Me**, Who has access **Anyone**.)
+6. If the URL changed, put the new `/exec` URL in `.env` as `APPS_SCRIPT_URL` and restart the app.
+
+You do **not** need a Spreadsheet ID. The script finds the tab by name. (The default tracker is the Journey sheet set as `SHEET_ID` at the top of `Code.gs`.)
+
+## 4. Turn sync on in the app
+
+1. Sign in as admin → **Admin → Sheet sync**.
+2. **Journey Applets**: tab `Journeys in Chapters`. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**.
+3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
+
+If you see an error:
+
+| Message | Fix |
+| --- | --- |
+| Unauthorized | `SYNC_TOKEN` differs between `.env` and the script property. |
+| Tab not found | The Google account that owns the script cannot open the sheet (share it), or the tab name differs (spelling, spaces). |
+| Invalid argument: timeZone | Paste the latest `Code.gs` and deploy a new version. |
+| Data validation rules | Paste the latest `Code.gs` and deploy a new version. |
+| Lists shows `#REF!` | Something was typed into Lists column D. Clear D3 downwards so the FILTER formula in D2 can spill again. |
+| "old version" of the script | Deploy a **new version**, not just save. |
+
+## 5. Put the app online (Railway)
+
+Full steps with variable names are in the README under **Deploy → Railway**. Short version:
+
+1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin.
+2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`.
+3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
+4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
+5. Move your data: `pg_dump` your local database and restore it into Railway, or start empty and run `npm run import:apk -- "<file>"` and `npm run import:xlsx -- "<file>"` against the Railway database.
+6. Open `<your url>/api/health`: it must say `{"ok":true}`.
+
+## 6. Before real users arrive
+
+- Remove the demo accounts (Admin → People & access → deactivate or remove the `@demo.classroots.local` people) and never run `npm run demo:users` on the live database.
+- Give real people their **roles per work type** (Admin → People & access). In APK Testing: Tester, App Developer, Test Lead, Viewer. In Journey Applets: Developer, SME / Reviewer, Coordinator, Viewer.
+- Admin emails go in `ADMIN_EMAILS`.
+
+## 7. Google organisation and email (later)
+
+- **Google sign-in:** Google Cloud Console → APIs & Services → Credentials → OAuth client (Web). Redirect URI: `<AUTH_URL>/api/auth/callback/google`. Put the id and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
+- **Only your organisation:** set `ALLOWED_DOMAINS=yourcompany.com` so people with that email domain can sign in without an invite.
+- **Magic-link email:** set `EMAIL_SERVER` (SMTP URL) and `EMAIL_FROM`.
+
+## 8. Build further (next sessions)
+
+1. **Journey Applets on database tables** like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
+2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
+3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
+4. **Checks not yet done:** light theme on the newest pages (Inbox, Overview tiles, Cases), phone width (375px) of Inbox and Cases, and a real Railway deploy.
+
+## 9. How to resume in a new session or another tool
+
+```bash
+git checkout main && git pull           # after step 1 (or: git checkout jeevan/ui-redesign)
+npm install
+npm run db:start                        # terminal 1: local database
+npm run db:deploy && npm run db:seed    # once: migrations, roles, work types
+npm run dev                             # terminal 2: http://localhost:3000
+npm run typecheck && npm test           # should be clean, 105 tests
+```
+
+Then say "resume" to the assistant: it reads `.ai/state/<branch>.md`, `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).

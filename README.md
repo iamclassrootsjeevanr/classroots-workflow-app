@@ -543,6 +543,8 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 
 ## Deploy
 
+> **What to do next, step by step** (merge, Google Sheet tabs, Apps Script, Railway, going live): see [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
+
 ### Docker (any server)
 
 ```bash

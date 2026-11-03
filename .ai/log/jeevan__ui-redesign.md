@@ -31,3 +31,4 @@
 - 2026-11-02T13:32Z | claude-code | Sheet sync updates Lists, Test Cases and APK Releases before Test Execution
 - 2026-11-02T13:33Z | claude-code | Apps Script: never leave dropdown rules changed
 - 2026-11-02T13:45Z | claude-code | Sheet sync: skip formula-driven Lists column, add Version Summary row
+- 2026-11-03T05:30Z | claude-code | Handoff: next steps doc and state for the whole session
