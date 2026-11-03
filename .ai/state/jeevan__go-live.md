@@ -32,8 +32,9 @@ app → sheet sync for the APK tracker, deploy on Railway, real people with role
 - Branches: created `development` (now GitHub default) and `staging` from main 4abce15; rulesets + CI (`checks`) + `branch-flow`
   workflows; PR #6 retargeted to `development`. Docs: README "Branches and environments", NEXT-STEPS § 1/§ 5, AGENTS.md.
 
-- Docs: NEXT-STEPS § 6 "Load live data and people into production": fresh prod (no local dump), seed + import:apk against
-  Railway DATABASE_PUBLIC_URL via `DATABASE_URL=... npm run …` (env beats --env-file, verified), link imported testers via Add user.
+- Server data plan (Jeevan): copy the local demo DB now with `npm run db:copy -- --to <Railway DATABASE_PUBLIC_URL>`
+  (scripts/copy-db.ts, tested against a temp local DB: all tables match, --replace works, sync off in copy); later reset + seed +
+  live imports when Journey is built (NEXT-STEPS § 6). `DATABASE_URL=… npm run …` overrides .env (verified).
 
 ## In progress
 Nothing mid-edit.

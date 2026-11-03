@@ -75,43 +75,40 @@ Full steps with variable names are in the README under **Deploy → Railway**. S
 2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
-5. Load the live data and people: § 6.
+5. Put data on it: § 6 (copy of this machine now, live data later).
 6. Open `<your url>/api/health`: it must say `{"ok":true}`.
 
-## 6. Load live data and people into production
+## 6. Data on the server: demo copy now, live data later
 
-Start production **clean**: do not copy your local database (it has demo users, test versions and demo Journey rows). Import the real APK tracker instead. Rehearse every step on **staging** first, then repeat on production.
+**Now:** the server uses a copy of this machine's database (APK tests and Journey demo data, people, roles). **Later**, when Journey is built and the team is ready, the server's data is replaced with the live trackers.
 
-**A. Wait for the first deploy.** Railway's first deploy creates all tables (migrations run on start). `<url>/api/health` must say `{"ok":true}`.
+### Now — copy this machine's database to Railway
 
-**B. Get the database address.** Railway → the environment (staging or production) → **Postgres** service → **Variables** → copy `DATABASE_PUBLIC_URL` (starts with `postgresql://`, host like `xxx.proxy.rlwy.net`). It contains the password: paste it only in your terminal, never in a file in the repo.
+1. Deploy the app on Railway first (§ 5). The first deploy creates the empty tables. `<url>/api/health` must say `{"ok":true}`.
+2. Railway → the environment (production, or staging to try first) → **Postgres** → **Variables** → copy `DATABASE_PUBLIC_URL` (host like `xxx.proxy.rlwy.net`). It contains the password: paste it only in the terminal.
+3. On this Mac, with the local database running (`npm run db:start` in another terminal):
+   ```bash
+   npm run db:copy -- --to 'postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
+   ```
+   It prints every table with its row count and ends with "Done. Every table matches." Run it again later with `--replace` to overwrite the server with a fresh copy (this wipes what was changed on the server).
+   Not copied: sign-in sessions, password links and the pending sheet queue. Sheet sync is switched **off** on the server.
+4. Open the server URL and sign in with the same accounts as on this Mac.
+5. Tidy people (People & access): for demo accounts that are real people (e.g. Jeevan, Aswin), **Edit access** → change the email to their real one → **Save** (their history stays). **Deactivate** the other `@demo.classroots.local` accounts. Add your real admin email in Railway `ADMIN_EMAILS`. Then add real people (§ 7).
 
-**C. Run these on your Mac** in the project folder (local `npm run db:start` is not needed):
+### Later — switch the server to live data
+
+When Journey is built and the live trackers are ready. This **replaces all data on the server** (people too), so do it on staging first.
 
 ```bash
-export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'   # from step B
-
-# 1. Base data once: work types, roles, settings, the admin account
-DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed
-
-# 2. Live APK data from the latest tracker (download it from Drive as .xlsx first)
+export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
+DATABASE_URL="$PROD_DB" npx prisma migrate reset --force --skip-seed          # empty tables, latest schema
+DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed  # work types, roles, admin
 DATABASE_URL="$PROD_DB" npm run import:apk -- "$HOME/Downloads/APK Testing Tracker.xlsx"
-
+DATABASE_URL="$PROD_DB" npm run import:xlsx -- "$HOME/Downloads/<live Journey tracker>.xlsx"
 unset PROD_DB
 ```
 
-The import is safe to run again, but it only **adds** tests that are not in the app yet; tests already imported keep their app status. So import on go-live day, and from then on the team updates results in the app, not in the sheet. Testers named in "Tested By" are created as **people without an email** so their history is kept. Do **not** run `npm run demo:users` or `npm run import:xlsx` (Journey demo) on production.
-
-**D. Check:** open the production URL → sign in → APK Testing → APK versions and Test execution show the tracker's numbers.
-
-**E. Give people access** (signed in as admin, People & access):
-
-1. **You:** `ADMIN_EMAILS` makes you admin. Sign in with Google (office email), or set a password once: `DATABASE_URL="$PROD_DB" npm run user:password -- you@example.com`.
-2. **Testers already in the tracker:** **+ Add user** → at the top, **"Already in the system from the sheet?"** → pick their name → add their email → section 3: APK Testing + role → keep **Email them an invite now** → **Add user**. Picking the name links their past tests to the new login.
-3. **Everyone else:** **+ Add user** normally (§ 7, step 4).
-4. Roles in APK Testing: Tester, App Developer, Test Lead, Viewer.
-
-**F. Sheet sync:** leave it **off** in production for now. App → sheet only is the next thing to build; turning on today's two-way sync would also pull sheet edits into the app.
+Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Leave sheet sync off until app → sheet sync is built.
 
 ## 7. Who can sign in, and how
 

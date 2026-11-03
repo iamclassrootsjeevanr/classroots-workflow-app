@@ -76,3 +76,8 @@ Decision: `development` is the default branch (feature PRs, squash). `staging` d
 Why: Jeevan wants separate development, staging and production. Merge commits (not squash) for promotions keep the three histories identical so releases never conflict.
 By: cursor
 
+## 2026-11-03 — Server starts with a copy of the local demo database; live data later
+Decision: no production data yet. The Railway database gets a copy of this machine's DB via `npm run db:copy -- --to <url> [--replace]` (scripts/copy-db.ts: Prisma + row_to_json/json_populate_recordset, FK order, migrations must match, skips Session/VerificationToken/SyncOutbox, turns sheet sync off). When Journey is built: `prisma migrate reset` on the server, seed, import:apk + import:xlsx from the live trackers, re-add people (NEXT-STEPS § 6).
+Why: Jeevan wants to use the app now with APK + Journey demo data. Rejected: pg_dump (not installed; no system Postgres tools on this Mac).
+By: cursor
+

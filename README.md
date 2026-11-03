@@ -619,7 +619,7 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 3. **Generate a domain** for the service, then set `AUTH_URL` to it and redeploy. For Google sign-in add `<AUTH_URL>/api/auth/callback/google` as a redirect URI.
 4. **Schedule** sheet sync: add a second service from the same repo as a **Cron** job (every 5 minutes) with the start command
    `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"` (set `APP_URL` to the public URL, `CRON_SECRET` to the same value as the app).
-5. **Move your existing data** (one time): `pg_dump "$LOCAL_DATABASE_URL" | psql "$RAILWAY_DATABASE_PUBLIC_URL"`, or start empty and run `npm run import:apk -- <file>` against the Railway database. The APK tables (`ApkVersion`, `ApkTestCase`, `ApkTest`) are created and filled by migrations automatically.
+5. **Put data on it** (after the first deploy created the tables): copy this machine's database with `npm run db:copy -- --to "<Railway DATABASE_PUBLIC_URL>"` (no `pg_dump` needed; add `--replace` to overwrite; sheet sync is switched off in the copy), or start from the live trackers with `DATABASE_URL="<url>" npm run db:seed` and `DATABASE_URL="<url>" npm run import:apk -- <file>`. Step by step: `docs/NEXT-STEPS.md` § 6.
 
 **Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
@@ -647,6 +647,7 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 | `npm run demo:users` | Create the demo sign-ins |
 | `npm run user:password -- <email>` | Set someone's password from the terminal |
 | `npm run import:xlsx -- <file>` | Import the Journey tracker workbook (safe to re-run) |
+| `npm run db:copy -- --to <url> [--replace]` | Copy this machine's database into another one (e.g. Railway); same migrations required, sheet sync switched off in the copy |
 | `npm run import:apk -- <file>` | Import the APK Testing workbook (safe to re-run) |
 | `npm run sync:run` | Run sheet sync and the workload snapshot once |
 | `npm run scheduler` | Call `/api/cron/run` every N minutes (self-hosted) |

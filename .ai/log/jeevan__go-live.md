@@ -8,3 +8,4 @@
 - 2026-11-03T07:06Z | cursor | Invite email on add (office: Google, others: generated password), forgot/reset password by email link, docs
 - 2026-11-03T07:18Z | cursor | Branches: development (default) → staging → main; rulesets, CI and branch-flow workflows; docs
 - 2026-11-03T07:27Z | cursor | Docs: how to load live APK data and people into production
+- 2026-11-03T07:33Z | cursor | db:copy: copy local demo DB to Railway; docs for demo-now, live-later
