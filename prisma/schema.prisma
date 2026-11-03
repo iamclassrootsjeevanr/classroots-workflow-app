@@ -64,7 +64,7 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?
-  /// scrypt hash for email + password sign-in (null = SSO / magic link only)
+  /// scrypt hash for email + password sign-in (null = Google sign-in only)
   passwordHash      String?
   passwordUpdatedAt DateTime?
   /// UI preferences (theme, text size, density) – see src/lib/prefs.ts

@@ -16,7 +16,7 @@ type Demo = {
   name: string;
   isAdmin?: boolean;
   linkToImported?: boolean;
-  /** Role keys in Journey Applets; data scope, edit right and pages come from the roles (Admin → Roles). */
+  /** Role keys in Journey; data scope, edit right and pages come from the roles (Admin → Roles). */
   roles?: string[];
 };
 

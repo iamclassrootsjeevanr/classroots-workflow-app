@@ -33,9 +33,9 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 
 ## Project
 
-**What this is:** Classroots Work — work tracking, review and analytics for Classroots teams. Items (Journey Applets, APK tests) move through per-work-type workflows; every step is timestamped and turned into dashboards. Optional two-way Google Sheet sync. Full docs in `README.md`.
+**What this is:** Classroots Work — work tracking, review and analytics for Classroots teams. Items (Journey, APK tests) move through per-work-type workflows; every step is timestamped and turned into dashboards. Optional two-way Google Sheet sync. Full docs in `README.md`.
 
-**Stack:** Next.js 15 App Router + React 19, TypeScript, Tailwind CSS v4 (CSS-first tokens), Prisma 6 on PostgreSQL (embedded local DB via `npm run db:start`), Auth.js v5 (Google, password, magic link), Recharts, lucide-react, Vitest.
+**Stack:** Next.js 15 App Router + React 19, TypeScript, Tailwind CSS v4 (CSS-first tokens), Prisma 6 on PostgreSQL (embedded local DB via `npm run db:start`), Auth.js v5 (Google for office domains, admin-set passwords for others; invite-only), Recharts, lucide-react, Vitest.
 
 **Commands**
 - Install: `npm install`, copy `.env.example` → `.env`
@@ -55,5 +55,7 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 - Form controls use `src/components/form.tsx` (Checkbox/Radio/Switch rows, Segmented); nav icons via `src/components/icons.tsx` string keys.
 - Every metric tile, chart slice, bar or column must open the item list (`/w/<key>/items`) with the matching filter. Build links with `itemsUrl` (`src/lib/items-url.ts`). A new work type's `groupSummary` must list `seriesStatuses` for each series (a test enforces it), and new charts take an `itemsHref`.
 - Verify UI in a browser at phone (375px) and desktop widths, light and dark, before calling it done.
+
+**Branches:** `development` (default; feature PRs, squash) → `staging` (Railway staging) → `main` (Railway production), promoted by merge-commit PRs; `hotfix/*` → `main`, then back-merge. Start work with `git checkout development && git pull && git checkout -b <name>/<topic>`. CI (`checks`) and `branch-flow` are required; see README "Branches and environments".
 
 **Done means:** code runs, `npm run typecheck && npm test` pass, `.ai/state/<branch>.md` updated via `handoff`, pushed.

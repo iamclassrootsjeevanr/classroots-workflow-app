@@ -55,3 +55,29 @@ By: claude-code
 Decision: `ApkVersion`, `ApkTestCase` and `ApkTest` (run -> version + case, unique per pair). Runs stay `WorkItem` rows so workflow, events, sync and permissions are untouched; shared fields (scenario/expected/steps/default priority, release date/link/notes) have `FieldDef.source` 'case' / 'version' and are merged into `data` on read (`hydrateApkData`) and routed on write (`updateFieldsTx`). Migration 20261103090000 moved the existing data (20 versions, 20 cases, every run linked). Items page filters and paging run in Postgres (`items-query`); headers use `loadLiteItems`. Deploy target: Railway (Dockerfile + railway.json + /api/health).
 Why: scenario/steps/link text was copied into every run (x versions), edits touched dozens of rows, and lists loaded everything. Rejected: a separate APK app/schema (would duplicate workflow, roles, sync).
 By: claude-code
+
+## 2026-11-03 — Work type "Journey Applets" is called "Journey"
+Decision: display name `Journey` (module `name` + migration 20261103120000_rename_journey for existing DB rows). Key `journey-applet`, URLs, roles and sheet tab unchanged. The Journey work type itself is built later from the real tracker; only APK Testing goes live now.
+Why: Jeevan's naming. `WorkType.name` is only written on first create, so renames need a migration.
+By: cursor
+
+## 2026-11-03 — Sign-in: admin adds everyone; Google for office emails, admin-set password for the rest
+Decision: invite-only (existing active user or `ADMIN_EMAILS`); no self sign-up (`ALLOWED_DOMAINS` removed) and no email magic link (provider and /signin/check-email removed). `OFFICE_DOMAINS=classrootsedu.com`: these sign in with Google (OAuth client, Internal consent screen); Google is refused for other domains. Everyone else signs in with email + a password the admin sets (Generate + Copy login details in the user form); saving a non-office person without a password is refused (`missingPasswordProblem`). Optional `EMAIL_SERVER` only powers **Send invite** (never contains a password). APK sheet sync will be app → sheet only (to build).
+Why: Jeevan's model: admin controls who gets in; office staff have Workspace accounts, outsiders don't; magic links confused users. Rejected: domain auto sign-up, emailing passwords.
+By: cursor
+
+## 2026-11-03 — Invite on add (with the generated password) and self-service forgot password
+Decision: adding a person emails them by default (`notify`): office → Google steps; others → email + the password the admin just generated (Jeevan wants the password sent). Re-sending later (Send invite) gives password users a 72 h set-password link instead (old password unknown). Forgot password: /forgot-password → 1 h one-time link → /reset-password; tokens hashed (SHA-256) in VerificationToken as `pwreset:<reset|invite>:<email>`, new link replaces old, max one per 2 min, response never reveals whether the email exists; office (Google) users get no link. Needs EMAIL_SERVER in production.
+Why: Jeevan's flow; outsiders must recover without the admin. Rejected: storing plaintext passwords, new tables (VerificationToken already exists).
+By: cursor
+
+## 2026-11-03 — Branches: development → staging → main (production)
+Decision: `development` is the default branch (feature PRs, squash). `staging` deploys Railway staging (own DB, own AUTH_URL/AUTH_SECRET), `main` deploys production. Promotion only by merge-commit PRs development → staging → main; `hotfix/*` → main then back-merge main → staging/development. GitHub rulesets "Development" / "Staging" / "Production (main)": no delete/force-push, PR only, required checks `checks` (.github/workflows/ci.yml) and `branch-flow` (.github/workflows/branch-flow.yml, staging/main only); main needs 1 approval; admins may bypass in a PR. `.ai/config.json` protects `development` too.
+Why: Jeevan wants separate development, staging and production. Merge commits (not squash) for promotions keep the three histories identical so releases never conflict.
+By: cursor
+
+## 2026-11-03 — Server starts with a copy of the local demo database; live data later
+Decision: no production data yet. The Railway database gets a copy of this machine's DB via `npm run db:copy -- --to <url> [--replace]` (scripts/copy-db.ts: Prisma + row_to_json/json_populate_recordset, FK order, migrations must match, skips Session/VerificationToken/SyncOutbox, turns sheet sync off). When Journey is built: `prisma migrate reset` on the server, seed, import:apk + import:xlsx from the live trackers, re-add people (NEXT-STEPS § 6).
+Why: Jeevan wants to use the app now with APK + Journey demo data. Rejected: pg_dump (not installed; no system Postgres tools on this Mac).
+By: cursor
+

@@ -5,7 +5,7 @@ import { Card, PageHeader, ToneChip } from '@/components/ui';
 import { combineRoles, type RoleLite } from '@/lib/access-core';
 import { formatDateTime } from '@/lib/time';
 import { db } from '@/server/db';
-import { env, googleEnabled } from '@/server/env';
+import { emailEnabled, env, googleEnabled } from '@/server/env';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
 
@@ -65,13 +65,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     if (sp.status === 'admin' && !u.isAdmin) return false;
     return true;
   });
-  const domains = env().ALLOWED_DOMAINS;
+  const office = env().OFFICE_DOMAINS;
 
   return (
     <>
       <PageHeader
         title="People & access"
-        subtitle={`${users.filter(u => u.active).length} active people · sign-in: email + password${googleEnabled() ? ', Google' : ''}, email link · invited only${domains.length ? ` (plus anyone @${domains.join(', @')})` : ''}`}
+        subtitle={`${users.filter(u => u.active).length} active people · only people added here can sign in · ${office.length ? `@${office.join(', @')}: Google · others` : 'everyone'}: email + password`}
         actions={
           <>
             <Link href="/admin/roles" className="btn-ghost">
@@ -83,6 +83,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           </>
         }
       />
+      {(!googleEnabled() || !office.length || !emailEnabled()) && (
+        <div className="note-warn mb-4 space-y-1 text-xs">
+          {!office.length && <p>Office domain is not set: add OFFICE_DOMAINS (e.g. classrootsedu.com) on the server. Until then everyone signs in with email + password.</p>}
+          {!googleEnabled() && <p>Google sign-in is not set up: add AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on the server. Until then office people can’t use Google; give them a password for now.</p>}
+          {!emailEnabled() && <p>Email sending is not set up (EMAIL_SERVER): invites and “Forgot password?” links are only printed in the server log. Until then, use Copy login details and send people their details yourself.</p>}
+        </div>
+      )}
       <FilterBar
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
@@ -126,7 +133,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 <Link href={`/admin/users/${u.id}`} className="link">
                   Edit access
                 </Link>
-                <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} />
+                <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} canInvite={u.active && Boolean(u.email)} />
               </span>
             </div>
           </li>
@@ -169,7 +176,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                     <Link href={`/admin/users/${u.id}`} className="link mr-3 text-xs">
                       Edit access
                     </Link>
-                    <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} />
+                    <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} canInvite={u.active && Boolean(u.email)} />
                   </td>
                 </tr>
               ))}

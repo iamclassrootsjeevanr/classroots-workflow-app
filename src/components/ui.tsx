@@ -63,7 +63,7 @@ export function Kpi({ label, value, hint, tone, icon, accent, href }: { label: s
             <NavGlyph name={icon} size={15} />
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-muted">{label}</span>
+        <span className="line-clamp-2 min-w-0 flex-1 text-xs leading-4 font-medium text-muted">{label}</span>
         {href && <ArrowUpRight size={14} aria-hidden="true" className="shrink-0 text-muted opacity-0 transition-opacity group-hover/kpi:opacity-100 group-focus-visible/kpi:opacity-100" />}
       </div>
       <div className={`mt-2 text-xl font-semibold tracking-tight tabular-nums sm:text-[1.75rem] sm:leading-8 ${tone ? TONE_TEXT[tone] : 'text-ink'}`}>{value}</div>

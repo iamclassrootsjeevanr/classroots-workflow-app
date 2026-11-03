@@ -1,4 +1,5 @@
 import { AuthError } from 'next-auth';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PasswordField } from '@/components/password-field';
 import { signIn } from '@/server/auth';
@@ -8,14 +9,14 @@ import { currentUser } from '@/server/rbac';
 export const metadata = { title: 'Sign in' };
 
 const ERRORS: Record<string, string> = {
-  CredentialsSignin: 'Email or password is incorrect. If you have never set a password, use “Email me a sign-in link” below.',
-  GoogleNotConfigured: 'Google sign-in isn’t set up on this server yet. Use email and password, or ask an admin.',
-  NotInvited: 'This account has not been invited yet. Ask an admin to add you.',
+  CredentialsSignin: 'Email or password is incorrect. Forgot it? Use “Forgot password?” below.',
+  GoogleNotConfigured: 'Google sign-in isn’t set up on this server yet. Ask your admin.',
+  GoogleOfficeOnly: 'Google sign-in is only for office accounts. Sign in with your email and the password your admin gave you.',
+  NotInvited: 'This account has not been added yet. Ask an admin to add you.',
   Inactive: 'Your account is deactivated. Contact an admin.',
   NoEmail: 'Your sign-in provider did not share an email address.',
-  Verification: 'That sign-in link has expired or was already used. Request a new one.',
   OAuthAccountNotLinked: 'This email is linked to a different sign-in method.',
-  AccessDenied: 'This account has not been invited yet. Ask an admin to add you.',
+  AccessDenied: 'This account has not been added yet. Ask an admin to add you.',
   Configuration: 'Sign-in is not configured correctly. Check the server log.',
 };
 
@@ -40,11 +41,13 @@ function GoogleIcon() {
   );
 }
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string }> }) {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string; reset?: string }> }) {
   if (await currentUser()) redirect('/');
-  const { error, callbackUrl } = await searchParams;
+  const { error, callbackUrl, email: invitedEmail, reset } = await searchParams;
+  const emailValue = invitedEmail?.includes('@') ? invitedEmail.trim().toLowerCase() : undefined;
   const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/';
-  const domains = env().ALLOWED_DOMAINS;
+  const office = env().OFFICE_DOMAINS;
+  const officeLabel = office.length ? office.map(d => `@${d}`).join(' / ') : 'office';
 
   return (
     <main className="safe-bottom flex min-h-screen items-center justify-center bg-[radial-gradient(70%_45%_at_50%_0%,var(--brand-soft),transparent)] p-4">
@@ -57,10 +60,11 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         <div className="rounded-2xl border border-line bg-surface px-5 py-6 shadow-[var(--shadow-card)] sm:px-8 sm:py-7">
           <p className="mb-6 text-center text-md text-muted">Sign in to your account</p>
           {error && <p className="note-bad mb-5">{ERRORS[error] ?? 'Sign-in failed. Try again.'}</p>}
+          {reset && !error && <p className="note-ok mb-5">Password changed. Sign in with your new password.</p>}
 
-          {/* Classroots staff: Google sign-in (first sign-in creates the account when the domain is allowed) */}
+          {/* Office staff: Google sign-in (the admin must have added them) */}
           <section>
-            <h2 className="mb-3 text-md font-semibold">Classroots Users</h2>
+            <h2 className="mb-3 text-md font-semibold">Classroots staff</h2>
             <form
               action={async () => {
                 'use server';
@@ -76,11 +80,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 Sign in with Google
               </button>
             </form>
-            <p className="mt-2 text-center text-xs text-muted">
-              {domains.length
-                ? `New here? Signing in with your @${domains.join(' / @')} Google account creates your account.`
-                : 'Use the Google account your admin invited.'}
-            </p>
+            <p className="mt-2 text-center text-xs text-muted">For {officeLabel} Google accounts. No password needed.</p>
           </section>
 
           <div className="my-6 flex items-center gap-4 text-xs font-medium text-muted">
@@ -89,9 +89,10 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             <span className="h-px flex-1 bg-line" />
           </div>
 
-          {/* Organizations & clients: email + password set by an admin */}
+          {/* Everyone else: email + password given by an admin */}
           <section>
-            <h2 className="mb-4 text-md font-semibold">Organizations &amp; Clients</h2>
+            <h2 className="mb-1 text-md font-semibold">Everyone else</h2>
+            <p className="mb-4 text-xs text-muted">Use your email and the password your admin gave you.</p>
             <form
               className="space-y-4"
               action={async (formData: FormData) => {
@@ -108,36 +109,25 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 <label className="label" htmlFor="email">
                   Email <span className="text-bad">*</span>
                 </label>
-                <input className="input py-2.5" id="email" name="email" type="email" required autoComplete="username" />
+                <input className="input py-2.5" id="email" name="email" type="email" required autoComplete="username" defaultValue={emailValue} />
               </div>
               <PasswordField id="password" name="password" />
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 rounded accent-brand" />
-                Remember me
-              </label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="remember" defaultChecked className="h-4 w-4 rounded accent-brand" />
+                  Remember me
+                </label>
+                <Link href={emailValue ? `/forgot-password?email=${encodeURIComponent(emailValue)}` : '/forgot-password'} className="link text-sm">
+                  Forgot password?
+                </Link>
+              </div>
               <button className="btn-primary w-full py-2.5" type="submit">
                 Sign in
               </button>
             </form>
           </section>
-
-          <details className="mt-5 border-t border-line pt-4">
-            <summary className="cursor-pointer list-none text-center text-sm text-brand hover:underline">No password yet, or forgot it? Email me a sign-in link</summary>
-            <form
-              className="mt-3 flex gap-2"
-              action={async (formData: FormData) => {
-                'use server';
-                await attempt('email', { email: String(formData.get('email') ?? '').trim().toLowerCase(), redirectTo });
-              }}
-            >
-              <input className="input py-2" name="email" type="email" required autoComplete="email" placeholder="you@company.com" aria-label="Email for sign-in link" />
-              <button className="btn-ghost shrink-0" type="submit">
-                Send link
-              </button>
-            </form>
-          </details>
         </div>
-        <p className="mt-4 text-center text-xs text-muted">Access is by invitation. Ask an admin if you can’t sign in.</p>
+        <p className="mt-4 text-center text-xs text-muted">Only people an admin has added can sign in.</p>
       </div>
     </main>
   );

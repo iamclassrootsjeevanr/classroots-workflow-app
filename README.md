@@ -8,7 +8,7 @@ Two work types ship today:
 
 | Work type | What one item is | Flow |
 | --- | --- | --- |
-| **Journey Applets** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
+| **Journey** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
 | **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
@@ -27,17 +27,18 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 6. [How the app works](#how-the-app-works)
 7. [Work types](#work-types)
 8. [People, roles and access](#people-roles-and-access)
-9. [Signing in (Google, password, email link)](#signing-in)
+9. [Signing in (Google for office staff, password for everyone else)](#signing-in)
 10. [Appearance: theme, text size, density, sidebar](#appearance-theme-text-size-density-sidebar)
 11. [Google Sheet two-way sync](#google-sheet-two-way-sync)
 12. [Add a new kind of work](#add-a-new-kind-of-work)
 13. [Database and migrations](#database-and-migrations)
 14. [Tests and checks](#tests-and-checks)
-15. [Deploy](#deploy)
-16. [Scripts reference](#scripts-reference)
-17. [Troubleshooting](#troubleshooting)
-18. [Working with AI coding tools](#working-with-ai-coding-tools)
-19. [Contributing](#contributing)
+15. [Branches and environments](#branches-and-environments)
+16. [Deploy](#deploy)
+17. [Scripts reference](#scripts-reference)
+18. [Troubleshooting](#troubleshooting)
+19. [Working with AI coding tools](#working-with-ai-coding-tools)
+20. [Contributing](#contributing)
 
 ---
 
@@ -48,7 +49,7 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 | Framework | Next.js 15 (App Router, Server Components, Server Actions) |
 | Language | TypeScript 5 |
 | Database | PostgreSQL 16 through Prisma 6 (local: `embedded-postgres`, no install needed) |
-| Auth | Auth.js v5 (Google OAuth, email + password, email magic link) |
+| Auth | Auth.js v5 (Google OAuth for office staff, email + password for everyone else) |
 | UI | React 19, Tailwind CSS v4, Recharts |
 | Validation | Zod |
 | Excel | ExcelJS (import and export) |
@@ -112,7 +113,7 @@ npm run demo:users          # optional: one sign-in per role (see "Demo accounts
 ### 6. (Optional) Load real data from the Excel trackers
 
 ```bash
-npm run import:xlsx -- "$HOME/Downloads/JC-TrackerDemo.xlsx"          # Journey Applets
+npm run import:xlsx -- "$HOME/Downloads/JC-TrackerDemo.xlsx"          # Journey
 npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"     # APK Testing
 ```
 
@@ -124,7 +125,7 @@ Both imports are safe to re-run. Items that already exist are skipped.
 npm run dev
 ```
 
-Open <http://localhost:3000> and sign in with `admin@demo.classroots.local` and your `DEMO_PASSWORD`. You can also use the email link: with no email server set up, the link is printed in the terminal running `npm run dev`.
+Open <http://localhost:3000> and sign in with `admin@demo.classroots.local` and your `DEMO_PASSWORD`.
 
 ---
 
@@ -163,10 +164,10 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `AUTH_SECRET` | yes | Signs session tokens. Generate with `openssl rand -base64 32`. |
 | `AUTH_URL` | yes in prod | Public URL of the app (`http://localhost:3000` locally). |
 | `ADMIN_EMAILS` | yes | Comma-separated emails that are always admins. |
-| `ALLOWED_DOMAINS` | no | Comma-separated domains whose Google users may sign up without an invite. |
+| `OFFICE_DOMAINS` | yes for Google | Comma-separated office email domains (e.g. `classrootsedu.com`). These people sign in with Google; everyone else with email + password. |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | no | Enables "Sign in with Google". |
-| `EMAIL_SERVER` | no | SMTP URL for magic-link emails. Empty means the link is printed in the server log. |
-| `EMAIL_FROM` | no | Sender for magic-link emails. |
+| `EMAIL_SERVER` | yes in prod | SMTP URL for invite and forgot-password emails. Empty means they are printed in the server log. |
+| `EMAIL_FROM` | no | Sender for invite and reset emails. |
 | `APP_TIMEZONE` | no | Team time zone for dates and business hours (default `Asia/Kolkata`). |
 | `APPS_SCRIPT_URL` | for sync | `/exec` URL of the deployed `apps-script/Code.gs`. |
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
@@ -224,7 +225,7 @@ src/
     time.ts                        Time zones, business hours, date parsing
     password.ts                    scrypt hashing and password rules
   server/                          Server-only code
-    auth.ts                        Auth.js config (Google, password, magic link; invite-only)
+    auth.ts                        Auth.js config (Google for OFFICE_DOMAINS, password; invite-only)
     rbac.ts / access.ts            Current user and their access per work type
     services/work-items.ts         The ONLY write path for items
     services/analytics.ts          Dashboard data
@@ -305,7 +306,7 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 ## Work types
 
-### Journey Applets (`src/modules/journey-applet/definition.ts`)
+### Journey (`src/modules/journey-applet/definition.ts`)
 
 `Received from SME → YTS (assigned) → WIP → Ready for Review → In Review → Corrections in Progress ↺ → Reviewed → Done`. Items can also go **On Hold** or **Blocked**.
 
@@ -344,7 +345,7 @@ Everything is managed in the app under **Admin → People & access** and **Admin
 
 **Adding a person** (Admin → People & access → **Add user**) takes four steps:
 1. Name, email, capacity and the Admin tick. If the person was imported from the sheet without an email, pick them from the list so their existing work links up.
-2. An optional temporary password. Google and email links work too.
+2. How they sign in: office emails use Google (nothing to set); anyone else needs a password (**Generate**, then **Copy login details** to send it to them).
 3. Tick each work type, then one or more roles in it. You can use "Copy access from…" another person.
 4. Review and save.
 
@@ -358,15 +359,22 @@ The server enforces the same rules as the UI, in server actions and the export A
 
 ## Signing in
 
-All three methods are **invite-only**. A person can sign in only if they already exist and are active, their email is in `ADMIN_EMAILS`, or their Google email's domain is in `ALLOWED_DOMAINS`.
+Only people an admin added in **People & access** can sign in (plus `ADMIN_EMAILS`, so the first admin can get in). Nobody signs themselves up.
 
-| Method | Who it's for | Notes |
+| Who | Method | Notes |
 | --- | --- | --- |
-| **Sign in with Google** | Staff | Shown when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set. The first sign-in creates the account. |
-| **Email + password** | Organizations and clients | An admin sets a temporary password; the user changes it under **My account**. "Remember me" keeps the session for 30 days; otherwise it lasts 12 hours. |
-| **Email me a sign-in link** | Anyone without a password | Without `EMAIL_SERVER`, the link is printed in the server terminal. |
+| Office staff (email domain in `OFFICE_DOMAINS`, e.g. `classrootsedu.com`) | **Sign in with Google** | Shown when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set. No password. Google sign-in is refused for other domains. |
+| Everyone else | **Email + password** | The admin generates the password when adding them. "Remember me" keeps the session 30 days, otherwise 12 hours. |
 
-**First admin on a fresh server:** sign in with an `ADMIN_EMAILS` address using the email link. With no email server, run this instead:
+**Invite on add.** Saving a new person with **Email them an invite now** ticked emails them the app address, their work types and roles, and how to sign in: Google for office emails, or their email and the password just generated. When an admin sets a new password later, **Email them the new password** does the same. **Send invite** (People list or person page) re-sends it; for password users it contains a link to choose a password instead (valid 72 hours), because the old password is not known.
+
+**Forgot password.** Sign-in page → **Forgot password?** → email → a one-time link valid for 1 hour (`/reset-password`) → new password. The answer never reveals whether an email exists, a link is sent at most every 2 minutes per email, and links are stored hashed in `VerificationToken` (`src/server/password-reset.ts`). Office staff use Google and get no link.
+
+Saving someone outside the office domains without a password is refused, because they could not sign in.
+
+Email (invites and reset links) needs `EMAIL_SERVER` (SMTP URL, e.g. `smtps://you%40yourdomain.com:<app password>@smtp.gmail.com:465`) and `EMAIL_FROM`; without it mails are printed in the server log. Mail goes through `src/server/mail.ts`; wording and rules in `src/lib/invite.ts` (tested).
+
+**First admin on a fresh server:** put your office email in `ADMIN_EMAILS` and use Google, or set a password from the terminal:
 
 ```bash
 npm run user:password -- you@company.com
@@ -374,13 +382,11 @@ npm run user:password -- you@company.com
 
 ### Google SSO setup
 
-1. Google Cloud Console → APIs & Services → Credentials → **Create OAuth client** → *Web application*.
-2. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`, plus `<production URL>/api/auth/callback/google`.
-3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Optionally set `ALLOWED_DOMAINS`. Restart the app.
+1. Google Cloud Console → OAuth consent screen with user type **Internal** (only your Google Workspace organisation can use it).
+2. APIs & Services → Credentials → **Create OAuth client** → *Web application*. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`, plus `<production URL>/api/auth/callback/google`.
+3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`, set `OFFICE_DOMAINS`, restart. Google always shows the account picker.
 
-### Magic-link email in production
-
-Set `EMAIL_SERVER` to an SMTP URL, for example `smtps://user:pass@smtp.example.com:465` (Google Workspace relay, Resend, SendGrid or SES), and set `EMAIL_FROM`.
+Click-by-click: `docs/NEXT-STEPS.md` § 7.
 
 ---
 
@@ -541,6 +547,41 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 
 ---
 
+## Branches and environments
+
+| Branch | Environment | Who merges into it | How |
+| --- | --- | --- | --- |
+| `<your-name>/<topic>` | your machine | you, every day | push freely; AI handoffs checkpoint here |
+| `development` (default branch) | local / optional Railway "development" | feature branches | pull request, **Squash and merge**, CI must pass |
+| `staging` | Railway **staging** (its own database) | only `development` | pull request "Release to staging", **Create a merge commit**, CI + branch-flow must pass |
+| `main` | Railway **production** | only `staging` | pull request "Release to production", **Create a merge commit**, 1 approval, CI + branch-flow must pass |
+
+**Daily flow**
+
+```bash
+git checkout development && git pull
+git checkout -b jeevan/<topic>            # work, commit, push
+gh pr create --base development           # squash-merge when CI is green
+```
+
+**Release** (when development is ready to test, then to ship):
+
+```bash
+gh pr create --base staging --head development --title "Release to staging"
+# test on the staging URL, then
+gh pr create --base main --head staging --title "Release to production"
+```
+
+Use **Create a merge commit** for these two (the rulesets allow nothing else), so the three branches keep the same history and the next release has no conflicts.
+
+**Urgent fix in production:** branch `hotfix/<topic>` from `main`, pull request into `main`, then open pull requests `main → staging` and `main → development` so the fix is not lost.
+
+**Enforced on GitHub** (Settings → Rules → Rulesets): no deleting or force-pushing `development`, `staging` or `main`; changes only by pull request; required checks `checks` (`.github/workflows/ci.yml`: install, `prisma generate`, typecheck, tests) and, for `staging` and `main`, `branch-flow` (`.github/workflows/branch-flow.yml`: rejects any other source branch). Repository admins can bypass in a pull request when needed.
+
+**Railway:** one project with two environments, each with its own Postgres and variables. Production deploys from `main`, staging from `staging` (see [Railway](#railway-app--postgres)).
+
+---
+
 ## Deploy
 
 > **What to do next, step by step** (merge, Google Sheet tabs, Apps Script, Railway, going live): see [docs/NEXT-STEPS.md](docs/NEXT-STEPS.md).
@@ -568,7 +609,8 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 
 The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
 
-1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project.
+1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project. In the app service → Settings → Source, set the branch to **`main`**: this environment is **production**.
+   Then **Environments → New environment → Duplicate `production`** and name it `staging`. In `staging`, set the app's branch to **`staging`**; it gets its own Postgres and its own variables (its own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings). Add the staging URL to the Google OAuth client too. Every merge into `staging` or `main` deploys that environment by itself.
 2. In the app service → Variables, set:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
    - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).
@@ -577,7 +619,7 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 3. **Generate a domain** for the service, then set `AUTH_URL` to it and redeploy. For Google sign-in add `<AUTH_URL>/api/auth/callback/google` as a redirect URI.
 4. **Schedule** sheet sync: add a second service from the same repo as a **Cron** job (every 5 minutes) with the start command
    `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"` (set `APP_URL` to the public URL, `CRON_SECRET` to the same value as the app).
-5. **Move your existing data** (one time): `pg_dump "$LOCAL_DATABASE_URL" | psql "$RAILWAY_DATABASE_PUBLIC_URL"`, or start empty and run `npm run import:apk -- <file>` against the Railway database. The APK tables (`ApkVersion`, `ApkTestCase`, `ApkTest`) are created and filled by migrations automatically.
+5. **Put data on it** (after the first deploy created the tables): copy this machine's database with `npm run db:copy -- --to "<Railway DATABASE_PUBLIC_URL>"` (no `pg_dump` needed; add `--replace` to overwrite; sheet sync is switched off in the copy), or start from the live trackers with `DATABASE_URL="<url>" npm run db:seed` and `DATABASE_URL="<url>" npm run import:apk -- <file>`. Step by step: `docs/NEXT-STEPS.md` § 6.
 
 **Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
@@ -605,6 +647,7 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 | `npm run demo:users` | Create the demo sign-ins |
 | `npm run user:password -- <email>` | Set someone's password from the terminal |
 | `npm run import:xlsx -- <file>` | Import the Journey tracker workbook (safe to re-run) |
+| `npm run db:copy -- --to <url> [--replace]` | Copy this machine's database into another one (e.g. Railway); same migrations required, sheet sync switched off in the copy |
 | `npm run import:apk -- <file>` | Import the APK Testing workbook (safe to re-run) |
 | `npm run sync:run` | Run sheet sync and the workload snapshot once |
 | `npm run scheduler` | Call `/api/cron/run` every N minutes (self-hosted) |
@@ -667,7 +710,7 @@ A `/` in the branch name becomes `__` in the file name: branch `jeevan/ui-redesi
 
 ## Contributing
 
-1. **Branch** from `main`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `main`).
+1. **Branch** from `development`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `development`, `staging` and `main`). Pull requests go into `development`; releases move `development → staging → main` (see [Branches and environments](#branches-and-environments)).
 2. **Keep the layers:**
    - business rules go in `src/lib/` (pure and tested)
    - database access goes in `src/server/`
