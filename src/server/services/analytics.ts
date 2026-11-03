@@ -20,6 +20,8 @@ import {
   type Summary,
 } from '@/lib/analytics-core';
 import { addDays } from '@/lib/time';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from '../apk/store';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 
@@ -32,6 +34,9 @@ export type Filters = {
   to?: Date;
   /** Access scope (OWN / ALL per work type) from server/access.ts – always set for non-admin views. */
   where?: Prisma.WorkItemWhereInput;
+  /** Page of rows (the list pages): skip / take on the database. */
+  skip?: number;
+  take?: number;
 };
 
 /** People who can be given work (a role with the "work" capability) in these work types, or who already hold items. */
@@ -69,6 +74,27 @@ const categoryOf = (wtKey: string, status: string): StatusCategory => {
   return mod ? statusDef(mod, status).category : 'queue';
 };
 
+/**
+ * Items without joins, JSON data or display text: just what counts and workload need. Use it where a page only needs numbers
+ * (headers, KPI tiles, who is busy), so big work types stay cheap.
+ */
+export async function loadLiteItems(workTypeKey: string, where?: Prisma.WorkItemWhereInput): Promise<ItemLite[]> {
+  const mod = getModule(workTypeKey);
+  const rows = await db.workItem.findMany({
+    where: { archivedAt: null, workType: { key: workTypeKey }, ...(where ? { AND: [where] } : {}) },
+    select: {
+      id: true, externalKey: true, title: true, status: true, assigneeId: true, ownerId: true, dueAt: true, receivedAt: true, assignedAt: true,
+      firstStartedAt: true, lastSubmittedAt: true, firstReviewAt: true, approvedAt: true, completedAt: true, reviewRounds: true, reopenCount: true,
+    },
+  });
+  return rows.map(r => ({
+    ...r,
+    workTypeKey,
+    category: mod ? statusDef(mod, r.status).category : ('queue' as StatusCategory),
+    weight: mod?.workloadWeight ?? 1,
+  }));
+}
+
 export async function loadItems(filters: Filters = {}, opts: { includePausedTypes?: boolean } = {}): Promise<ItemRow[]> {
   const where: Prisma.WorkItemWhereInput = {
     archivedAt: null,
@@ -88,8 +114,11 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       assignee: { select: { name: true } },
       owner: { select: { name: true } },
       chapter: { select: { title: true, grade: true } },
+      ...APK_INCLUDE,
     },
     orderBy: [{ groupKey: 'asc' }, { sortOrder: 'asc' }, { externalKey: 'asc' }],
+    ...(filters.skip ? { skip: filters.skip } : {}),
+    ...(filters.take ? { take: filters.take } : {}),
   });
   const now = new Date();
   return rows.map(r => {
@@ -127,7 +156,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       chapterTitle: r.chapter?.title ?? ((r.data as Record<string, unknown>)?.chapterTitle as string | undefined) ?? null,
       grade: r.chapter?.grade ?? null,
       delay: delayDays(base, now),
-      data: (r.data ?? {}) as Record<string, unknown>,
+      data: hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest),
       feedbackCount: r.feedbackCount,
       lastFeedbackAt: r.lastFeedbackAt,
       updatedAt: r.updatedAt,

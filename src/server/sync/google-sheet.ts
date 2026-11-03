@@ -17,6 +17,8 @@ import { dueDateToInstant } from '@/lib/time';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 import { createItemTx, internals, workTypeConfig, type ChangeActor, type NewItem } from '../services/work-items';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from '../apk/store';
 import { batchUpdate, ensureLinked, readSheet } from './apps-script';
 
 const SHEET_ACTOR: ChangeActor = { userId: null, ctx: null, source: 'SHEET' };
@@ -120,8 +122,8 @@ async function push(wt: WorkType, mod: WorkTypeDefinition, tab: string, spreadsh
   // The sheet's tabs are linked: lists, then reference tables, then the main tab. Update them in that order first.
   if (mod.sheet?.linked?.length) {
     const itemIds = [...new Set(pending.map(p => p.itemId))];
-    const rows = await db.workItem.findMany({ where: { id: { in: itemIds } }, select: { title: true, groupKey: true, data: true, assignee: { select: { name: true } } } });
-    const payloads = linkedPayloads(mod, rows.map(r => ({ title: r.title, groupKey: r.groupKey, assigneeName: r.assignee?.name ?? null, data: (r.data ?? {}) as Record<string, unknown> })));
+    const rows = await db.workItem.findMany({ where: { id: { in: itemIds } }, select: { title: true, groupKey: true, data: true, assignee: { select: { name: true } }, ...APK_INCLUDE } });
+    const payloads = linkedPayloads(mod, rows.map(r => ({ title: r.title, groupKey: r.groupKey, assigneeName: r.assignee?.name ?? null, data: hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest) })));
     for (const payload of payloads) {
       try {
         await ensureLinked(payload, tab, spreadsheetId);

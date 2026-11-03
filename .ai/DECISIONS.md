@@ -50,3 +50,8 @@ By: claude-code
 Decision: `AccessRole.workTypeId` (unique with `key`). Modules declare `roles` (or they are derived from the flow); `ensureModuleRoles` adds missing ones on enable and on the Roles/People pages. Migration 20261102210000 copied each global role into every work type that used it, moved members to the copies and removed the globals. APK Testing gained a Test Lead role because its flow needs `manageFields`.
 Why: a Developer or Reviewer role means different things in each flow; roles should grow with the flow. Rejected: global roles shared across work types (preview and permissions were ambiguous).
 By: claude-code
+
+## 2026-11-03 — APK Testing uses relational tables for versions and test cases
+Decision: `ApkVersion`, `ApkTestCase` and `ApkTest` (run -> version + case, unique per pair). Runs stay `WorkItem` rows so workflow, events, sync and permissions are untouched; shared fields (scenario/expected/steps/default priority, release date/link/notes) have `FieldDef.source` 'case' / 'version' and are merged into `data` on read (`hydrateApkData`) and routed on write (`updateFieldsTx`). Migration 20261103090000 moved the existing data (20 versions, 20 cases, every run linked). Items page filters and paging run in Postgres (`items-query`); headers use `loadLiteItems`. Deploy target: Railway (Dockerfile + railway.json + /api/health).
+Why: scenario/steps/link text was copied into every run (x versions), edits touched dozens of rows, and lists loaded everything. Rejected: a separate APK app/schema (would duplicate workflow, roles, sync).
+By: claude-code

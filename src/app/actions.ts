@@ -10,11 +10,12 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, restoreItem, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
-import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, type VersionMeta } from '@/server/services/apk-versions';
+import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
 import type { NotificationView } from '@/lib/notifications-core';
+import { loadVersionCases } from '@/server/apk/queries';
 import { editFieldsForItem } from '@/server/view';
 import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
@@ -199,6 +200,21 @@ export async function restoreApkVersionAction(workTypeId: string, version: strin
     const { actor } = await workTypeActor(workTypeId);
     const r = await restoreApkVersion(actor, workTypeId, version, deletedAt);
     return `Restored ${version} (${r.count} tests)`;
+  });
+}
+
+/** Test cases of one version, loaded when the New APK version dialog picks a version to copy from. */
+export async function loadVersionCasesAction(workTypeId: string, versionKey: string): Promise<{ id: string; title: string }[]> {
+  await workTypeActor(workTypeId);
+  return loadVersionCases(workTypeId, versionKey);
+}
+
+/** Edit a test case's scenario, expected result, steps or default priority (applies to every version that runs it). */
+export async function updateTestCaseAction(workTypeId: string, caseId: string, patch: TestCasePatch) {
+  return run(async () => {
+    const { actor } = await workTypeActor(workTypeId);
+    await updateTestCase(actor, workTypeId, caseId, patch);
+    return 'Saved';
   });
 }
 

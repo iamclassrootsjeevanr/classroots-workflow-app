@@ -39,8 +39,8 @@ export type FieldDef = {
   key: string;
   label: string;
   type: FieldType;
-  /** Where the value lives: a WorkItem column or the item's `data` JSON. */
-  source: 'core' | 'data';
+  /** Where the value lives: a WorkItem column, the item's `data` JSON, or (APK Testing) the shared version / test case tables. */
+  source: 'core' | 'data' | 'version' | 'case';
   editableBy: Actor[];
   /** Short label for link columns in tables (e.g. "Open CMS"). */
   linkLabel?: string;
@@ -120,6 +120,8 @@ export type WorkTypeDefinition = {
   key: string;
   name: string;
   description: string;
+  /** Work types whose shared facts live in their own tables instead of every row's data (see src/server/apk/store.ts). */
+  storage?: 'apk';
   /** Sidebar icon key (see NAV_ICONS). Default: a checklist. */
   icon?: NavIcon;
   /** Singular noun for one item, e.g. "journey". */

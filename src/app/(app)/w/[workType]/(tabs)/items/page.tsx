@@ -1,18 +1,17 @@
 import { NewItemForm } from '@/components/admin-controls';
 import { FilterBar } from '@/components/filter-bar';
 import { ItemsTable } from '@/components/items-table';
-import { AddTestCaseButton, type VersionOption } from '@/components/new-apk-version';
-import { Card } from '@/components/ui';
+import { AddTestCaseButton } from '@/components/new-apk-version';
 import { Pager } from '@/components/pager';
-import { pageOf } from '@/lib/paging';
-import { inList } from '@/lib/items-url';
-import { versionOptions } from '@/lib/test-cases';
+import { Card } from '@/components/ui';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
+import { loadVersionOptions } from '@/server/apk/queries';
+import { queryItemsPage, type ItemsFilters } from '@/server/services/items-query';
 import { loadWorkTypePage } from '@/server/work-type-page';
 import { assignablePeople, deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
 
-type Search = { status?: string; dev?: string; sme?: string; grade?: string; q?: string; scope?: string; group?: string; cat?: string; page?: string };
+type Search = ItemsFilters & { page?: string };
 
 export async function generateMetadata({ params }: { params: Promise<{ workType: string }> }) {
   const { workType } = await params;
@@ -20,44 +19,36 @@ export async function generateMetadata({ params }: { params: Promise<{ workType:
   return { title: mod ? `${mod.name} · ${mod.pages?.items ?? 'Items'}` : 'Work' };
 }
 
-/** The item table: filters, inline status and assignee changes, edit and delete per row. */
+const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true });
+
+/** The item table. Filters, counting and paging run in the database, so only the 50 rows on screen are loaded. */
 export default async function ItemsPage({ params, searchParams }: { params: Promise<{ workType: string }>; searchParams: Promise<Search> }) {
   const { workType: key } = await params;
   const sp = await searchParams;
-  const { user, access, mod, wt, items: all, can, tz, editable } = await loadWorkTypePage(key);
+  const { user, access, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
 
-  let items = all;
-  if (sp.group) items = items.filter(i => i.groupKey === sp.group);
-  if (sp.grade) items = items.filter(i => String(i.grade) === sp.grade);
-  if (sp.cat) items = items.filter(i => inList(i.category, sp.cat));
-  if (sp.status) items = items.filter(i => inList(i.status, sp.status));
-  if (sp.dev) items = items.filter(i => (sp.dev === 'none' ? !i.assigneeId : i.assigneeId === sp.dev));
-  if (sp.sme) items = items.filter(i => i.ownerId === sp.sme);
-  if (sp.scope === 'mine') items = items.filter(i => i.assigneeId === user.id || i.ownerId === user.id);
-  if (sp.scope === 'overdue') items = items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < new Date());
-  if (sp.scope === 'review') items = items.filter(i => i.category === 'review');
-  if (sp.q) {
-    const q = sp.q.toLowerCase();
-    items = items.filter(i => i.externalKey.toLowerCase().includes(q) || i.title.toLowerCase().includes(q) || (i.chapterTitle ?? '').toLowerCase().includes(q));
-  }
-
-  const shown = pageOf(items, Number(sp.page));
-  const [options, edits, deletable, people, owners, grades] = await Promise.all([
+  const shown = await queryItemsPage(mod, scope, sp, user.id, Number(sp.page));
+  const [options, edits, deletable, people, owners, devs, groups, gradeRows] = await Promise.all([
     editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? deletableItemsFor(user, shown.rows) : Promise.resolve(undefined),
-    can('assign') && editable ? assignablePeople(all, [key]) : Promise.resolve(undefined),
+    can('assign') && editable ? assignablePeople(lite, [key]) : Promise.resolve(undefined),
     db.user.findMany({ where: { ownedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-    db.chapter.findMany({ where: { grade: { not: null } }, distinct: ['grade'], select: { grade: true }, orderBy: { grade: 'asc' } }),
+    db.user.findMany({ where: { assignedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, groupKey: { not: null } }, distinct: ['groupKey'], select: { groupKey: true } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
   ]);
-  const devs = await db.user.findMany({ where: { assignedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
-  const smeOptions = await db.user.findMany({
-    where: { active: true, name: { not: null }, OR: [{ isAdmin: true }, { memberships: { some: { workTypeId: wt.id, roles: { some: { role: { capReview: true } } } } } }] },
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
-  });
-  const versions: VersionOption[] = mod.versions ? versionOptions(all) : [];
-  const groups = [...new Set(all.map(i => i.groupKey).filter((g): g is string => Boolean(g)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const smeOptions = can('create') && editable && !mod.versions
+    ? await db.user.findMany({
+        where: { active: true, name: { not: null }, OR: [{ isAdmin: true }, { memberships: { some: { workTypeId: wt.id, roles: { some: { role: { capReview: true } } } } } }] },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      })
+    : [];
+  const versions = mod.versions ? await loadVersionOptions(wt.id) : [];
+  const groupNames = groups.map(g => g.groupKey as string).sort(natural);
+  const grades = [...new Set(gradeRows.map(r => r.chapter?.grade).filter((g): g is number => g != null))].sort((a, b) => a - b);
+
   const STAGE_NAMES: Record<string, string> = { queue: 'To start', active: 'In progress', feedback: 'In corrections', review: 'In review', approved: 'Approved', done: 'Done', hold: 'On hold' };
   const stages = [...new Set(mod.statuses.map(s => s.category))].map(c => ({ value: c, label: mod.categoryLabels?.[c] ?? STAGE_NAMES[c] ?? c }));
   const canTest = access.isAdmin || access.byKey.get(key)?.capabilities.has('work');
@@ -77,19 +68,19 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       <FilterBar
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
-          ...(groups.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', options: groups.map(g => ({ value: g, label: g })) }] : []),
+          ...(groupNames.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', options: groupNames.map(g => ({ value: g, label: g })) }] : []),
           { name: 'cat', label: 'Stage', options: stages },
           { name: 'status', label: 'Status', options: mod.statuses.map(s => ({ value: s.key, label: s.label })) },
           { name: 'dev', label: mod.labels?.assignee ?? 'Developer', options: [{ value: 'none', label: 'Unassigned' }, ...devs.map(d => ({ value: d.id, label: d.name ?? '?' }))] },
           ...(owners.length && !mod.table?.hide?.includes('owner') ? [{ name: 'sme', label: mod.labels?.owner ?? 'SME', options: owners.map(o => ({ value: o.id, label: o.name ?? '?' })) }] : []),
-          ...(all.some(i => i.grade) ? [{ name: 'grade', label: 'Grade', options: grades.map(g => ({ value: String(g.grade), label: `Grade ${g.grade}` })) }] : []),
+          ...(grades.length ? [{ name: 'grade', label: 'Grade', options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
           { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },
         ]}
       />
 
       <Card>
         <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
-        <Pager basePath={`/w/${key}/items`} params={sp} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
+        <Pager basePath={`/w/${key}/items`} params={sp as Record<string, string | undefined>} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
     </>
   );
