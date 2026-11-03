@@ -4,6 +4,7 @@
 - Tailwind v4: any class that is `@apply`'d elsewhere must be defined with `@utility`, not inside `@layer components`, or `next build` fails with "Cannot apply unknown utility class".
 - Colour tokens that change per theme must go through `@theme inline` (resolves where used); plain `@theme` resolves at `:root` only, so dark mode would not apply.
 - Cookies set from a server action are URL-encoded; keep cookie values free of `=`/`&` (the prefs cookie uses `.` separators) and `decodeURIComponent` defensively when parsing.
+- Theme: the inline script resolves "system" on the client, so React's `data-theme` prop ("light" for system) can differ from the DOM. After a client navigation that changes the preference (e.g. sign-in), React skips unchanged props; `ThemeWatcher` re-syncs `data-theme` on every `theme` change.
 - Embedded Postgres must be running (`npm run db:start`) before `prisma migrate deploy`, otherwise P1001.
 - Demo sign-in for local checks: accounts from `scripts/demo-users.ts`, password `DEMO_PASSWORD` in `.env` (git-ignored).
 - Never run two `next dev` servers on the same checkout: they share `.next/` and corrupt it ("Cannot find module './vendor-chunks/…'"). Check `lsof -iTCP:3000` first; if it's corrupted, stop all servers and `rm -rf .next`. `AUTH_URL` is pinned to port 3000, so sign-in only works there.
