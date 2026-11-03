@@ -2,13 +2,13 @@
 
 Written at the end of the redesign + APK database session. Do them top to bottom. Each step says where to click and what you should see.
 
-## 1. Merge the work into `main`
+## 1. Merge the work into `main` — DONE
 
-Everything is on pull request **#5** (`jeevan/ui-redesign` into `main`). GitHub blocks it until someone approves it ("review required").
+The redesign, work type pages, roles per work type, inbox, APK database tables and Railway files are in `main` (squashed commit `4abce15`, PR #5). The old branches `jeevan/ui-redesign` and `jeevan/apk-database` are deleted on GitHub and on this machine.
 
-- Easiest: open the PR on GitHub, look through "Files changed", and click **Approve**, then **Squash and merge**. A repo owner cannot approve their own PR, so ask a teammate, or:
-- As owner you can allow yourself to bypass: GitHub → Settings → Branches (or Rules) → the rule for `main` → untick "Require approvals" for now, merge, then tick it again. Or run `gh pr merge 5 --squash --admin`.
-- After the merge: `git checkout main && git pull`, then start new work on a new branch (`git checkout -b <your-name>/<topic>`).
+Start any new work from `main` on a new branch: `git checkout main && git pull && git checkout -b <your-name>/<topic>`. The next topic is `jeevan/go-live` (steps 2 to 6 below); its state file is `.ai/state/jeevan__go-live.md`.
+
+Note: `main` requires one approval on pull requests. PR #5 was merged with admin rights. For later PRs ask a teammate to approve, or use `gh pr merge <number> --squash --admin` as the owner.
 
 ## 2. Make the APK tracker a Google Sheet the script can use
 
@@ -89,7 +89,7 @@ Full steps with variable names are in the README under **Deploy → Railway**. S
 ## 9. How to resume in a new session or another tool
 
 ```bash
-git checkout main && git pull           # after step 1 (or: git checkout jeevan/ui-redesign)
+git checkout main && git pull           # or: git checkout jeevan/go-live
 npm install
 npm run db:start                        # terminal 1: local database
 npm run db:deploy && npm run db:seed    # once: migrations, roles, work types
@@ -97,4 +97,4 @@ npm run dev                             # terminal 2: http://localhost:3000
 npm run typecheck && npm test           # should be clean, 105 tests
 ```
 
-Then say "resume" to the assistant: it reads `.ai/state/<branch>.md`, `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).
+Then say "resume" to the assistant: it reads `.ai/state/<branch>.md` (for `jeevan/go-live`: `.ai/state/jeevan__go-live.md`), `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).
