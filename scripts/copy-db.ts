@@ -1,0 +1,110 @@
+/**
+ * Copy this machine's database (DATABASE_URL in .env) into another database, e.g. Railway, without pg_dump.
+ * The target must already have the same migrations (deploy the app there once first).
+ *
+ *   npm run db:copy -- --to "postgresql://…railway…"            target must be empty
+ *   npm run db:copy -- --to "postgresql://…railway…" --replace  wipe the target's data first
+ *
+ * Not copied: sign-in sessions, password/verification links and the pending sheet-sync queue.
+ * Sheet sync is switched off in the target, so a copy never writes to the Google Sheet by itself.
+ */
+import { PrismaClient } from '@prisma/client';
+
+const SKIP = new Set(['_prisma_migrations', 'Session', 'VerificationToken', 'SyncOutbox']);
+const BATCH = 500;
+
+function arg(name: string) {
+  const i = process.argv.indexOf(name);
+  return i > -1 ? process.argv[i + 1] : undefined;
+}
+
+const q = (t: string) => `"${t.replace(/"/g, '""')}"`;
+const where = (u: string) => {
+  const x = new URL(u);
+  return `${x.hostname}:${x.port || 5432}${x.pathname}`;
+};
+
+async function migrations(db: PrismaClient) {
+  const rows = await db.$queryRawUnsafe<{ migration_name: string }[]>(
+    'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name',
+  );
+  return rows.map(r => r.migration_name);
+}
+
+/** Tables in an order where every table comes after the tables it references. */
+async function tablesInOrder(db: PrismaClient) {
+  const tables = (await db.$queryRawUnsafe<{ t: string }[]>("SELECT tablename AS t FROM pg_tables WHERE schemaname = 'public'")).map(r => r.t).filter(t => !SKIP.has(t));
+  const fks = await db.$queryRawUnsafe<{ child: string; parent: string }[]>(
+    `SELECT cl.relname AS child, pl.relname AS parent FROM pg_constraint c
+     JOIN pg_class cl ON cl.oid = c.conrelid JOIN pg_class pl ON pl.oid = c.confrelid
+     JOIN pg_namespace n ON n.oid = c.connamespace WHERE c.contype = 'f' AND n.nspname = 'public'`,
+  );
+  const deps = new Map(tables.map(t => [t, new Set(fks.filter(f => f.child === t && f.parent !== t && tables.includes(f.parent)).map(f => f.parent))]));
+  const order: string[] = [];
+  while (order.length < tables.length) {
+    const ready = tables.filter(t => !order.includes(t) && [...deps.get(t)!].every(p => order.includes(p)));
+    if (!ready.length) throw new Error('Circular foreign keys – cannot order the copy.');
+    order.push(...ready.sort());
+  }
+  return order;
+}
+
+async function count(db: PrismaClient, t: string) {
+  const [r] = await db.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${q(t)}`);
+  return r.n;
+}
+
+async function main() {
+  const from = process.env.DATABASE_URL;
+  const to = arg('--to');
+  const replace = process.argv.includes('--replace');
+  if (!from) throw new Error('DATABASE_URL (the source) is not set.');
+  if (!to?.startsWith('postgres')) throw new Error('Give the target: npm run db:copy -- --to "postgresql://…"');
+  if (where(from) === where(to)) throw new Error('Source and target are the same database.');
+
+  const src = new PrismaClient({ datasources: { db: { url: from } } });
+  const dst = new PrismaClient({ datasources: { db: { url: to } } });
+  try {
+    console.log(`From ${where(from)}\nTo   ${where(to)}${replace ? '  (replacing its data)' : ''}\n`);
+
+    const [a, b] = await Promise.all([migrations(src), migrations(dst)]);
+    const missing = a.filter(m => !b.includes(m));
+    const extra = b.filter(m => !a.includes(m));
+    if (missing.length) throw new Error(`The target is missing migrations: ${missing.join(', ')}. Deploy the app there first (it runs migrations on start).`);
+    if (extra.length) throw new Error(`This machine is missing migrations: ${extra.join(', ')}. Run "npm run db:deploy" here first.`);
+
+    const order = await tablesInOrder(src);
+    const filled = [];
+    for (const t of order) if ((await count(dst, t)) > 0) filled.push(t);
+    if (filled.length && !replace) throw new Error(`The target already has data (${filled.join(', ')}). Add --replace to wipe it and copy again.`);
+
+    await dst.$transaction(
+      async tx => {
+        if (replace) await tx.$executeRawUnsafe(`TRUNCATE ${[...order, ...SKIP].filter(t => t !== '_prisma_migrations').map(q).join(', ')} CASCADE`);
+        for (const t of order) {
+          const rows = await src.$queryRawUnsafe<{ r: unknown }[]>(`SELECT row_to_json(x) AS r FROM ${q(t)} x`);
+          for (let i = 0; i < rows.length; i += BATCH) {
+            const chunk = JSON.stringify(rows.slice(i, i + BATCH).map(x => x.r));
+            await tx.$executeRawUnsafe(`INSERT INTO ${q(t)} SELECT * FROM json_populate_recordset(NULL::${q(t)}, $1::json)`, chunk);
+          }
+          console.log(`${t.padEnd(24)} ${rows.length}`);
+        }
+        await tx.$executeRawUnsafe(`UPDATE "WorkType" SET config = jsonb_set(config, '{sync,enabled}', 'false') WHERE config ? 'sync'`);
+      },
+      { timeout: 15 * 60_000, maxWait: 60_000 },
+    );
+
+    for (const t of order) {
+      const [x, y] = await Promise.all([count(src, t), count(dst, t)]);
+      if (x !== y) throw new Error(`Count mismatch in ${t}: ${x} here, ${y} in the target.`);
+    }
+    console.log('\nDone. Every table matches. Sheet sync is off in the target (Admin → Sheet sync to turn it on).');
+  } finally {
+    await Promise.all([src.$disconnect(), dst.$disconnect()]);
+  }
+}
+
+main().catch(e => {
+  console.error(`\n${e instanceof Error ? e.message : e}`);
+  process.exit(1);
+});

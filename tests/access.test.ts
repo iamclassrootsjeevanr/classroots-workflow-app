@@ -23,7 +23,7 @@ const reviewer = role('Reviewer', { capReview: true, capManageFields: true, data
 const viewer = role('Viewer', { dataScope: 'ALL', canEdit: false, pageReports: true });
 const exporter = role('Exporter', { canEdit: false, pageDashboard: false, pageItems: false, pageReports: true, pageExport: true });
 
-const journeys: WorkTypeLite = { id: 'wt1', key: 'journey-applet', name: 'Journey Applets', state: 'ACTIVE' };
+const journeys: WorkTypeLite = { id: 'wt1', key: 'journey-applet', name: 'Journey', state: 'ACTIVE' };
 const content: WorkTypeLite = { id: 'wt2', key: 'content', name: 'Content', state: 'ACTIVE' };
 const paused: WorkTypeLite = { id: 'wt3', key: 'paused', name: 'Paused', state: 'PAUSED' };
 const archived: WorkTypeLite = { id: 'wt4', key: 'old', name: 'Old', state: 'ARCHIVED' };

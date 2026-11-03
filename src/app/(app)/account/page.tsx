@@ -69,12 +69,9 @@ export default async function AccountPage() {
               <b>Email + password:</b>{' '}
               {hasPassword ? <span className="text-ok">set{user.passwordUpdatedAt ? ` (updated ${formatDateTime(user.passwordUpdatedAt, tz)})` : ''}</span> : <span className="text-muted">not set yet</span>}
             </li>
-            <li>
-              <b>Email link:</b> <span className="text-ok">always available</span>
-            </li>
             {googleEnabled() && (
               <li>
-                <b>Google:</b> {google ? <span className="text-ok">linked</span> : <span className="text-muted">use “Continue with Google” with this email to link it</span>}
+                <b>Google:</b> {google ? <span className="text-ok">linked</span> : <span className="text-muted">office accounts: use “Sign in with Google” with this email</span>}
               </li>
             )}
           </ul>

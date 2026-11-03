@@ -2,13 +2,23 @@
 
 Written at the end of the redesign + APK database session. Do them top to bottom. Each step says where to click and what you should see.
 
-## 1. Merge the work into `main`
+## 1. Merge the work into `main` — DONE
 
-Everything is on pull request **#5** (`jeevan/ui-redesign` into `main`). GitHub blocks it until someone approves it ("review required").
+The redesign, work type pages, roles per work type, inbox, APK database tables and Railway files are in `main` (squashed commit `4abce15`, PR #5). The old branches `jeevan/ui-redesign` and `jeevan/apk-database` are deleted on GitHub and on this machine.
 
-- Easiest: open the PR on GitHub, look through "Files changed", and click **Approve**, then **Squash and merge**. A repo owner cannot approve their own PR, so ask a teammate, or:
-- As owner you can allow yourself to bypass: GitHub → Settings → Branches (or Rules) → the rule for `main` → untick "Require approvals" for now, merge, then tick it again. Or run `gh pr merge 5 --squash --admin`.
-- After the merge: `git checkout main && git pull`, then start new work on a new branch (`git checkout -b <your-name>/<topic>`).
+### Branches (since 3 Nov 2026)
+
+| Branch | Is | Gets code from |
+| --- | --- | --- |
+| `development` | default branch, daily integration | your feature branch (PR, **Squash and merge**) |
+| `staging` | Railway **staging** | `development` only (PR "Release to staging", **Create a merge commit**) |
+| `main` | Railway **production** | `staging` only (PR "Release to production", **Create a merge commit**, 1 approval) |
+
+Start new work: `git checkout development && git pull && git checkout -b <your-name>/<topic>`. Open the pull request into `development`.
+
+Release: `gh pr create --base staging --head development --title "Release to staging"`, test the staging site, then `gh pr create --base main --head staging --title "Release to production"`.
+
+GitHub enforces this: CI (`checks`) must pass, `branch-flow` blocks wrong source branches, no force-push or delete. `main` needs one approval; as the owner you can merge anyway with `gh pr merge <number> --merge --admin`. Details: README "Branches and environments".
 
 ## 2. Make the APK tracker a Google Sheet the script can use
 
@@ -42,7 +52,7 @@ You do **not** need a Spreadsheet ID. The script finds the tab by name. (The def
 ## 4. Turn sync on in the app
 
 1. Sign in as admin → **Admin → Sheet sync**.
-2. **Journey Applets**: tab `Journeys in Chapters`. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**.
+2. **Journey**: tab `Journeys in Chapters`. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**.
 3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
 
 If you see an error:
@@ -60,41 +70,158 @@ If you see an error:
 
 Full steps with variable names are in the README under **Deploy → Railway**. Short version:
 
-1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin.
-2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`.
+1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin. App service → Settings → Source → branch **`main`** (this is **production**).
+   Then Environments → New environment → **Duplicate production** → name `staging` → in it set the app's branch to **`staging`**. Staging gets its own database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for both environments. Test on staging first; production only gets what was merged `staging → main`.
+2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
-5. Move your data: `pg_dump` your local database and restore it into Railway, or start empty and run `npm run import:apk -- "<file>"` and `npm run import:xlsx -- "<file>"` against the Railway database.
+5. Put data on it: § 6 (copy of this machine now, live data later).
 6. Open `<your url>/api/health`: it must say `{"ok":true}`.
 
-## 6. Before real users arrive
+## 6. Data on the server: demo copy now, live data later
 
-- Remove the demo accounts (Admin → People & access → deactivate or remove the `@demo.classroots.local` people) and never run `npm run demo:users` on the live database.
-- Give real people their **roles per work type** (Admin → People & access). In APK Testing: Tester, App Developer, Test Lead, Viewer. In Journey Applets: Developer, SME / Reviewer, Coordinator, Viewer.
-- Admin emails go in `ADMIN_EMAILS`.
+**Now:** the server uses a copy of this machine's database (APK tests and Journey demo data, people, roles). **Later**, when Journey is built and the team is ready, the server's data is replaced with the live trackers.
 
-## 7. Google organisation and email (later)
+### Now — copy this machine's database to Railway
 
-- **Google sign-in:** Google Cloud Console → APIs & Services → Credentials → OAuth client (Web). Redirect URI: `<AUTH_URL>/api/auth/callback/google`. Put the id and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
-- **Only your organisation:** set `ALLOWED_DOMAINS=yourcompany.com` so people with that email domain can sign in without an invite.
-- **Magic-link email:** set `EMAIL_SERVER` (SMTP URL) and `EMAIL_FROM`.
+1. Deploy the app on Railway first (§ 5). The first deploy creates the empty tables. `<url>/api/health` must say `{"ok":true}`.
+2. Railway → the environment (production, or staging to try first) → **Postgres** → **Variables** → copy `DATABASE_PUBLIC_URL` (host like `xxx.proxy.rlwy.net`). It contains the password: paste it only in the terminal.
+3. On this Mac, with the local database running (`npm run db:start` in another terminal):
+   ```bash
+   npm run db:copy -- --to 'postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
+   ```
+   It prints every table with its row count and ends with "Done. Every table matches." Run it again later with `--replace` to overwrite the server with a fresh copy (this wipes what was changed on the server).
+   Not copied: sign-in sessions, password links and the pending sheet queue. Sheet sync is switched **off** on the server.
+4. Open the server URL and sign in with the same accounts as on this Mac.
+5. Tidy people (People & access): for demo accounts that are real people (e.g. Jeevan, Aswin), **Edit access** → change the email to their real one → **Save** (their history stays). **Deactivate** the other `@demo.classroots.local` accounts. Add your real admin email in Railway `ADMIN_EMAILS`. Then add real people (§ 7).
+
+### Later — switch the server to live data
+
+When Journey is built and the live trackers are ready. This **replaces all data on the server** (people too), so do it on staging first.
+
+```bash
+export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
+DATABASE_URL="$PROD_DB" npx prisma migrate reset --force --skip-seed          # empty tables, latest schema
+DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed  # work types, roles, admin
+DATABASE_URL="$PROD_DB" npm run import:apk -- "$HOME/Downloads/APK Testing Tracker.xlsx"
+DATABASE_URL="$PROD_DB" npm run import:xlsx -- "$HOME/Downloads/<live Journey tracker>.xlsx"
+unset PROD_DB
+```
+
+Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Leave sheet sync off until app → sheet sync is built.
+
+## 7. Who can sign in, and how
+
+**The rule:** only people you (the admin) add in **People & access** can sign in. Nobody can sign themselves up.
+
+| Person | How they sign in | What they get when you add them |
+| --- | --- | --- |
+| Office staff, email ends in `@classrootsedu.com` | **Sign in with Google** button | An invite email: "open the app, press Sign in with Google". No password. |
+| Everyone else (Gmail, Outlook, school email, clients…) | Their **email + password** | An invite email with the app address, their email and the password you generated |
+
+Forgot password (everyone else): they press **Forgot password?** on the sign-in page, get an email link, and choose a new password themselves. Office staff never need a password.
+
+### Step 1 — Settings (2 minutes)
+
+In `.env` (and later in Railway → Variables):
+
+```
+OFFICE_DOMAINS=classrootsedu.com
+ADMIN_EMAILS=jeevan@classrootsedu.com
+```
+
+Restart the app (`Ctrl+C` in the `npm run dev` terminal, then `npm run dev`).
+
+### Step 2 — Turn on "Sign in with Google" for office staff (15 minutes, once)
+
+Do this in your browser, signed in with your `@classrootsedu.com` Google account (a Workspace admin if possible).
+
+1. Open <https://console.cloud.google.com>.
+2. At the top, click the project picker → **New project**. Name: `Classroots Work`. Location: `classrootsedu.com`. Click **Create**, then select the new project.
+3. Left menu → **APIs & Services** → **OAuth consent screen** (on new consoles: **Google Auth Platform** → **Get started**).
+   - App name: `Classroots Work`. User support email: your email.
+   - Audience / User type: **Internal** (only `@classrootsedu.com` accounts can use it).
+   - Contact email: your email → **Create** / **Save**.
+4. Left menu → **Credentials** (or **Clients**) → **Create credentials** → **OAuth client ID**.
+   - Application type: **Web application**. Name: `Classroots Work`.
+   - **Authorized JavaScript origins** → Add URI: `http://localhost:3000`
+   - **Authorized redirect URIs** → Add URI: `http://localhost:3000/api/auth/callback/google`
+   - Click **Create**.
+5. Copy the **Client ID** and **Client secret** into `.env`:
+   ```
+   AUTH_GOOGLE_ID=<Client ID>
+   AUTH_GOOGLE_SECRET=<Client secret>
+   ```
+6. Restart the app. Open <http://localhost:3000/signin> → **Sign in with Google** → pick your `@classrootsedu.com` account.
+7. Later, after Railway gives you a web address (§ 5), open the same OAuth client and **add** `https://<your-railway-address>` (origins) and `https://<your-railway-address>/api/auth/callback/google` (redirect URIs). Save.
+
+### Step 3 — Let the app send emails (10 minutes, once)
+
+Needed for invite emails and for **Forgot password?**. Without it, both are only printed in the server log and you must send people their login details yourself.
+
+1. Choose the mailbox that sends: your own `jeevan@classrootsedu.com`, or a `no-reply@classrootsedu.com` mailbox.
+2. Signed in as that mailbox: <https://myaccount.google.com/security> → turn on **2-Step Verification**.
+3. Open <https://myaccount.google.com/apppasswords> → name `Classroots Work` → **Create** → copy the 16-letter password (remove the spaces).
+4. In `.env` (write the `@` of the email as `%40`):
+   ```
+   EMAIL_SERVER=smtps://jeevan%40classrootsedu.com:<16-letter password>@smtp.gmail.com:465
+   EMAIL_FROM=Classroots Work <jeevan@classrootsedu.com>
+   ```
+5. Restart the app. The "Email sending is not set up" note on People & access disappears.
+
+### Step 4 — Add a person (every time someone joins)
+
+Sign in as admin → **People & access** → **+ Add user**.
+
+**Office person (`@classrootsedu.com`):**
+1. Name and email, e.g. `asha@classrootsedu.com`. Section 2 shows "Sign in with Google. No password needed."
+2. Section 3: switch on **APK Testing**, tick a role (Tester, App Developer, Test Lead or Viewer).
+3. Section 4: leave **Email them an invite now** ticked → **Add user**.
+4. Asha gets an email: open the app → **Sign in with Google**.
+
+**Anyone else (e.g. `client@gmail.com`):**
+1. Name and email.
+2. Section 2: press **Generate** (a password like `Haxuttuq8m5x` appears).
+3. Section 3: switch on **APK Testing**, tick a role.
+4. Section 4: leave **Email them an invite now** ticked → **Add user**.
+5. They get an email with the app address, their email and that password. They sign in under **Everyone else**, then change the password under **My account** (their name, bottom left).
+
+The page then says "Added. Invite emailed." If it says the email could not be sent, press **Copy login details** before saving next time and send them yourself, or fix step 3 and press **Send invite** on their page (that emails a link to choose a password).
+
+### Step 5 — When someone forgets their password
+
+**They do it themselves:** sign-in page → **Forgot password?** → enter email → **Email me a reset link** → open the email (link works 1 hour, once) → type the new password twice → **Save password** → sign in.
+
+**Or you do it:** People & access → their name → **Edit access** → section 2 → **Generate** → tick **Email them the new password** → **Save changes**.
+
+Office staff use Google, so they never reset a password here.
+
+**Remove access:** their name → **Deactivate**. They can no longer sign in; their past work stays.
+
+### Checklist
+
+- [ ] `OFFICE_DOMAINS` and `ADMIN_EMAILS` set
+- [ ] Google OAuth client created, `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` set, Google sign-in tested
+- [ ] `EMAIL_SERVER` / `EMAIL_FROM` set; add yourself a test person with a Gmail address and check the invite arrives
+- [ ] **Forgot password?** tested with that Gmail person
+- [ ] On Railway: the same variables, and the Railway address added to the Google OAuth client
 
 ## 8. Build further (next sessions)
 
-1. **Journey Applets on database tables** like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
+1. **Build the Journey work type** (later, from the real Journey tracker). Journey on database tables like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
-4. **Checks not yet done:** light theme on the newest pages (Inbox, Overview tiles, Cases), phone width (375px) of Inbox and Cases, and a real Railway deploy.
+4. **Checks not yet done:** a real Railway deploy, Google sign-in and email sending with real credentials.
 
 ## 9. How to resume in a new session or another tool
 
 ```bash
-git checkout main && git pull           # after step 1 (or: git checkout jeevan/ui-redesign)
+git checkout development && git pull    # or: git checkout jeevan/go-live
 npm install
 npm run db:start                        # terminal 1: local database
 npm run db:deploy && npm run db:seed    # once: migrations, roles, work types
 npm run dev                             # terminal 2: http://localhost:3000
-npm run typecheck && npm test           # should be clean, 105 tests
+npm run typecheck && npm test           # should be clean, 119 tests
 ```
 
-Then say "resume" to the assistant: it reads `.ai/state/<branch>.md`, `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).
+Then say "resume" to the assistant: it reads `.ai/state/<branch>.md` (for `jeevan/go-live`: `.ai/state/jeevan__go-live.md`), `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).
