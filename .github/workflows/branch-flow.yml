@@ -1,11 +1,13 @@
 name: Branch flow
 
-# Code moves feature → development → staging → main. Only these pull requests may target staging and main:
-#   staging ← development, main (back-merge after a hotfix), hotfix/*
-#   main    ← staging, hotfix/*
+# Code moves feature → development → staging → main. Allowed pull requests:
+#   development ← any branch
+#   staging     ← development, main (back-merge after a hotfix), hotfix/*
+#   main        ← staging, hotfix/*
+# Runs on every pull request (also when its target branch is changed) so the result always matches the current target.
 on:
   pull_request:
-    branches: [staging, main]
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   branch-flow:
@@ -20,7 +22,9 @@ jobs:
           case "$BASE:$HEAD" in
             staging:development|staging:main|staging:hotfix/*|main:staging|main:hotfix/*)
               echo "OK: $HEAD → $BASE" ;;
-            *)
+            staging:*|main:*)
               echo "::error::$HEAD can't merge into $BASE. Flow: feature → development → staging → main (urgent fixes: hotfix/* → main, then main → staging and development)."
               exit 1 ;;
+            *)
+              echo "OK: $HEAD → $BASE (no restriction)" ;;
           esac
