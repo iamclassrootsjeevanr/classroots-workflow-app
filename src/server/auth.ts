@@ -6,6 +6,7 @@ import Google from 'next-auth/providers/google';
 import { verifyPassword } from '@/lib/password';
 import { db } from './db';
 import { env, googleEnabled } from './env';
+import { sendMail } from './mail';
 
 declare module 'next-auth' {
   interface Session {
@@ -29,17 +30,9 @@ const emailProvider: EmailConfig = {
   maxAge: 24 * 60 * 60,
   options: {},
   async sendVerificationRequest({ identifier, url }) {
-    const server = env().EMAIL_SERVER;
-    if (!server) {
-      console.log(`\n[auth] Magic sign-in link for ${identifier}:\n${url}\n`);
-      return;
-    }
-    const nodemailer = await import('nodemailer');
-    const transport = nodemailer.createTransport(server);
     const host = new URL(url).host;
-    await transport.sendMail({
+    await sendMail({
       to: identifier,
-      from: env().EMAIL_FROM,
       subject: `Sign in to Classroots Work`,
       text: `Sign in to ${host}\n${url}\n\nThis link expires in 24 hours. If you did not request it, ignore this email.`,
       html: `<p>Sign in to <b>Classroots Work</b></p><p><a href="${url}" style="display:inline-block;padding:10px 18px;background:#1976d2;color:#fff;border-radius:6px;text-decoration:none">Sign in</a></p><p style="color:#666;font-size:12px">This link expires in 24 hours. If you did not request it, ignore this email.</p>`,
@@ -80,7 +73,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     passwordProvider,
     ...(googleEnabled()
-      ? [Google({ clientId: env().AUTH_GOOGLE_ID, clientSecret: env().AUTH_GOOGLE_SECRET, allowDangerousEmailAccountLinking: true })]
+      ? [
+          Google({
+            clientId: env().AUTH_GOOGLE_ID,
+            clientSecret: env().AUTH_GOOGLE_SECRET,
+            allowDangerousEmailAccountLinking: true,
+            // People often have a personal and a work Google account: always ask which one.
+            authorization: { params: { prompt: 'select_account' } },
+          }),
+        ]
       : []),
     emailProvider,
   ],

@@ -39,9 +39,13 @@ export default async function EditUserPage({ params, searchParams }: { params: P
       <PageHeader
         title={user.name ?? user.email ?? 'Person'}
         subtitle={`${user.active ? 'Active' : 'Deactivated'} · last sign-in ${user.lastLoginAt ? formatDateTime(user.lastLoginAt, tz) : 'never'}${user.accounts.length ? ` · linked: ${user.accounts.map(a => a.provider).join(', ')}` : ''} · ${user._count.assignedItems} assigned, ${user._count.ownedItems} owned`}
-        actions={<PeopleActions userId={user.id} active={user.active} isSelf={user.id === admin.id} afterRemove="/admin/users" />}
+        actions={<PeopleActions userId={user.id} active={user.active} isSelf={user.id === admin.id} canInvite={user.active && Boolean(user.email)} afterRemove="/admin/users" />}
       />
-      {added && <p className="note-ok mb-4">Added. They can sign in now if they have an email and a password (or use Google / an email link).</p>}
+      {added && (
+        <p className="note-ok mb-4">
+          Added. {user.email ? 'Press Send invite to email them how to sign in.' : 'Add their email so they can sign in.'}
+        </p>
+      )}
       <UserAccessForm {...data} isSelf={user.id === admin.id} key={`${user.updatedAt.getTime()}`} />
       <Card className="mt-5" title="Removing someone">
         <p className="text-sm text-muted">

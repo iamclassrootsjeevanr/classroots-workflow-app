@@ -5,7 +5,7 @@ import { Card, PageHeader, ToneChip } from '@/components/ui';
 import { combineRoles, type RoleLite } from '@/lib/access-core';
 import { formatDateTime } from '@/lib/time';
 import { db } from '@/server/db';
-import { env, googleEnabled } from '@/server/env';
+import { emailEnabled, env, googleEnabled } from '@/server/env';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
 
@@ -83,6 +83,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           </>
         }
       />
+      {(!googleEnabled() || !emailEnabled()) && (
+        <div className="note-warn mb-4 space-y-1 text-xs">
+          {!googleEnabled() && <p>Google sign-in is not set up: add AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on the server. Until then staff use a password or an email link.</p>}
+          {!emailEnabled() && <p>Email is not set up: add EMAIL_SERVER on the server. Until then sign-in links and invites are only printed in the server log, so give people a temporary password.</p>}
+        </div>
+      )}
       <FilterBar
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
@@ -126,7 +132,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                 <Link href={`/admin/users/${u.id}`} className="link">
                   Edit access
                 </Link>
-                <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} />
+                <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} canInvite={u.active && Boolean(u.email)} />
               </span>
             </div>
           </li>
@@ -169,7 +175,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                     <Link href={`/admin/users/${u.id}`} className="link mr-3 text-xs">
                       Edit access
                     </Link>
-                    <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} />
+                    <PeopleActions userId={u.id} active={u.active} isSelf={u.id === me.id} canInvite={u.active && Boolean(u.email)} />
                   </td>
                 </tr>
               ))}

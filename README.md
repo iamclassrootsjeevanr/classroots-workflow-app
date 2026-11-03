@@ -374,13 +374,19 @@ npm run user:password -- you@company.com
 
 ### Google SSO setup
 
-1. Google Cloud Console → APIs & Services → Credentials → **Create OAuth client** → *Web application*.
-2. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`, plus `<production URL>/api/auth/callback/google`.
-3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Optionally set `ALLOWED_DOMAINS`. Restart the app.
+1. Google Cloud Console → OAuth consent screen with user type **Internal** (only your Google Workspace organisation can use it).
+2. APIs & Services → Credentials → **Create OAuth client** → *Web application*. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`, plus `<production URL>/api/auth/callback/google`.
+3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Optionally set `ALLOWED_DOMAINS`. Restart the app. Google always shows the account picker.
 
-### Magic-link email in production
+Step-by-step with screens to click: `docs/NEXT-STEPS.md` § 7.
 
-Set `EMAIL_SERVER` to an SMTP URL, for example `smtps://user:pass@smtp.example.com:465` (Google Workspace relay, Resend, SendGrid or SES), and set `EMAIL_FROM`.
+### Email in production (sign-in links and invites)
+
+Set `EMAIL_SERVER` to an SMTP URL, for example `smtps://no-reply%40yourdomain.com:<app password>@smtp.gmail.com:465` (a Google Workspace mailbox with an app password) or the SMTP URL of Resend, SendGrid or SES, and set `EMAIL_FROM`. All mail goes through `src/server/mail.ts`; without `EMAIL_SERVER` it is printed in the server log.
+
+### Inviting people
+
+**People & access → Send invite** (list or person page) emails someone that they have access, which work types and roles, and how to sign in: Google for organisation emails (`ALLOWED_DOMAINS`, or a linked Google account), otherwise the password an admin shares or an email link. Passwords are never emailed. The link opens `/signin?email=…` with the email filled in. Wording and rules: `src/lib/invite.ts` (tested).
 
 ---
 

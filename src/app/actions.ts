@@ -21,6 +21,9 @@ import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
+import { inviteEmail, signInMethod } from '@/lib/invite';
+import { env, googleEnabled } from '@/server/env';
+import { sendMail } from '@/server/mail';
 import { COOKIE_MAX_AGE, PREFS_COOKIE, PrefsSchema, serializePrefsCookie } from '@/lib/prefs';
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
@@ -438,6 +441,32 @@ export async function setUserPasswordAction(userId: string, password: string | n
     if (problem) throw new Error(problem);
     await db.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password), passwordUpdatedAt: new Date() } });
     return `Password set for ${user.name ?? user.email}`;
+  });
+}
+
+/** Email someone that they have access, with the sign-in steps that fit them (Google for staff, else password or email link). */
+export async function sendInviteAction(userId: string) {
+  return run(async () => {
+    const admin = await requireAdmin();
+    const user = await db.user.findUniqueOrThrow({
+      where: { id: userId },
+      include: { accounts: { select: { provider: true } }, memberships: { include: { workType: { select: { name: true } }, roles: { include: { role: { select: { name: true } } } } } } },
+    });
+    if (!user.email) throw new Error('Add an email for this person first.');
+    if (!user.active) throw new Error('Activate this person before inviting them.');
+    const e = env();
+    const method = signInMethod({
+      email: user.email,
+      googleEnabled: googleEnabled(),
+      allowedDomains: e.ALLOWED_DOMAINS,
+      hasGoogleAccount: user.accounts.some(a => a.provider === 'google'),
+      hasPassword: Boolean(user.passwordHash),
+    });
+    const access = user.isAdmin ? ['everything (admin)'] : user.memberships.map(m => `${m.workType.name} (${m.roles.map(r => r.role.name).join(' + ')})`);
+    const mail = inviteEmail({ name: user.name, email: user.email, invitedBy: admin.name ?? admin.email ?? 'An admin', appUrl: e.AUTH_URL, method, access });
+    const { sent } = await sendMail({ to: user.email, ...mail });
+    if (!sent) return 'Email isn’t set up on this server, so the invite was printed in the server log';
+    return method === 'password' ? `Invite sent to ${user.email}. Share their password with them privately.` : `Invite sent to ${user.email}`;
   });
 }
 

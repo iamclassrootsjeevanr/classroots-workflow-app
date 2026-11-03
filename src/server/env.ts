@@ -8,6 +8,8 @@ const list = z
 const schema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   AUTH_SECRET: z.string().optional(),
+  /** Public address of the app; links in emails point here. */
+  AUTH_URL: z.string().default('http://localhost:3000'),
   AUTH_GOOGLE_ID: z.string().optional(),
   AUTH_GOOGLE_SECRET: z.string().optional(),
   EMAIL_SERVER: z.string().optional(),
@@ -32,3 +34,4 @@ export function env(): Env {
 }
 
 export const googleEnabled = () => Boolean(env().AUTH_GOOGLE_ID && env().AUTH_GOOGLE_SECRET);
+export const emailEnabled = () => Boolean(env().EMAIL_SERVER);

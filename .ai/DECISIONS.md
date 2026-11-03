@@ -60,3 +60,8 @@ By: claude-code
 Decision: display name `Journey` (module `name` + migration 20261103120000_rename_journey for existing DB rows). Key `journey-applet`, URLs, roles and sheet tab unchanged. The Journey work type itself is built later from the real tracker; only APK Testing goes live now.
 Why: Jeevan's naming. `WorkType.name` is only written on first create, so renames need a migration.
 By: cursor
+
+## 2026-11-03 — Sign-in: Google for classrootsedu.com, email for everyone else; admins send invites
+Decision: Google OAuth client with an Internal consent screen + `ALLOWED_DOMAINS=classrootsedu.com` for staff; clients use email + password (admin-set temporary password) or an email link. All mail goes through `src/server/mail.ts` (SMTP URL in `EMAIL_SERVER`, e.g. a Workspace mailbox app password). **Send invite** emails the right steps per person (`src/lib/invite.ts`); passwords are never emailed. APK sheet sync will be app → sheet only (to build).
+Why: staff already have Workspace accounts; external people don't. Rejected: Google-only (locks out clients), emailing passwords.
+By: cursor

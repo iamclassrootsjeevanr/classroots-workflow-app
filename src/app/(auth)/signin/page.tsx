@@ -40,9 +40,10 @@ function GoogleIcon() {
   );
 }
 
-export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string }> }) {
+export default async function SignInPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string; email?: string }> }) {
   if (await currentUser()) redirect('/');
-  const { error, callbackUrl } = await searchParams;
+  const { error, callbackUrl, email: invitedEmail } = await searchParams;
+  const emailValue = invitedEmail?.includes('@') ? invitedEmail.trim().toLowerCase() : undefined;
   const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/';
   const domains = env().ALLOWED_DOMAINS;
 
@@ -108,7 +109,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 <label className="label" htmlFor="email">
                   Email <span className="text-bad">*</span>
                 </label>
-                <input className="input py-2.5" id="email" name="email" type="email" required autoComplete="username" />
+                <input className="input py-2.5" id="email" name="email" type="email" required autoComplete="username" defaultValue={emailValue} />
               </div>
               <PasswordField id="password" name="password" />
               <label className="flex items-center gap-2 text-sm">
@@ -130,7 +131,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 await attempt('email', { email: String(formData.get('email') ?? '').trim().toLowerCase(), redirectTo });
               }}
             >
-              <input className="input py-2" name="email" type="email" required autoComplete="email" placeholder="you@company.com" aria-label="Email for sign-in link" />
+              <input className="input py-2" name="email" type="email" required autoComplete="email" placeholder="you@company.com" aria-label="Email for sign-in link" defaultValue={emailValue} />
               <button className="btn-ghost shrink-0" type="submit">
                 Send link
               </button>
