@@ -32,6 +32,9 @@ app → sheet sync for the APK tracker, deploy on Railway, real people with role
 - Branches: created `development` (now GitHub default) and `staging` from main 4abce15; rulesets + CI (`checks`) + `branch-flow`
   workflows; PR #6 retargeted to `development`. Docs: README "Branches and environments", NEXT-STEPS § 1/§ 5, AGENTS.md.
 
+- Docs: NEXT-STEPS § 6 "Load live data and people into production": fresh prod (no local dump), seed + import:apk against
+  Railway DATABASE_PUBLIC_URL via `DATABASE_URL=... npm run …` (env beats --env-file, verified), link imported testers via Add user.
+
 ## In progress
 Nothing mid-edit.
 

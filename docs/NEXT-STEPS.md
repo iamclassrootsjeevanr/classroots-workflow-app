@@ -75,14 +75,43 @@ Full steps with variable names are in the README under **Deploy → Railway**. S
 2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
-5. Move your data: `pg_dump` your local database and restore it into Railway, or start empty and run `npm run import:apk -- "<file>"` and `npm run import:xlsx -- "<file>"` against the Railway database.
+5. Load the live data and people: § 6.
 6. Open `<your url>/api/health`: it must say `{"ok":true}`.
 
-## 6. Before real users arrive
+## 6. Load live data and people into production
 
-- Remove the demo accounts (Admin → People & access → deactivate or remove the `@demo.classroots.local` people) and never run `npm run demo:users` on the live database.
-- Give real people their **roles per work type** (Admin → People & access). In APK Testing: Tester, App Developer, Test Lead, Viewer. In Journey: Developer, SME / Reviewer, Coordinator, Viewer.
-- Admin emails go in `ADMIN_EMAILS`.
+Start production **clean**: do not copy your local database (it has demo users, test versions and demo Journey rows). Import the real APK tracker instead. Rehearse every step on **staging** first, then repeat on production.
+
+**A. Wait for the first deploy.** Railway's first deploy creates all tables (migrations run on start). `<url>/api/health` must say `{"ok":true}`.
+
+**B. Get the database address.** Railway → the environment (staging or production) → **Postgres** service → **Variables** → copy `DATABASE_PUBLIC_URL` (starts with `postgresql://`, host like `xxx.proxy.rlwy.net`). It contains the password: paste it only in your terminal, never in a file in the repo.
+
+**C. Run these on your Mac** in the project folder (local `npm run db:start` is not needed):
+
+```bash
+export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'   # from step B
+
+# 1. Base data once: work types, roles, settings, the admin account
+DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed
+
+# 2. Live APK data from the latest tracker (download it from Drive as .xlsx first)
+DATABASE_URL="$PROD_DB" npm run import:apk -- "$HOME/Downloads/APK Testing Tracker.xlsx"
+
+unset PROD_DB
+```
+
+The import is safe to run again, but it only **adds** tests that are not in the app yet; tests already imported keep their app status. So import on go-live day, and from then on the team updates results in the app, not in the sheet. Testers named in "Tested By" are created as **people without an email** so their history is kept. Do **not** run `npm run demo:users` or `npm run import:xlsx` (Journey demo) on production.
+
+**D. Check:** open the production URL → sign in → APK Testing → APK versions and Test execution show the tracker's numbers.
+
+**E. Give people access** (signed in as admin, People & access):
+
+1. **You:** `ADMIN_EMAILS` makes you admin. Sign in with Google (office email), or set a password once: `DATABASE_URL="$PROD_DB" npm run user:password -- you@example.com`.
+2. **Testers already in the tracker:** **+ Add user** → at the top, **"Already in the system from the sheet?"** → pick their name → add their email → section 3: APK Testing + role → keep **Email them an invite now** → **Add user**. Picking the name links their past tests to the new login.
+3. **Everyone else:** **+ Add user** normally (§ 7, step 4).
+4. Roles in APK Testing: Tester, App Developer, Test Lead, Viewer.
+
+**F. Sheet sync:** leave it **off** in production for now. App → sheet only is the next thing to build; turning on today's two-way sync would also pull sheet edits into the app.
 
 ## 7. Who can sign in, and how
 
