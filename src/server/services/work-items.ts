@@ -7,6 +7,7 @@ import { canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTra
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
+import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 
@@ -182,6 +183,9 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   const update: Prisma.WorkItemUncheckedUpdateInput = {};
   const events: Prisma.WorkItemEventCreateManyInput[] = [];
   const columns: string[] = [];
+  // Fields stored in the shared version / test case tables (APK Testing) are written there, not into this run's data.
+  const shared: Record<string, string | null> = {};
+  let sharedBefore: Record<string, string> | null = null;
 
   for (const [key, raw] of Object.entries(patch)) {
     const field = mod.fields.find(f => f.key === key);
@@ -189,7 +193,11 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     if (actor.ctx && !canEditField(field, actor.ctx)) throw new ForbiddenError(`You can't edit ${field.label}.`);
     const value = coerce(field, raw);
     let before: string | null;
-    if (field.source === 'core' && key === 'dueAt') {
+    if (field.source === 'version' || field.source === 'case') {
+      sharedBefore ??= await currentApkFields(tx, item.id);
+      before = sharedBefore[key] ? sharedBefore[key] : null;
+      shared[key] = value === null ? null : String(value);
+    } else if (field.source === 'core' && key === 'dueAt') {
       before = item.dueAt ? normalizeDate(item.dueAt) : null;
       update.dueAt = value ? dueDateToInstant(String(value)) : null;
     } else {
@@ -204,6 +212,7 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     if (col) columns.push(col);
   }
   if (!events.length) return;
+  if (Object.keys(shared).length) await writeApkFields(tx, item.id, shared);
   mod.dataSchema.parse(data);
   await saveItem(tx, item, { ...update, data: data as Prisma.InputJsonValue });
   await tx.workItemEvent.createMany({ data: events });
@@ -335,7 +344,9 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
   const status = input.status ?? (input.assigneeId ? mod.assignedStatus : mod.initialStatus);
   const def = statusDef(mod, status);
   const marks = new Set(def.marks ?? []);
-  const data = mod.dataSchema.parse(input.data ?? {}) as Prisma.InputJsonValue;
+  // APK Testing: version and test case facts go to their own tables; the run keeps only its own data.
+  const apk = mod.storage === 'apk' ? await prepareApkCreate(tx, workType, input) : null;
+  const data = mod.dataSchema.parse(apk?.data ?? input.data ?? {}) as Prisma.InputJsonValue;
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
@@ -367,6 +378,7 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       sheetSnapshot: (input.sheetSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   });
+  await apk?.link(item.id);
   await tx.workItemEvent.create({
     data: {
       itemId: item.id,

@@ -22,18 +22,22 @@ export async function createApkVersion(actor: ChangeActor, workTypeId: string, i
     const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (wt.key !== MODULE) throw new Error('New versions are only for APK Testing.');
     if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
-    const clash = await tx.workItem.findFirst({
-      where: { workTypeId, OR: [{ groupKey: version }, { externalKey: { startsWith: `${version}${KEY_SEP}` } }] },
-      select: { id: true },
-    });
+    const clash =
+      (await tx.apkVersion.findUnique({ where: { workTypeId_key: { workTypeId, key: version } }, select: { id: true } })) ??
+      (await tx.workItem.findFirst({ where: { workTypeId, OR: [{ groupKey: version }, { externalKey: { startsWith: `${version}${KEY_SEP}` } }] }, select: { id: true } }));
     if (clash) throw new Error(`APK version ${version} already exists`);
+    // The test cases to copy come from the shared test case table, as run in the chosen earlier version.
     const sourceRows = input.copyFrom
-      ? await tx.workItem.findMany({ where: { workTypeId, groupKey: input.copyFrom, archivedAt: null }, select: { title: true, data: true } })
+      ? await tx.apkTest.findMany({
+          where: { version: { workTypeId, key: input.copyFrom }, item: { archivedAt: null }, testCase: { archivedAt: null } },
+          select: { item: { select: { title: true, sortOrder: true } }, testCase: true },
+        })
       : [];
-    const source: SourceTest[] = sourceRows.map(r => {
-      const data = (r.data ?? {}) as Record<string, unknown>;
-      return { testCaseId: String(data.testCaseId ?? ''), title: r.title, data };
-    });
+    const source: SourceTest[] = sourceRows.map(r => ({
+      testCaseId: r.testCase.code,
+      title: r.item.title,
+      data: { testCaseId: r.testCase.code, scenario: r.testCase.scenario, expected: r.testCase.expected, steps: r.testCase.steps, priority: r.testCase.defaultPriority },
+    }));
     const planned = planVersionTests(source.filter(s => s.testCaseId), input);
     const mod = requireModule(MODULE);
     for (const t of planned) {
@@ -48,29 +52,41 @@ export async function createApkVersion(actor: ChangeActor, workTypeId: string, i
       await internals.enqueue(tx, item.id, wt, mod, actor, (mod.sheet?.columns ?? []).filter(c => c.kind !== 'key').map(c => c.column));
     }
     return { version, count: planned.length };
-  });
+  }, { timeout: 60_000, maxWait: 10_000 });
 }
 
 export type VersionMeta = { apkUrl?: string; releaseDate?: string; releaseNotes?: string };
 
-/** Change the APK link, release date or notes on every test of a version. */
+/** Change the APK link, release date or notes of a version. One row in ApkVersion, shared by all its tests. */
 export async function updateApkVersion(actor: ChangeActor, workTypeId: string, version: string, meta: VersionMeta) {
   if (actor.ctx && !hasCap(actor.ctx, 'create') && !hasCap(actor.ctx, 'manageFields')) throw new ForbiddenError('You don’t have permission to edit APK versions.');
   const { apkUrl, releaseDate } = checkVersionMeta({ version, apkUrl: meta.apkUrl, releaseDate: meta.releaseDate });
-  const patch = { apkUrl: apkUrl || null, releaseDate: releaseDate || null, releaseNotes: (meta.releaseNotes ?? '').trim() || null };
   return db.$transaction(async tx => {
     const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (wt.key !== MODULE) throw new Error('Versions are only for APK Testing.');
     if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
-    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: null }, select: { id: true } });
-    if (!rows.length) throw new Error(`APK version ${version} has no tests`);
-    const now = new Date();
-    for (const r of rows) {
-      const item = await internals.loadItem(tx, r.id);
-      await internals.updateFieldsTx(tx, item, { ...actor, ctx: null }, patch, now);
-    }
-    return { count: rows.length };
+    const v = await tx.apkVersion.findUnique({ where: { workTypeId_key: { workTypeId, key: version } } });
+    if (!v || v.archivedAt) throw new Error(`APK version ${version} not found.`);
+    await tx.apkVersion.update({
+      where: { id: v.id },
+      data: { link: apkUrl || null, releaseDate: releaseDate ? new Date(`${releaseDate}T00:00:00.000Z`) : null, notes: (meta.releaseNotes ?? '').trim() || null },
+    });
+    return { count: await tx.apkTest.count({ where: { versionId: v.id, item: { archivedAt: null } } }) };
   });
+}
+
+export type TestCasePatch = { scenario?: string; expected?: string; steps?: string; defaultPriority?: string };
+
+/** Edit a test case's text. It is one row in ApkTestCase, so every version that runs the case sees the change. */
+export async function updateTestCase(actor: ChangeActor, workTypeId: string, caseId: string, patch: TestCasePatch) {
+  if (actor.ctx && !hasCap(actor.ctx, 'create') && !hasCap(actor.ctx, 'manageFields')) throw new ForbiddenError('You don’t have permission to edit test cases.');
+  const data: Record<string, string | null> = {};
+  for (const k of ['scenario', 'expected', 'steps', 'defaultPriority'] as const) {
+    if (patch[k] !== undefined) data[k] = patch[k]?.trim() ? patch[k]!.trim() : null;
+  }
+  const c = await db.apkTestCase.findFirst({ where: { id: caseId, workTypeId } });
+  if (!c) throw new Error('Test case not found.');
+  await db.apkTestCase.update({ where: { id: caseId }, data });
 }
 
 /**
@@ -88,6 +104,7 @@ export async function deleteApkVersion(actor: ChangeActor, workTypeId: string, v
     const ids = rows.map(r => r.id);
     const now = new Date();
     await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: now, version: { increment: 1 } } });
+    await tx.apkVersion.updateMany({ where: { workTypeId, key: version }, data: { archivedAt: now } });
     await tx.syncOutbox.deleteMany({ where: { itemId: { in: ids }, status: 'PENDING' } });
     await tx.workItemEvent.createMany({
       data: ids.map(itemId => ({ itemId, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: `Deleted with APK version ${version}`, at: now })),
@@ -117,6 +134,7 @@ export async function restoreApkVersion(actor: ChangeActor, workTypeId: string, 
     const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: deletedAt }, select: { id: true } });
     const ids = rows.map(r => r.id);
     const now = new Date();
+    await tx.apkVersion.updateMany({ where: { workTypeId, key: version }, data: { archivedAt: null } });
     if (ids.length) {
       await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null, version: { increment: 1 } } });
       await tx.workItemEvent.createMany({

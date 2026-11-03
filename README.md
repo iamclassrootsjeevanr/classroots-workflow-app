@@ -435,6 +435,18 @@ Tab names come from `pages` in the module definition. Item pages open without ta
 
 **Sidebar.** Each work type has its own icon (`icon` in the module definition) and a dropdown of its pages. Tab names and icons come from `workTypeTabs` in `src/lib/work-type-tabs.ts`.
 
+### APK Testing data model
+
+APK Testing stores its shared facts in real tables instead of copying them into every row:
+
+| Table | Holds | Used by |
+| --- | --- | --- |
+| `ApkVersion` | version name, release date, APK link, notes | version table, New / Edit / Delete version |
+| `ApkTestCase` | test case id, feature, scenario, expected result, steps, default priority | Test cases page, "copy from an earlier version" |
+| `ApkTest` | links one run (`WorkItem`) to its version and test case; each pair exists once | everything that reads a run |
+
+A run is still a `WorkItem`, so status, assignment, comments, bug, developer remarks, the time log, sheet sync and permissions work as before. Its own `data` keeps only its result (priority, comments, bug, remarks, log date, test case id). Reads merge the shared fields back in (`hydrateApkData`); editing a shared field (scenario, APK link, ...) writes to the shared row, so the whole version or test case changes together and the change is logged on the run. New runs from the importer, the New version dialog or the sheet find or create their version and test case (`src/server/apk/store.ts`). Both testers and app developers can add versions and test cases and each writes their own comment column.
+
 ### APK Testing: versions, bugs and the time log
 
 - **Add a version.** Testers (the Tester role has "Add new items") and admins press **New APK version**: version name, APK link, release date and notes, then pick an earlier version to copy test cases from (untick any, add extra cases). The tests start as Not Tested, with bug, comments and remarks empty, and the creator is the tester unless an assigner picks someone else. **Add test case** adds one test to an existing version. The pencil in the By APK version table edits the link, date and notes of every test in that version. The bin next to it deletes (deactivates) the whole version and its tests, for admins and anyone who can edit test details. It asks first, then offers Undo for 5 seconds and from the Inbox for 30 minutes. History is kept. Code: `src/lib/apk-versions.ts` (pure planner), `src/server/services/apk-versions.ts`, `src/components/new-apk-version.tsx`.
@@ -549,6 +561,23 @@ No seed step is needed:
 - turning on sync pulls every row in
 
 To load the Excel files instead, run the import scripts from a checkout whose `DATABASE_URL` points at the server database.
+
+### Railway (app + Postgres)
+
+The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
+
+1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project.
+2. In the app service → Variables, set:
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
+   - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).
+   - `ADMIN_EMAILS`, `APP_TIMEZONE`, and, for sheet sync, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`.
+   - Optional: `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, `EMAIL_SERVER` / `EMAIL_FROM`.
+3. **Generate a domain** for the service, then set `AUTH_URL` to it and redeploy. For Google sign-in add `<AUTH_URL>/api/auth/callback/google` as a redirect URI.
+4. **Schedule** sheet sync: add a second service from the same repo as a **Cron** job (every 5 minutes) with the start command
+   `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"` (set `APP_URL` to the public URL, `CRON_SECRET` to the same value as the app).
+5. **Move your existing data** (one time): `pg_dump "$LOCAL_DATABASE_URL" | psql "$RAILWAY_DATABASE_PUBLIC_URL"`, or start empty and run `npm run import:apk -- <file>` against the Railway database. The APK tables (`ApkVersion`, `ApkTestCase`, `ApkTest`) are created and filled by migrations automatically.
+
+**Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
 ### Vercel + managed Postgres (Neon, Supabase, …)
 

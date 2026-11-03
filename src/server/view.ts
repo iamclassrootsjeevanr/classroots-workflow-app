@@ -1,10 +1,12 @@
 import 'server-only';
-import { workloadByUser } from '@/lib/analytics-core';
+import { workloadByUser, type ItemLite } from '@/lib/analytics-core';
 import { instantToDateKey } from '@/lib/time';
 import { allowedTransitions, canDeleteItem, canEditField } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
 import { loadLabel } from '@/components/ui';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from './apk/store';
 import { actorContextFor, getAccess } from './access';
 import { db } from './db';
 import type { CurrentUser } from './rbac';
@@ -46,11 +48,11 @@ export async function editableItemsFor(user: CurrentUser, items: ItemRow[]): Pro
 /** The fields of one item with the viewer's edit rights; loaded when the Edit dialog opens, not for every row. */
 export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: string): Promise<EditableField[]> {
   const access = await getAccess(user);
-  const item = await db.workItem.findUniqueOrThrow({ where: { id: itemId }, include: { workType: { select: { key: true } } } });
+  const item = await db.workItem.findUniqueOrThrow({ where: { id: itemId }, include: { workType: { select: { key: true } }, ...APK_INCLUDE } });
   const mod = getModule(item.workType.key);
   if (!mod) return [];
   const ctx = actorContextFor(access, item.workType.key, item);
-  const data = (item.data ?? {}) as Record<string, unknown>;
+  const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   return mod.fields.map(f => ({
     key: f.key,
     label: f.label,
@@ -73,7 +75,7 @@ export async function deletableItemsFor(user: CurrentUser, items: ItemRow[]): Pr
 }
 
 /** People who can do the work in these work types, least-loaded first, with current load in the label. */
-export async function assignablePeople(items: ItemRow[], workTypeKeys?: string[]): Promise<PersonOption[]> {
+export async function assignablePeople(items: ItemLite[], workTypeKeys?: string[]): Promise<PersonOption[]> {
   const users = await db.user.findMany({ where: workPeopleWhere(workTypeKeys), select: { id: true, name: true, email: true, capacity: true } });
   const loads = workloadByUser(items, users.map(u => ({ id: u.id, name: u.name ?? u.email ?? '?', capacity: u.capacity })), new Date());
   return loads.map(w => ({ id: w.userId, name: w.name, hint: `${w.active}/${w.capacity} · ${loadLabel(w.level)}` }));

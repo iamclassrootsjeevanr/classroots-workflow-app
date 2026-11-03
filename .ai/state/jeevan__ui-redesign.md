@@ -61,10 +61,9 @@ per-user appearance settings (theme / text size / density), real icons, token-ba
   Delete is undoable for 30 min (toast + Recently deleted card, `restoreItem`). 89 tests.
 - Inbox: Notification model (migration 20261102180000), `notify()`, sidebar Inbox popover + /inbox page, delete toast 5 s then Undo in Inbox for 30 min,
   assignment/feedback notices; account is one box (name + My account). 92 tests.
-- Roles per work type: migration 20261102210000, module `roles`/`rolesForModule`, `ensureModuleRoles`, Roles page tabs per work type, user form filters roles by work type, APK Test Lead role. 99 tests.
-- Delete APK version: `deleteApkVersion`/`restoreApkVersion` (archive all tests together, Inbox 'version.deleted' with Undo); bin button in version table.
-  Removed the user's test version v_2026-11-02 (archived).
 - Sheet push order: Lists (not the formula column), Test Cases, APK Releases, Version Summary row, then Test Execution (`sheet.linked`, `linkedPayloads`, Code.gs ensureValues/ensureRows, cells keep dropdown but allow new values). 101 tests.
+- BRANCH jeevan/apk-database: APK relational tables (ApkVersion/ApkTestCase/ApkTest, migrations 20261103090000 + 20261103091000), `src/server/apk/store.ts`,
+  `src/lib/apk-data.ts`, DB-side items filter/paging, lite loaders, /api/health, railway.json, README Railway + data model. App Developer can add versions/cases. 105 tests.
 
 ## In progress
 Nothing mid-edit. Code is not broken.

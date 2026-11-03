@@ -2,7 +2,7 @@
 
 import { Pencil } from 'lucide-react';
 import { useState, useTransition } from 'react';
-import { updateFieldsAction, type ActionResult } from '@/app/actions';
+import { updateTestCaseAction, type ActionResult } from '@/app/actions';
 import type { CaseRow } from '@/lib/test-cases';
 import { ActionMessage } from './controls';
 import { Field } from './form';
@@ -10,7 +10,7 @@ import { Modal } from './modal';
 import { Sheet } from './sheet';
 import { Empty, StatusBadge } from './ui';
 
-function EditCase({ row }: { row: CaseRow }) {
+function EditCase({ row, workTypeId }: { row: CaseRow; workTypeId: string }) {
   const [open, setOpen] = useState(false);
   const [v, setV] = useState({ scenario: row.scenario, expected: row.expected, steps: row.steps, priority: row.priority });
   const [pending, start] = useTransition();
@@ -22,19 +22,19 @@ function EditCase({ row }: { row: CaseRow }) {
         <Pencil size={14} aria-hidden="true" />
       </button>
       {open && (
-        <Modal title={`Edit ${row.id}`} subtitle={`${row.title} · changes ${row.latestVersion}`} onClose={() => setOpen(false)}>
+        <Modal title={`Edit ${row.id}`} subtitle={`${row.title} · applies to every version`} onClose={() => setOpen(false)}>
           <form
             className="space-y-3"
             onSubmit={e => {
               e.preventDefault();
               start(async () => {
-                const r = await updateFieldsAction(row.latestItemId, Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x.trim() || null])));
+                const r = await updateTestCaseAction(workTypeId, row.caseId, { scenario: v.scenario, expected: v.expected, steps: v.steps, defaultPriority: v.priority });
                 setResult(r);
                 if (r.ok) setOpen(false);
               });
             }}
           >
-            <Field label="Priority">
+            <Field label="Default priority">
               <input className="input" placeholder="High / Medium / Low" {...set('priority')} />
             </Field>
             <Field label="Test scenario">
@@ -63,7 +63,7 @@ function EditCase({ row }: { row: CaseRow }) {
 }
 
 /** One row per test case with its definition, the versions it is in and its latest result. */
-export function CasesTable({ rows, canEdit }: { rows: CaseRow[]; canEdit: boolean }) {
+export function CasesTable({ rows, canEdit, workTypeId }: { rows: CaseRow[]; canEdit: boolean; workTypeId: string }) {
   if (!rows.length) return <Empty>No test cases yet.</Empty>;
   const cell = (s: string) => (s ? <div className="max-w-72 truncate" title={s}>{s}</div> : <span className="text-muted">—</span>);
   return (
@@ -91,16 +91,14 @@ export function CasesTable({ rows, canEdit }: { rows: CaseRow[]; canEdit: boolea
               <td className="text-xs">{cell(r.scenario)}</td>
               <td className="text-xs">{cell(r.expected)}</td>
               <td className="text-xs">{cell(r.steps)}</td>
-              <td className="whitespace-nowrap text-xs tabular-nums" title={r.versions.join(', ')}>
-                {r.versions.length}
-              </td>
+              <td className="whitespace-nowrap text-xs tabular-nums">{r.versionCount}</td>
               <td className="whitespace-nowrap">
                 <StatusBadge label={r.latestStatus} color={r.latestColor} />
                 <span className="ml-1.5 text-2xs text-muted">{r.latestVersion}</span>
               </td>
               {canEdit && (
                 <td className="pin-end">
-                  <EditCase row={r} />
+                  <EditCase row={r} workTypeId={workTypeId} />
                 </td>
               )}
             </tr>

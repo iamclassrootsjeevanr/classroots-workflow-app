@@ -27,6 +27,7 @@ export const apkTesting: WorkTypeDefinition = {
   name: 'APK Testing',
   description: 'Each APK build run through the test-case list: tested, failures fixed, retested, passed.',
   icon: 'smartphone',
+  storage: 'apk',
   itemNoun: 'test',
   labels: { assignee: 'Tested by', owner: 'Owner', group: 'APK version' },
   table: {
@@ -45,7 +46,7 @@ export const apkTesting: WorkTypeDefinition = {
 
   roles: [
     { key: 'tester', name: 'Tester', description: 'Runs test cases on APK builds: tests, logs failures, retests, adds new APK versions.', color: '#00897b', capabilities: ['work', 'create'], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'app-developer', name: 'App Developer', description: 'Responds to test failures: marks them fixed and adds developer remarks.', color: '#6d4c41', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'app-developer', name: 'App Developer', description: 'Responds to test failures: marks them fixed, adds developer remarks, and can add APK versions and test cases like a tester.', color: '#6d4c41', capabilities: ['review', 'create'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'test-lead', name: 'Test Lead', description: 'Plans the test runs: adds versions and cases, assigns testers, edits test details and the APK file.', color: '#ef6c00', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
     VIEWER,
   ],
@@ -82,17 +83,18 @@ export const apkTesting: WorkTypeDefinition = {
 
   fields: [
     { key: 'testCaseId', label: 'Test case', type: 'text', source: 'data', editableBy: [] },
-    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
-    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
-    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'data', editableBy: ['manageFields', 'create'] },
+    { key: 'scenario', label: 'Test scenario', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'expected', label: 'Expected result', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'steps', label: 'Test steps', type: 'longtext', source: 'case', editableBy: ['manageFields', 'create'] },
+    { key: 'defaultPriority', label: 'Default priority (test case)', type: 'text', source: 'case', editableBy: ['manageFields', 'create'] },
     { key: 'priority', label: 'Priority', type: 'text', source: 'data', editableBy: ['ASSIGNEE', 'manageFields', 'create'] },
     { key: 'comments', label: 'Tester comments', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'bug', label: 'Bug / issue', type: 'longtext', source: 'data', editableBy: ['ASSIGNEE'] },
     { key: 'developerRemarks', label: 'Developer remarks', type: 'longtext', source: 'data', editableBy: ['review'] },
     { key: 'logDate', label: 'Log date', type: 'date', source: 'data', editableBy: ['ASSIGNEE'] },
-    { key: 'releaseDate', label: 'APK release date', type: 'date', source: 'data', editableBy: ['manageFields'] },
-    { key: 'apkUrl', label: 'APK file', type: 'url', source: 'data', editableBy: ['manageFields'], linkLabel: 'Open APK' },
-    { key: 'releaseNotes', label: 'Release notes', type: 'longtext', source: 'data', editableBy: ['manageFields'] },
+    { key: 'releaseDate', label: 'APK release date', type: 'date', source: 'version', editableBy: ['manageFields', 'create'] },
+    { key: 'apkUrl', label: 'APK file', type: 'url', source: 'version', editableBy: ['manageFields', 'create'], linkLabel: 'Open APK' },
+    { key: 'releaseNotes', label: 'Release notes', type: 'longtext', source: 'version', editableBy: ['manageFields', 'create'] },
   ],
 
   dataSchema: z
@@ -184,7 +186,7 @@ export const apkTesting: WorkTypeDefinition = {
           { header: 'Feature / Module', from: 'title' },
           { header: 'Test Scenario', from: { field: 'scenario' } },
           { header: 'Expected Result', from: { field: 'expected' } },
-          { header: 'Default Priority', from: { field: 'priority' } },
+          { header: 'Default Priority', from: { field: 'defaultPriority' } },
           { header: 'Test Steps', from: { field: 'steps' } },
         ],
       },

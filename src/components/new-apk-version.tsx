@@ -1,14 +1,15 @@
 'use client';
 
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { useState, useTransition } from 'react';
-import { createApkVersionAction, createItemAction, deleteApkVersionAction, updateApkVersionAction, type ActionResult } from '@/app/actions';
+import { useEffect, useState, useTransition } from 'react';
+import { createApkVersionAction, createItemAction, deleteApkVersionAction, loadVersionCasesAction, updateApkVersionAction, type ActionResult } from '@/app/actions';
 import { ActionMessage, type PersonOption } from './controls';
 import { Checkbox, Field, GroupLabel, OptionList } from './form';
 import { Modal } from './modal';
 import { rememberVersionDeletion } from './undo-toasts';
 
-export type VersionOption = { name: string; releaseDate: string; apkUrl: string; releaseNotes: string; cases: { id: string; title: string }[] };
+export type VersionOption = { name: string; releaseDate: string; apkUrl: string; releaseNotes: string; caseCount: number };
+type CaseOption = { id: string; title: string };
 
 function useRun() {
   const [pending, start] = useTransition();
@@ -30,15 +31,27 @@ export function NewApkVersionButton({ workTypeId, versions, people }: { workType
   const [open, setOpen] = useState(false);
   const [v, setV] = useState({ version: '', apkUrl: '', releaseDate: '', releaseNotes: '', assigneeId: '' });
   const [copyFrom, setCopyFrom] = useState(newest?.name ?? '');
-  const source = versions.find(x => x.name === copyFrom);
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(newest?.cases.map(c => c.id)));
+  // The cases of the chosen version load when it is chosen, so the page does not carry every version's cases.
+  const [cases, setCases] = useState<CaseOption[] | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open || !copyFrom) return;
+    let live = true;
+    setCases(null);
+    void loadVersionCasesAction(workTypeId, copyFrom).then(list => {
+      if (!live) return;
+      setCases(list);
+      setPicked(new Set(list.map(c => c.id)));
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, copyFrom, workTypeId]);
+  const source = cases ? { cases } : undefined;
   const [extras, setExtras] = useState<Extra[]>([]);
   const { pending, result, exec } = useRun();
   const set = (k: keyof typeof v) => ({ value: v[k], onChange: (e: { target: { value: string } }) => setV(s => ({ ...s, [k]: e.target.value })) });
-  const pickSource = (name: string) => {
-    setCopyFrom(name);
-    setPicked(new Set(versions.find(x => x.name === name)?.cases.map(c => c.id)));
-  };
+  const pickSource = (name: string) => setCopyFrom(name);
   const toggle = (id: string, on: boolean) =>
     setPicked(s => {
       const n = new Set(s);
@@ -107,12 +120,12 @@ export function NewApkVersionButton({ workTypeId, versions, people }: { workType
                     <select className="input" value={copyFrom} onChange={e => pickSource(e.target.value)}>
                       {versions.map(x => (
                         <option key={x.name} value={x.name}>
-                          {x.name} · {x.cases.length} tests
+                          {x.name} · {x.caseCount} tests
                         </option>
                       ))}
                     </select>
                   </Field>
-                  <button type="button" className="btn-ghost min-h-9 text-xs" onClick={() => setPicked(new Set(source?.cases.map(c => c.id)))}>
+                  <button type="button" className="btn-ghost min-h-9 text-xs" onClick={() => setPicked(new Set(cases?.map(c => c.id)))}>
                     Select all
                   </button>
                   <button type="button" className="btn-ghost min-h-9 text-xs" onClick={() => setPicked(new Set())}>
@@ -120,6 +133,7 @@ export function NewApkVersionButton({ workTypeId, versions, people }: { workType
                   </button>
                 </div>
               )}
+              {copyFrom && !source && <p className="py-3 text-sm text-muted">Loading test cases…</p>}
               {source && (
                 <OptionList className="max-h-64 overflow-y-auto">
                   {source.cases.map(c => (

@@ -9,6 +9,8 @@ import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
 import { allowedTransitions, canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { hydrateApkData } from '@/lib/apk-data';
+import { APK_INCLUDE } from '@/server/apk/store';
 import { getModule, statusDef } from '@/modules/registry';
 import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
@@ -44,6 +46,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     where: { id: itemId },
     include: {
       workType: true,
+      ...APK_INCLUDE,
       assignee: { select: { id: true, name: true } },
       owner: { select: { name: true } },
       chapter: true,
@@ -65,7 +68,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     ? allowedTransitions(mod, item.status, ctx).map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }))
     : [];
   const people = hasCap(ctx, 'assign') && editable ? await assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null;
-  const data = (item.data ?? {}) as Record<string, unknown>;
+  const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   const fields: EditableField[] = mod.fields.map(f => ({
     key: f.key,
     label: f.label,

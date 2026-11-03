@@ -78,7 +78,7 @@ describe('linked tabs (lists, reference tables) are updated first', () => {
     const { linkedPayloads } = await import('@/lib/sheet-core');
     const { apkTesting } = await import('@/modules/apk-testing/definition');
     const items = [
-      { title: 'Login', groupKey: 'v2', assigneeName: 'Asha', data: { testCaseId: 'TC_1', scenario: 'Sign in', expected: 'Home', priority: 'High', steps: '1. open', releaseDate: '2026-11-02', apkUrl: 'https://x/a.apk', releaseNotes: 'new' } },
+      { title: 'Login', groupKey: 'v2', assigneeName: 'Asha', data: { testCaseId: 'TC_1', scenario: 'Sign in', expected: 'Home', defaultPriority: 'High', steps: '1. open', releaseDate: '2026-11-02', apkUrl: 'https://x/a.apk', releaseNotes: 'new' } },
       { title: 'Home', groupKey: 'v2', assigneeName: 'Asha', data: { testCaseId: 'TC_2' } },
     ];
     const p = linkedPayloads(apkTesting, items);
