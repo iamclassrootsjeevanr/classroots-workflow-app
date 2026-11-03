@@ -8,7 +8,7 @@ Two work types ship today:
 
 | Work type | What one item is | Flow |
 | --- | --- | --- |
-| **Journey Applets** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
+| **Journey** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
 | **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
@@ -112,7 +112,7 @@ npm run demo:users          # optional: one sign-in per role (see "Demo accounts
 ### 6. (Optional) Load real data from the Excel trackers
 
 ```bash
-npm run import:xlsx -- "$HOME/Downloads/JC-TrackerDemo.xlsx"          # Journey Applets
+npm run import:xlsx -- "$HOME/Downloads/JC-TrackerDemo.xlsx"          # Journey
 npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"     # APK Testing
 ```
 
@@ -305,7 +305,7 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 ## Work types
 
-### Journey Applets (`src/modules/journey-applet/definition.ts`)
+### Journey (`src/modules/journey-applet/definition.ts`)
 
 `Received from SME → YTS (assigned) → WIP → Ready for Review → In Review → Corrections in Progress ↺ → Reviewed → Done`. Items can also go **On Hold** or **Blocked**.
 

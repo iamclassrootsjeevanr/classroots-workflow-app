@@ -48,7 +48,7 @@ describe('workTypeTabs', () => {
     expect(tabs.map(t => t.label)).toEqual(['Overview', 'APK versions', 'Test execution', 'Test cases']);
     expect(new Set(tabs.map(t => t.icon)).size).toBe(4);
   });
-  it('gives Journey Applets Overview and Journey chapters only', () => {
+  it('gives Journey Overview and Journey chapters only', () => {
     expect(workTypeTabs(journeyApplet).map(t => t.label)).toEqual(['Overview', 'Journey chapters']);
   });
   it('uses different sidebar icons per work type', () => {

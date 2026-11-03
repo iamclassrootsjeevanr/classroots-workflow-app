@@ -22,9 +22,12 @@ All feature work is already in `main` (squashed PR #5, commit 4abce15). Old bran
   (`ThemeWatcher` now takes `theme` from the root layout and re-syncs `data-theme` when it changes).
 - Metric tile labels wrap to two lines instead of truncating ("Fixed / pending retest", "Not reported") in `src/components/ui.tsx`.
 - Checked in browser: Inbox, Test cases, APK overview tiles at 375px light, overview at desktop light. tsc clean, 105 tests.
+- Work type "Journey Applets" renamed to "Journey" (definition name + migration 20261103120000_rename_journey for the DB row;
+  key `journey-applet` and URLs unchanged). Docs and tests updated.
 
 ## In progress
-Nothing mid-edit. Branch = docs/NEXT-STEPS.md, state file and the two UI fixes above; open as PR #6 into main (needs one approval).
+Nothing mid-edit. Branch = docs, state file, the two UI fixes and the Journey rename; open as PR #6 into main (needs one approval).
+Jeevan: Journey work type is NOT to be built now (no tables, no new features) — only APK Testing goes live. Keep Journey visible as is.
 
 ## Next steps (exact tabs, headers and clicks are in docs/NEXT-STEPS.md)
 1. Convert the APK tracker to a Google Sheet with tabs Test Execution, APK Releases, Test Cases, Lists, Version Summary; share with the script owner.
@@ -32,7 +35,8 @@ Nothing mid-edit. Branch = docs/NEXT-STEPS.md, state file and the two UI fixes a
 3. Admin > Sheet sync: APK tab `Test Execution`, Spreadsheet ID empty, on, Sync now; try a new APK version and watch the tabs fill.
 4. Railway (README § Railway): Postgres plugin, variables, domain + `AUTH_URL`, cron every 5 min, move data, `/api/health`.
 5. Remove demo users, assign real roles per work type, set `ADMIN_EMAILS`; later Google sign-in (`AUTH_GOOGLE_*`, `ALLOWED_DOMAINS`) and SMTP.
-6. Then build further: Journey Applets on tables (same pattern as APK), new work types, SQL aggregates past ~50k runs.
+6. Later, only when Jeevan asks: build the Journey work type from the real Journey tracker (chapters page, time log, sheet sync;
+   one item = one journey and chapters already have their own table, so APK-style tables add little). New work types, SQL aggregates.
 
 ## Blockers / open questions
 - Needs Jeevan: the Google Sheet and Apps Script account steps, Railway account, approval of PR #6.

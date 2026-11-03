@@ -55,3 +55,8 @@ By: claude-code
 Decision: `ApkVersion`, `ApkTestCase` and `ApkTest` (run -> version + case, unique per pair). Runs stay `WorkItem` rows so workflow, events, sync and permissions are untouched; shared fields (scenario/expected/steps/default priority, release date/link/notes) have `FieldDef.source` 'case' / 'version' and are merged into `data` on read (`hydrateApkData`) and routed on write (`updateFieldsTx`). Migration 20261103090000 moved the existing data (20 versions, 20 cases, every run linked). Items page filters and paging run in Postgres (`items-query`); headers use `loadLiteItems`. Deploy target: Railway (Dockerfile + railway.json + /api/health).
 Why: scenario/steps/link text was copied into every run (x versions), edits touched dozens of rows, and lists loaded everything. Rejected: a separate APK app/schema (would duplicate workflow, roles, sync).
 By: claude-code
+
+## 2026-11-03 — Work type "Journey Applets" is called "Journey"
+Decision: display name `Journey` (module `name` + migration 20261103120000_rename_journey for existing DB rows). Key `journey-applet`, URLs, roles and sheet tab unchanged. The Journey work type itself is built later from the real tracker; only APK Testing goes live now.
+Why: Jeevan's naming. `WorkType.name` is only written on first create, so renames need a migration.
+By: cursor
