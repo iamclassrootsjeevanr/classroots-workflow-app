@@ -81,3 +81,8 @@ Decision: no production data yet. The Railway database gets a copy of this machi
 Why: Jeevan wants to use the app now with APK + Journey demo data. Rejected: pg_dump (not installed; no system Postgres tools on this Mac).
 By: cursor
 
+## 2026-11-03 — One working branch `start-here`; handoff removes merged branches
+Decision: all work and every handoff happen on `start-here` (state `.ai/state/start-here.md`); sessions resume there. It merges into `development` by PR with a merge commit (not squash), so it stays in step without force-push; then development → staging → main as before. Handoff step 4 deletes any other branch whose work is already in `development` (merged PR or no diff outside `.ai`) plus its state file; logs stay. Skills edited in `.agents/skills/` and mirrored with `python3 .ai/bin/sync.py` (a kit upgrade may overwrite them: re-apply).
+Why: Jeevan wants one obvious place to start and no leftover branches. Replaces "one personal branch per topic".
+By: cursor
+

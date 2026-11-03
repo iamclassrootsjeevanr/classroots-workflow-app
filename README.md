@@ -551,18 +551,21 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 
 | Branch | Environment | Who merges into it | How |
 | --- | --- | --- | --- |
-| `<your-name>/<topic>` | your machine | you, every day | push freely; AI handoffs checkpoint here |
-| `development` (default branch) | local / optional Railway "development" | feature branches | pull request, **Squash and merge**, CI must pass |
+| `start-here` | your machine | you, every day | the one working branch: push freely; every AI handoff saves the latest state here and every session starts here |
+| `development` (default branch) | local / optional Railway "development" | `start-here` | pull request, **Create a merge commit** (keeps `start-here` in step, no force-push), CI must pass |
 | `staging` | Railway **staging** (its own database) | only `development` | pull request "Release to staging", **Create a merge commit**, CI + branch-flow must pass |
 | `main` | Railway **production** | only `staging` | pull request "Release to production", **Create a merge commit**, 1 approval, CI + branch-flow must pass |
 
 **Daily flow**
 
 ```bash
-git checkout development && git pull
-git checkout -b jeevan/<topic>            # work, commit, push
-gh pr create --base development           # squash-merge when CI is green
+git checkout start-here && git pull       # then type "resume" in your AI tool
+git merge origin/development              # pick up anything merged meanwhile
+# work, commit, push (or type "handoff")
+gh pr create --base development --head start-here   # "Create a merge commit" when CI is green
 ```
+
+Any other branch is temporary: the AI `handoff` deletes branches whose work is already in `development`.
 
 **Release** (when development is ready to test, then to ship):
 
@@ -681,7 +684,7 @@ The repo carries its own memory for AI assistants, so Claude Code, Codex and Cur
 
 | You want to… | Do this |
 | --- | --- |
-| Start work | `git checkout -b <your-name>/<topic>`, then type **`resume`** in your AI tool |
+| Start work | `git checkout start-here && git pull`, then type **`resume`** in your AI tool |
 | Stop, switch tool, or switch machine | Type **`handoff`**. The agent writes the state file, commits everything on your branch and pushes |
 | See where a branch stands without an agent | `python3 .ai/bin/context.py --pull` |
 | Ship | Open a pull request and squash-merge into `main` |
@@ -710,7 +713,7 @@ A `/` in the branch name becomes `__` in the file name: branch `jeevan/ui-redesi
 
 ## Contributing
 
-1. **Branch** from `development`: `<your-name>/<short-topic>` (one person per branch; AI handoffs refuse `development`, `staging` and `main`). Pull requests go into `development`; releases move `development → staging → main` (see [Branches and environments](#branches-and-environments)).
+1. **Work on `start-here`** (AI handoffs save there and refuse `development`, `staging` and `main`). Pull requests go `start-here → development` (merge commit); releases move `development → staging → main` (see [Branches and environments](#branches-and-environments)).
 2. **Keep the layers:**
    - business rules go in `src/lib/` (pure and tested)
    - database access goes in `src/server/`
