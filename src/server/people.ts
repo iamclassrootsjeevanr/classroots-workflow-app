@@ -3,6 +3,7 @@ import type { UserInput } from '@/app/actions';
 import { roleCapabilities, rolePages } from '@/lib/access-core';
 import type { PersonChoice, RoleOption, WorkTypeOption } from '@/components/user-access-form';
 import { db } from './db';
+import { env, googleEnabled } from './env';
 import { ensureSystemRoles } from './services/work-types';
 
 type MemberRow = { workTypeId: string; roles: { roleId: string }[] };
@@ -60,5 +61,5 @@ export async function userFormData(userId?: string) {
     };
     hasPassword = Boolean(u.passwordHash);
   }
-  return { initial, workTypes: wtOptions, roles: roleOptions, placeholders, copySources, hasPassword };
+  return { initial, workTypes: wtOptions, roles: roleOptions, placeholders, copySources, hasPassword, officeDomains: env().OFFICE_DOMAINS, googleOn: googleEnabled() };
 }

@@ -61,7 +61,7 @@ If you see an error:
 Full steps with variable names are in the README under **Deploy → Railway**. Short version:
 
 1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin.
-2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ALLOWED_DOMAINS`, `EMAIL_SERVER`, `EMAIL_FROM`.
+2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
 5. Move your data: `pg_dump` your local database and restore it into Railway, or start empty and run `npm run import:apk -- "<file>"` and `npm run import:xlsx -- "<file>"` against the Railway database.
@@ -73,60 +73,96 @@ Full steps with variable names are in the README under **Deploy → Railway**. S
 - Give real people their **roles per work type** (Admin → People & access). In APK Testing: Tester, App Developer, Test Lead, Viewer. In Journey: Developer, SME / Reviewer, Coordinator, Viewer.
 - Admin emails go in `ADMIN_EMAILS`.
 
-## 7. Sign-in: Google for the organisation, email for everyone else
+## 7. Who can sign in, and how
 
-Two kinds of people:
+**The rule:** only people you (the admin) add in **People & access** can sign in. Nobody can sign themselves up.
 
-| Who | How they sign in | What you set up |
+| Person | How they sign in | What the admin gives them |
 | --- | --- | --- |
-| Classroots staff (`@classrootsedu.com`) | **Sign in with Google** | Google OAuth client (A) + `ALLOWED_DOMAINS` |
-| Clients, partners, anyone with Gmail, Outlook, school mail… | **Email + password**, or **Email me a sign-in link** | An email sender (B), or give them a temporary password |
+| Office staff, email ends in `@classrootsedu.com` | **Sign in with Google** button | Nothing. No password. |
+| Everyone else (Gmail, Outlook, school email, clients…) | Their **email + password** | The password, set by you when you add them |
 
-Nobody can sign in unless they were added in **People & access**, are in `ADMIN_EMAILS`, or (Google only) have an `ALLOWED_DOMAINS` email.
+There is no "email me a link" option. If someone forgets their password, you set a new one for them.
 
-### A. Google sign-in (organisation)
+### Step 1 — Set the office domain (2 minutes)
 
-Do this signed in as a Google Workspace admin of classrootsedu.com.
+In `.env` (and later in Railway → Variables) set:
 
-1. Open [console.cloud.google.com](https://console.cloud.google.com) → project picker → **New project** → name `Classroots Work`, organisation `classrootsedu.com` → Create.
-2. **APIs & Services → OAuth consent screen** (or "Google Auth Platform → Branding"): app name `Classroots Work`, support email yours. **Audience / User type: Internal**. Internal means only `@classrootsedu.com` Google accounts can use it. Save.
-3. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**, name `Classroots Work`.
-   - Authorized JavaScript origins: `http://localhost:3000` and your Railway URL, e.g. `https://classroots-work.up.railway.app`.
-   - Authorized redirect URIs: `http://localhost:3000/api/auth/callback/google` and `https://<railway-url>/api/auth/callback/google`.
-4. Copy the **Client ID** and **Client secret**. Put them in `.env` (local) and Railway → Variables:
+```
+OFFICE_DOMAINS=classrootsedu.com
+ADMIN_EMAILS=jeevan@classrootsedu.com
+```
+
+Restart the app (`Ctrl+C` in the `npm run dev` terminal, then `npm run dev`).
+
+### Step 2 — Turn on "Sign in with Google" for office staff (15 minutes, once)
+
+Do this in your browser, signed in with your `@classrootsedu.com` Google account (a Workspace admin if possible).
+
+1. Open <https://console.cloud.google.com>.
+2. At the top, click the project picker → **New project**. Name: `Classroots Work`. Location: `classrootsedu.com`. Click **Create**, then select the new project.
+3. Left menu → **APIs & Services** → **OAuth consent screen** (on new consoles it is **Google Auth Platform** → **Get started**).
+   - App name: `Classroots Work`. User support email: your email.
+   - Audience / User type: **Internal**. (Internal = only `@classrootsedu.com` accounts can use it.)
+   - Contact email: your email → **Create** / **Save**.
+4. Left menu → **Credentials** (or **Clients**) → **Create credentials** → **OAuth client ID**.
+   - Application type: **Web application**. Name: `Classroots Work`.
+   - **Authorized JavaScript origins** → Add URI: `http://localhost:3000`
+   - **Authorized redirect URIs** → Add URI: `http://localhost:3000/api/auth/callback/google`
+   - Click **Create**.
+5. A box shows **Client ID** and **Client secret**. Copy both into `.env`:
    ```
-   AUTH_GOOGLE_ID=<client id>
-   AUTH_GOOGLE_SECRET=<client secret>
-   ALLOWED_DOMAINS=classrootsedu.com
-   ADMIN_EMAILS=jeevan@classrootsedu.com
+   AUTH_GOOGLE_ID=<Client ID>
+   AUTH_GOOGLE_SECRET=<Client secret>
    ```
-   `ALLOWED_DOMAINS` lets any classrootsedu.com person sign in with Google without being added first. They see "No access yet" until you give them roles. Leave it empty if you want to add every person yourself.
-5. Restart the app. The sign-in page's **Sign in with Google** now works, and Google always asks which account to use.
+6. Restart the app. Open <http://localhost:3000/signin> → **Sign in with Google** → pick your `@classrootsedu.com` account. You are in.
+7. Later, after Railway gives you a web address (step 5 of this file), open the same OAuth client again and **add** two more URIs:
+   `https://<your-railway-address>` (origins) and `https://<your-railway-address>/api/auth/callback/google` (redirect URIs). Save.
 
-### B. Email sender (for sign-in links and invites)
+### Step 3 — Add people (every time someone new joins)
 
-Pick one. Both give you an `EMAIL_SERVER` value.
+Sign in as admin → **People & access** → **+ Add user**.
 
-- **Google Workspace mailbox (simplest):** use a mailbox such as `no-reply@classrootsedu.com` (or your own). Turn on 2-Step Verification for it, then [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) → create an app password `Classroots Work` (16 letters, no spaces).
-  ```
-  EMAIL_SERVER=smtps://no-reply%40classrootsedu.com:<app password>@smtp.gmail.com:465
-  EMAIL_FROM=Classroots Work <no-reply@classrootsedu.com>
-  ```
-  The `@` in the user name is written `%40`. Gmail sends about 2,000 mails a day per mailbox, plenty here.
-- **Resend / SendGrid / Brevo:** create an account, verify the `classrootsedu.com` domain (DNS records), create an SMTP key, and use the SMTP URL they show (e.g. `smtps://resend:<api key>@smtp.resend.com:465`).
+**Office person (`@classrootsedu.com`):**
+1. Name, and email like `asha@classrootsedu.com`.
+2. Section 2 says "Sign in with Google … No password needed". Nothing to type.
+3. Section 3: switch on **APK Testing** and tick a role (Tester, App Developer, Test Lead or Viewer).
+4. **Add user**.
+5. Tell them: "Open <app address>, press **Sign in with Google**." (Or press **Send invite**, see step 4.)
 
-Restart the app. **People & access** no longer shows "Email is not set up".
+**Anyone else (for example `client@gmail.com`):**
+1. Name and email.
+2. Section 2: press **Generate** (or type a password: at least 10 characters, letters and numbers).
+3. Press **Copy login details**. This copies the app address, their email and the password.
+4. Section 3: switch on **APK Testing** and tick a role.
+5. **Add user**.
+6. Paste the copied login details to them on WhatsApp, a call or email. They sign in under **Everyone else** with that email and password, and can change the password under **My account** (their name, bottom left).
 
-### C. Add people and invite them
+**Forgot password:** People & access → their name → **Edit access** → section 2 → **Generate** → **Copy login details** → **Save changes** → send it to them.
 
-1. **People & access → + Add user**: name, email, roles per work type. For a client without Google you may type a **temporary password**.
-2. On their page (or in the list) press **Send invite**. The email tells them how to sign in:
-   - `@classrootsedu.com` → "Sign in with Google".
-   - Others with a password → sign in with email + the password you share privately (never sent by email).
-   - Others without a password → "Email me a sign-in link". They can set a password later under **My account**.
-3. The invite link opens the sign-in page with their email already filled in.
+**Remove access:** their name → **Deactivate**. They can no longer sign in; their past work stays.
 
-Without an email sender, **Send invite** and sign-in links are only printed in the server log, so give people a temporary password and the app address yourself.
+### Step 4 (optional) — Let the app email people for you
+
+Without this, you tell people yourself (step 3). With it, **Send invite** (next to a person in People & access) emails them the app address and how to sign in. The email never contains a password.
+
+1. Pick the mailbox that sends, for example your own `jeevan@classrootsedu.com` or a `no-reply@classrootsedu.com` mailbox.
+2. Signed in as that mailbox: <https://myaccount.google.com/security> → turn on **2-Step Verification**.
+3. Then open <https://myaccount.google.com/apppasswords> → name `Classroots Work` → **Create** → copy the 16-letter password (remove the spaces).
+4. In `.env` (write the `@` in the email as `%40`):
+   ```
+   EMAIL_SERVER=smtps://jeevan%40classrootsedu.com:<16-letter password>@smtp.gmail.com:465
+   EMAIL_FROM=Classroots Work <jeevan@classrootsedu.com>
+   ```
+5. Restart the app. The yellow "Email sending is not set up" note on People & access disappears. Press **Send invite** on a person to test.
+
+### Checklist
+
+- [ ] `OFFICE_DOMAINS` and `ADMIN_EMAILS` set
+- [ ] Google OAuth client created, `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` set, Google sign-in tested
+- [ ] Real people added with roles; Gmail/other people have a password
+- [ ] (optional) `EMAIL_SERVER` set and **Send invite** tested
+- [ ] On Railway: the same variables, and the Railway address added to the Google OAuth client
 
 ## 8. Build further (next sessions)
 
@@ -143,7 +179,7 @@ npm install
 npm run db:start                        # terminal 1: local database
 npm run db:deploy && npm run db:seed    # once: migrations, roles, work types
 npm run dev                             # terminal 2: http://localhost:3000
-npm run typecheck && npm test           # should be clean, 112 tests
+npm run typecheck && npm test           # should be clean, 117 tests
 ```
 
 Then say "resume" to the assistant: it reads `.ai/state/<branch>.md` (for `jeevan/go-live`: `.ai/state/jeevan__go-live.md`), `.ai/DECISIONS.md` and `.ai/LEARNINGS.md`. Demo sign-ins: `npm run demo:users` (password is `DEMO_PASSWORD` in `.env`).

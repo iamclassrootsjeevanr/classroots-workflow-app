@@ -61,7 +61,7 @@ Decision: display name `Journey` (module `name` + migration 20261103120000_renam
 Why: Jeevan's naming. `WorkType.name` is only written on first create, so renames need a migration.
 By: cursor
 
-## 2026-11-03 — Sign-in: Google for classrootsedu.com, email for everyone else; admins send invites
-Decision: Google OAuth client with an Internal consent screen + `ALLOWED_DOMAINS=classrootsedu.com` for staff; clients use email + password (admin-set temporary password) or an email link. All mail goes through `src/server/mail.ts` (SMTP URL in `EMAIL_SERVER`, e.g. a Workspace mailbox app password). **Send invite** emails the right steps per person (`src/lib/invite.ts`); passwords are never emailed. APK sheet sync will be app → sheet only (to build).
-Why: staff already have Workspace accounts; external people don't. Rejected: Google-only (locks out clients), emailing passwords.
+## 2026-11-03 — Sign-in: admin adds everyone; Google for office emails, admin-set password for the rest
+Decision: invite-only (existing active user or `ADMIN_EMAILS`); no self sign-up (`ALLOWED_DOMAINS` removed) and no email magic link (provider and /signin/check-email removed). `OFFICE_DOMAINS=classrootsedu.com`: these sign in with Google (OAuth client, Internal consent screen); Google is refused for other domains. Everyone else signs in with email + a password the admin sets (Generate + Copy login details in the user form); saving a non-office person without a password is refused (`missingPasswordProblem`). Optional `EMAIL_SERVER` only powers **Send invite** (never contains a password). APK sheet sync will be app → sheet only (to build).
+Why: Jeevan's model: admin controls who gets in; office staff have Workspace accounts, outsiders don't; magic links confused users. Rejected: domain auto sign-up, emailing passwords.
 By: cursor

@@ -4,3 +4,4 @@
 - 2026-11-03T05:56Z | cursor | Fix theme after sign-in, wrap metric tile labels; verify 375px light
 - 2026-11-03T06:09Z | cursor | Rename work type Journey Applets to Journey (module + migration)
 - 2026-11-03T06:19Z | cursor | Sign-in setup: invites, shared mailer, Google account picker, setup warnings, step-by-step docs
+- 2026-11-03T06:56Z | cursor | Sign-in: admin-added only; Google for office domain, admin-set passwords for others; remove email link; simple setup steps

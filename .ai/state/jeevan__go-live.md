@@ -7,27 +7,28 @@ Updated: 2026-11-03T06:40:00Z · by: cursor · owner: Jeevan
 Take Classroots Work live for APK Testing: sign-in for the Google organisation (classrootsedu.com) and for normal email users,
 app → sheet sync for the APK tracker, deploy on Railway, real people with roles. Journey is NOT built now (only renamed).
 
-## What exists (main + this branch, tsc clean, 112 tests)
+## What exists (main + this branch, tsc clean, 117 tests)
 - All feature work from PR #5 (UI, work type pages, roles per work type, inbox, APK on tables, Railway files).
 - This branch (PR #6, needs one approval): theme fix after sign-in (`ThemeWatcher` gets `theme` prop), tile labels wrap,
   "Journey Applets" → "Journey" (migration 20261103120000_rename_journey), sign-in/invite work below, docs.
 
-## Done this stretch (cursor)
-- Sign-in already existed (Google, email + password, email link; invite-only). Added:
-  - `src/server/mail.ts` (one mail sender; no EMAIL_SERVER → printed in server log), used by the email-link provider.
-  - `src/lib/invite.ts` + `tests/invite.test.ts`: who signs in how (Google for ALLOWED_DOMAINS / linked Google, else password, else link) and the invite email.
-  - `sendInviteAction` in `src/app/actions.ts`; **Send invite** in `PeopleActions` (People list + person page). Passwords never emailed.
-  - People page warns when Google or email is not set up. Sign-in page pre-fills `?email=`. Google always shows the account picker.
-  - `env.AUTH_URL` (links in emails), `emailEnabled()`.
-- Docs: `docs/NEXT-STEPS.md` § 7 step-by-step (Google Cloud OAuth, Internal consent screen, Gmail app-password SMTP, invites); README, .env.example.
-- Verified in browser: Send invite → "Email isn't set up… printed in the server log"; setup warning shows.
+## Done this stretch (cursor) — sign-in model Jeevan asked for
+- Only admin-added people (or ADMIN_EMAILS) sign in. `OFFICE_DOMAINS=classrootsedu.com` → Google only (refused for other
+  domains); everyone else → email + admin-set password. Email magic link REMOVED (provider + /signin/check-email), ALLOWED_DOMAINS removed.
+- `src/lib/invite.ts` (+ tests): signInMethod, missingPasswordProblem (non-office person must have a password), generatePassword,
+  loginDetailsText, inviteEmail. `src/server/mail.ts` sends invites (optional EMAIL_SERVER).
+- User form § 2 adapts to the email: office → "Sign in with Google, no password"; others → Password * + Generate + Copy login details.
+- Sign-in page: "Classroots staff → Google" / "Everyone else → email + password" / "Forgot? Ask your admin".
+- People page notes when OFFICE_DOMAINS / Google / email are missing; **Send invite** per person.
+- Docs: `docs/NEXT-STEPS.md` § 7 rewritten as simple click-by-click steps + checklist; README, .env.example, AGENTS.md.
+- Local `.env` now has OFFICE_DOMAINS=classrootsedu.com. Browser-checked Add user (Gmail → password + Generate) and sign-in page.
 
 ## In progress
 Nothing mid-edit.
 
 ## Next steps
-1. Jeevan: Google Cloud OAuth client (NEXT-STEPS § 7A) and a mail sender (§ 7B); put values in `.env` / Railway. Then test Google
-   sign-in with an @classrootsedu.com account and Send invite to a Gmail address.
+1. Jeevan: NEXT-STEPS § 7 steps 1–2 (OFFICE_DOMAINS, ADMIN_EMAILS, Google OAuth client → AUTH_GOOGLE_ID/SECRET), test Google
+   sign-in with an @classrootsedu.com account; optional step 4 (Gmail app password → EMAIL_SERVER) for Send invite.
 2. Sheet sync is two-way today. Jeevan wants **app → sheet only** for APK (existing versions pushed too). Build a push-only mode
    (per work type sync config, skip pull/3-way diff) in `src/server/sync/google-sheet.ts` + Admin → Sheet sync toggle; then sheet steps § 2–4.
 3. Railway (README § Railway, NEXT-STEPS § 5): Postgres, variables (incl. sign-in ones), domain + `AUTH_URL`, cron, move data, `/api/health`.

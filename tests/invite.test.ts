@@ -1,25 +1,42 @@
 import { describe, expect, it } from 'vitest';
-import { inviteEmail, signInMethod, signInUrl } from '@/lib/invite';
+import { generatePassword, inviteEmail, loginDetailsText, missingPasswordProblem, signInMethod, signInUrl } from '@/lib/invite';
+import { passwordProblem } from '@/lib/password';
 
-const base = { googleEnabled: true, allowedDomains: ['classrootsedu.com'], hasGoogleAccount: false, hasPassword: false };
+const office = ['classrootsedu.com'];
 
 describe('signInMethod', () => {
-  it('sends organisation staff to Google', () => {
+  const base = { googleEnabled: true, officeDomains: office, hasGoogleAccount: false };
+  it('sends office emails to Google', () => {
     expect(signInMethod({ ...base, email: 'asha@ClassrootsEdu.com' })).toBe('google');
   });
   it('sends anyone with a linked Google account to Google', () => {
     expect(signInMethod({ ...base, email: 'client@gmail.com', hasGoogleAccount: true })).toBe('google');
   });
-  it('uses the password for other emails when one is set, else an email link', () => {
-    expect(signInMethod({ ...base, email: 'client@school.org', hasPassword: true })).toBe('password');
-    expect(signInMethod({ ...base, email: 'client@school.org' })).toBe('link');
+  it('uses email + password for every other email', () => {
+    expect(signInMethod({ ...base, email: 'client@gmail.com' })).toBe('password');
   });
-  it('never picks Google when it is not set up', () => {
-    expect(signInMethod({ ...base, googleEnabled: false, email: 'asha@classrootsedu.com' })).toBe('link');
+  it('falls back to password while Google is not set up', () => {
+    expect(signInMethod({ ...base, googleEnabled: false, email: 'asha@classrootsedu.com' })).toBe('password');
   });
 });
 
-describe('inviteEmail', () => {
+describe('missingPasswordProblem', () => {
+  const base = { active: true, officeDomains: office, hasPassword: false };
+  it('needs a password for people outside the office', () => {
+    expect(missingPasswordProblem({ ...base, email: 'client@gmail.com' })).toContain('Set a password');
+  });
+  it('is fine when a password is given or already set', () => {
+    expect(missingPasswordProblem({ ...base, email: 'client@gmail.com', newPassword: 'abcdef12345' })).toBeNull();
+    expect(missingPasswordProblem({ ...base, email: 'client@gmail.com', hasPassword: true })).toBeNull();
+  });
+  it('never needs one for office people, inactive people or people without an email', () => {
+    expect(missingPasswordProblem({ ...base, email: 'asha@classrootsedu.com' })).toBeNull();
+    expect(missingPasswordProblem({ ...base, active: false, email: 'client@gmail.com' })).toBeNull();
+    expect(missingPasswordProblem({ ...base, email: '' })).toBeNull();
+  });
+});
+
+describe('invite and login details', () => {
   const invite = { name: 'Asha', email: 'asha@classrootsedu.com', invitedBy: 'Jeevan', appUrl: 'https://work.example.com/', access: ['APK Testing (Tester)'] };
 
   it('links to the sign-in page with the email filled in', () => {
@@ -29,11 +46,22 @@ describe('inviteEmail', () => {
     expect(m.text).toContain('APK Testing (Tester)');
     expect(m.text).toContain('Sign in with Google');
   });
-  it('tells password and link users what to do, never the password itself', () => {
-    expect(inviteEmail({ ...invite, method: 'password' }).text).toContain('password Jeevan shares with you');
-    expect(inviteEmail({ ...invite, method: 'link' }).text).toContain('Send link');
+  it('never puts a password in the invite email', () => {
+    expect(inviteEmail({ ...invite, method: 'password' }).text).toContain('the password Jeevan gives you');
+  });
+  it('generates temporary passwords that pass the password rules', () => {
+    for (let i = 0; i < 50; i++) {
+      const pw = generatePassword();
+      expect(pw).toHaveLength(12);
+      expect(passwordProblem(pw, 'someone@gmail.com')).toBeNull();
+    }
+  });
+  it('builds login details an admin can share', () => {
+    const t = loginDetailsText({ appUrl: 'https://work.example.com', email: 'c@gmail.com', password: 'Secret12345' });
+    expect(t).toContain('Email: c@gmail.com');
+    expect(t).toContain('Password: Secret12345');
   });
   it('escapes names in the HTML', () => {
-    expect(inviteEmail({ ...invite, name: '<b>x</b>', method: 'link' }).html).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(inviteEmail({ ...invite, name: '<b>x</b>', method: 'password' }).html).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
 });

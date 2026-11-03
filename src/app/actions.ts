@@ -21,7 +21,7 @@ import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
-import { inviteEmail, signInMethod } from '@/lib/invite';
+import { inviteEmail, isOfficeEmail, missingPasswordProblem, signInMethod } from '@/lib/invite';
 import { env, googleEnabled } from '@/server/env';
 import { sendMail } from '@/server/mail';
 import { COOKIE_MAX_AGE, PREFS_COOKIE, PrefsSchema, serializePrefsCookie } from '@/lib/prefs';
@@ -270,6 +270,15 @@ export async function saveUserAction(raw: UserInput) {
     if (input.email) {
       const clash = await db.user.findUnique({ where: { email: input.email } });
       if (clash && clash.id !== targetId) throw new Error(`${input.email} is already used by ${clash.name ?? 'another person'}.`);
+      const current = targetId ? await db.user.findUnique({ where: { id: targetId }, select: { passwordHash: true } }) : null;
+      const noPassword = missingPasswordProblem({
+        email: input.email,
+        active: input.active,
+        officeDomains: env().OFFICE_DOMAINS,
+        hasPassword: Boolean(current?.passwordHash),
+        newPassword: input.password,
+      });
+      if (noPassword) throw new Error(noPassword);
     }
     for (const a of input.access) {
       if (a.enabled && !a.roleIds.length) throw new Error('Pick at least one role for each work type you give access to.');
@@ -435,7 +444,7 @@ export async function setUserPasswordAction(userId: string, password: string | n
     if (!user.email) throw new Error('Add an email for this person first.');
     if (password === null) {
       await db.user.update({ where: { id: userId }, data: { passwordHash: null, passwordUpdatedAt: new Date() } });
-      return 'Password removed – they can still use the email link or Google';
+      return isOfficeEmail(user.email, env().OFFICE_DOMAINS) ? 'Password removed – they sign in with Google' : 'Password removed – they can’t sign in until you set a new one';
     }
     const problem = passwordProblem(password, user.email);
     if (problem) throw new Error(problem);
@@ -444,7 +453,7 @@ export async function setUserPasswordAction(userId: string, password: string | n
   });
 }
 
-/** Email someone that they have access, with the sign-in steps that fit them (Google for staff, else password or email link). */
+/** Email someone that they have access and how to sign in (Google for office emails, else email + the password the admin gives them). */
 export async function sendInviteAction(userId: string) {
   return run(async () => {
     const admin = await requireAdmin();
@@ -458,15 +467,15 @@ export async function sendInviteAction(userId: string) {
     const method = signInMethod({
       email: user.email,
       googleEnabled: googleEnabled(),
-      allowedDomains: e.ALLOWED_DOMAINS,
+      officeDomains: e.OFFICE_DOMAINS,
       hasGoogleAccount: user.accounts.some(a => a.provider === 'google'),
-      hasPassword: Boolean(user.passwordHash),
     });
+    if (method === 'password' && !user.passwordHash) throw new Error('Set a password for them first (Edit access → How they sign in).');
     const access = user.isAdmin ? ['everything (admin)'] : user.memberships.map(m => `${m.workType.name} (${m.roles.map(r => r.role.name).join(' + ')})`);
     const mail = inviteEmail({ name: user.name, email: user.email, invitedBy: admin.name ?? admin.email ?? 'An admin', appUrl: e.AUTH_URL, method, access });
     const { sent } = await sendMail({ to: user.email, ...mail });
     if (!sent) return 'Email isn’t set up on this server, so the invite was printed in the server log';
-    return method === 'password' ? `Invite sent to ${user.email}. Share their password with them privately.` : `Invite sent to ${user.email}`;
+    return method === 'password' ? `Invite sent to ${user.email}. Now share their password with them yourself.` : `Invite sent to ${user.email}`;
   });
 }
 

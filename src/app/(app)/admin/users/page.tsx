@@ -65,13 +65,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     if (sp.status === 'admin' && !u.isAdmin) return false;
     return true;
   });
-  const domains = env().ALLOWED_DOMAINS;
+  const office = env().OFFICE_DOMAINS;
 
   return (
     <>
       <PageHeader
         title="People & access"
-        subtitle={`${users.filter(u => u.active).length} active people · sign-in: email + password${googleEnabled() ? ', Google' : ''}, email link · invited only${domains.length ? ` (plus anyone @${domains.join(', @')})` : ''}`}
+        subtitle={`${users.filter(u => u.active).length} active people · only people added here can sign in · ${office.length ? `@${office.join(', @')}: Google · others` : 'everyone'}: email + password`}
         actions={
           <>
             <Link href="/admin/roles" className="btn-ghost">
@@ -83,10 +83,11 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           </>
         }
       />
-      {(!googleEnabled() || !emailEnabled()) && (
+      {(!googleEnabled() || !office.length || !emailEnabled()) && (
         <div className="note-warn mb-4 space-y-1 text-xs">
-          {!googleEnabled() && <p>Google sign-in is not set up: add AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on the server. Until then staff use a password or an email link.</p>}
-          {!emailEnabled() && <p>Email is not set up: add EMAIL_SERVER on the server. Until then sign-in links and invites are only printed in the server log, so give people a temporary password.</p>}
+          {!office.length && <p>Office domain is not set: add OFFICE_DOMAINS (e.g. classrootsedu.com) on the server. Until then everyone signs in with email + password.</p>}
+          {!googleEnabled() && <p>Google sign-in is not set up: add AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET on the server. Until then office people can’t use Google; give them a password for now.</p>}
+          {!emailEnabled() && <p>Email sending is not set up (EMAIL_SERVER), so Send invite can’t email anyone. Tell people yourself: the app address, their email, and their password if they are not office staff.</p>}
         </div>
       )}
       <FilterBar

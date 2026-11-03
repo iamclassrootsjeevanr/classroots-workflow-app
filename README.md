@@ -27,7 +27,7 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 6. [How the app works](#how-the-app-works)
 7. [Work types](#work-types)
 8. [People, roles and access](#people-roles-and-access)
-9. [Signing in (Google, password, email link)](#signing-in)
+9. [Signing in (Google for office staff, password for everyone else)](#signing-in)
 10. [Appearance: theme, text size, density, sidebar](#appearance-theme-text-size-density-sidebar)
 11. [Google Sheet two-way sync](#google-sheet-two-way-sync)
 12. [Add a new kind of work](#add-a-new-kind-of-work)
@@ -48,7 +48,7 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 | Framework | Next.js 15 (App Router, Server Components, Server Actions) |
 | Language | TypeScript 5 |
 | Database | PostgreSQL 16 through Prisma 6 (local: `embedded-postgres`, no install needed) |
-| Auth | Auth.js v5 (Google OAuth, email + password, email magic link) |
+| Auth | Auth.js v5 (Google OAuth for office staff, email + password for everyone else) |
 | UI | React 19, Tailwind CSS v4, Recharts |
 | Validation | Zod |
 | Excel | ExcelJS (import and export) |
@@ -124,7 +124,7 @@ Both imports are safe to re-run. Items that already exist are skipped.
 npm run dev
 ```
 
-Open <http://localhost:3000> and sign in with `admin@demo.classroots.local` and your `DEMO_PASSWORD`. You can also use the email link: with no email server set up, the link is printed in the terminal running `npm run dev`.
+Open <http://localhost:3000> and sign in with `admin@demo.classroots.local` and your `DEMO_PASSWORD`.
 
 ---
 
@@ -163,10 +163,10 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `AUTH_SECRET` | yes | Signs session tokens. Generate with `openssl rand -base64 32`. |
 | `AUTH_URL` | yes in prod | Public URL of the app (`http://localhost:3000` locally). |
 | `ADMIN_EMAILS` | yes | Comma-separated emails that are always admins. |
-| `ALLOWED_DOMAINS` | no | Comma-separated domains whose Google users may sign up without an invite. |
+| `OFFICE_DOMAINS` | yes for Google | Comma-separated office email domains (e.g. `classrootsedu.com`). These people sign in with Google; everyone else with email + password. |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | no | Enables "Sign in with Google". |
-| `EMAIL_SERVER` | no | SMTP URL for magic-link emails. Empty means the link is printed in the server log. |
-| `EMAIL_FROM` | no | Sender for magic-link emails. |
+| `EMAIL_SERVER` | no | SMTP URL for **Send invite** emails. Empty means invites are printed in the server log. |
+| `EMAIL_FROM` | no | Sender for invite emails. |
 | `APP_TIMEZONE` | no | Team time zone for dates and business hours (default `Asia/Kolkata`). |
 | `APPS_SCRIPT_URL` | for sync | `/exec` URL of the deployed `apps-script/Code.gs`. |
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
@@ -224,7 +224,7 @@ src/
     time.ts                        Time zones, business hours, date parsing
     password.ts                    scrypt hashing and password rules
   server/                          Server-only code
-    auth.ts                        Auth.js config (Google, password, magic link; invite-only)
+    auth.ts                        Auth.js config (Google for OFFICE_DOMAINS, password; invite-only)
     rbac.ts / access.ts            Current user and their access per work type
     services/work-items.ts         The ONLY write path for items
     services/analytics.ts          Dashboard data
@@ -344,7 +344,7 @@ Everything is managed in the app under **Admin → People & access** and **Admin
 
 **Adding a person** (Admin → People & access → **Add user**) takes four steps:
 1. Name, email, capacity and the Admin tick. If the person was imported from the sheet without an email, pick them from the list so their existing work links up.
-2. An optional temporary password. Google and email links work too.
+2. How they sign in: office emails use Google (nothing to set); anyone else needs a password (**Generate**, then **Copy login details** to send it to them).
 3. Tick each work type, then one or more roles in it. You can use "Copy access from…" another person.
 4. Review and save.
 
@@ -358,15 +358,16 @@ The server enforces the same rules as the UI, in server actions and the export A
 
 ## Signing in
 
-All three methods are **invite-only**. A person can sign in only if they already exist and are active, their email is in `ADMIN_EMAILS`, or their Google email's domain is in `ALLOWED_DOMAINS`.
+Only people an admin added in **People & access** can sign in (plus `ADMIN_EMAILS`, so the first admin can get in). Nobody signs themselves up.
 
-| Method | Who it's for | Notes |
+| Who | Method | Notes |
 | --- | --- | --- |
-| **Sign in with Google** | Staff | Shown when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set. The first sign-in creates the account. |
-| **Email + password** | Organizations and clients | An admin sets a temporary password; the user changes it under **My account**. "Remember me" keeps the session for 30 days; otherwise it lasts 12 hours. |
-| **Email me a sign-in link** | Anyone without a password | Without `EMAIL_SERVER`, the link is printed in the server terminal. |
+| Office staff (email domain in `OFFICE_DOMAINS`, e.g. `classrootsedu.com`) | **Sign in with Google** | Shown when `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` are set. No password. Google sign-in is refused for other domains. |
+| Everyone else | **Email + password** | The admin sets the password when adding them (**Generate**, **Copy login details**) and shares it. They change it under **My account**. "Remember me" keeps the session 30 days, otherwise 12 hours. |
 
-**First admin on a fresh server:** sign in with an `ADMIN_EMAILS` address using the email link. With no email server, run this instead:
+There is no email sign-in link. Forgotten password: the admin sets a new one (Edit access → How they sign in). Saving someone outside the office domains without a password is refused, because they could not sign in.
+
+**First admin on a fresh server:** put your office email in `ADMIN_EMAILS` and use Google, or set a password from the terminal:
 
 ```bash
 npm run user:password -- you@company.com
@@ -376,17 +377,13 @@ npm run user:password -- you@company.com
 
 1. Google Cloud Console → OAuth consent screen with user type **Internal** (only your Google Workspace organisation can use it).
 2. APIs & Services → Credentials → **Create OAuth client** → *Web application*. Authorized redirect URI: `http://localhost:3000/api/auth/callback/google`, plus `<production URL>/api/auth/callback/google`.
-3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`. Optionally set `ALLOWED_DOMAINS`. Restart the app. Google always shows the account picker.
+3. Put the ID and secret in `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`, set `OFFICE_DOMAINS`, restart. Google always shows the account picker.
 
-Step-by-step with screens to click: `docs/NEXT-STEPS.md` § 7.
+Click-by-click: `docs/NEXT-STEPS.md` § 7.
 
-### Email in production (sign-in links and invites)
+### Invites (optional email)
 
-Set `EMAIL_SERVER` to an SMTP URL, for example `smtps://no-reply%40yourdomain.com:<app password>@smtp.gmail.com:465` (a Google Workspace mailbox with an app password) or the SMTP URL of Resend, SendGrid or SES, and set `EMAIL_FROM`. All mail goes through `src/server/mail.ts`; without `EMAIL_SERVER` it is printed in the server log.
-
-### Inviting people
-
-**People & access → Send invite** (list or person page) emails someone that they have access, which work types and roles, and how to sign in: Google for organisation emails (`ALLOWED_DOMAINS`, or a linked Google account), otherwise the password an admin shares or an email link. Passwords are never emailed. The link opens `/signin?email=…` with the email filled in. Wording and rules: `src/lib/invite.ts` (tested).
+**People & access → Send invite** emails a person the app address, their work types and roles, and how to sign in (Google for office emails, otherwise "email + the password your admin gives you"). Passwords are never emailed. It needs `EMAIL_SERVER` (SMTP URL, e.g. `smtps://you%40yourdomain.com:<app password>@smtp.gmail.com:465`) and `EMAIL_FROM`; without it the invite is printed in the server log. Mail goes through `src/server/mail.ts`; rules and wording in `src/lib/invite.ts` (tested).
 
 ---
 

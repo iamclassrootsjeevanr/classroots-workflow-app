@@ -15,7 +15,8 @@ const schema = z.object({
   EMAIL_SERVER: z.string().optional(),
   EMAIL_FROM: z.string().default('Classroots Work <no-reply@classroots.local>'),
   ADMIN_EMAILS: list,
-  ALLOWED_DOMAINS: list,
+  /** Office email domains (e.g. classrootsedu.com): these people sign in with Google; everyone else with email + password. */
+  OFFICE_DOMAINS: list,
   APP_TIMEZONE: z.string().default('Asia/Kolkata'),
   APPS_SCRIPT_URL: z.string().optional(),
   SYNC_TOKEN: z.string().optional(),

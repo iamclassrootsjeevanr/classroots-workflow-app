@@ -35,7 +35,7 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 
 **What this is:** Classroots Work — work tracking, review and analytics for Classroots teams. Items (Journey, APK tests) move through per-work-type workflows; every step is timestamped and turned into dashboards. Optional two-way Google Sheet sync. Full docs in `README.md`.
 
-**Stack:** Next.js 15 App Router + React 19, TypeScript, Tailwind CSS v4 (CSS-first tokens), Prisma 6 on PostgreSQL (embedded local DB via `npm run db:start`), Auth.js v5 (Google, password, magic link), Recharts, lucide-react, Vitest.
+**Stack:** Next.js 15 App Router + React 19, TypeScript, Tailwind CSS v4 (CSS-first tokens), Prisma 6 on PostgreSQL (embedded local DB via `npm run db:start`), Auth.js v5 (Google for office domains, admin-set passwords for others; invite-only), Recharts, lucide-react, Vitest.
 
 **Commands**
 - Install: `npm install`, copy `.env.example` → `.env`
