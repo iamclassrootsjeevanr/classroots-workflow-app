@@ -3,13 +3,13 @@ import { COORDINATOR, VIEWER } from '../roles';
 import type { WorkTypeDefinition } from '../types';
 
 /**
- * Journey Applets – SMEs hand over a journey, a developer builds the applet,
+ * Journey – SMEs hand over a journey, a developer builds the applet,
  * it goes through review rounds and is marked done.
  * Mirrors the "Journeys in Chapters" tab of JC-TrackerDemo.
  */
 export const journeyApplet: WorkTypeDefinition = {
   key: 'journey-applet',
-  name: 'Journey Applets',
+  name: 'Journey',
   description: 'Applets built for SME journeys, from hand-over to review and completion.',
   icon: 'route',
   pages: { items: 'Journey chapters' },

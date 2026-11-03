@@ -21,11 +21,14 @@ import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
+import { isOfficeEmail, missingPasswordProblem } from '@/lib/invite';
+import { env } from '@/server/env';
+import { sendAccessEmail } from '@/server/invites';
 import { COOKIE_MAX_AGE, PREFS_COOKIE, PrefsSchema, serializePrefsCookie } from '@/lib/prefs';
 
-export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
+export type ActionResult = { ok: true; message?: string; id?: string; invite?: string } | { ok: false; error: string };
 
-async function run(fn: () => Promise<string | void | { message: string; id: string }>): Promise<ActionResult> {
+async function run(fn: () => Promise<string | void | { message: string; id: string; invite?: string }>): Promise<ActionResult> {
   try {
     const r = await fn();
     revalidatePath('/', 'layout');
@@ -251,6 +254,8 @@ const userInput = z.object({
   active: z.boolean(),
   isAdmin: z.boolean(),
   password: z.string().optional(),
+  /** Email them their access (and the new password, if one is set now) after saving. */
+  notify: z.boolean().optional(),
   access: z.array(accessInput),
 });
 
@@ -267,6 +272,15 @@ export async function saveUserAction(raw: UserInput) {
     if (input.email) {
       const clash = await db.user.findUnique({ where: { email: input.email } });
       if (clash && clash.id !== targetId) throw new Error(`${input.email} is already used by ${clash.name ?? 'another person'}.`);
+      const current = targetId ? await db.user.findUnique({ where: { id: targetId }, select: { passwordHash: true } }) : null;
+      const noPassword = missingPasswordProblem({
+        email: input.email,
+        active: input.active,
+        officeDomains: env().OFFICE_DOMAINS,
+        hasPassword: Boolean(current?.passwordHash),
+        newPassword: input.password,
+      });
+      if (noPassword) throw new Error(noPassword);
     }
     for (const a of input.access) {
       if (a.enabled && !a.roleIds.length) throw new Error('Pick at least one role for each work type you give access to.');
@@ -299,7 +313,19 @@ export async function saveUserAction(raw: UserInput) {
       return user.id;
     });
     if (!input.active) await db.session.deleteMany({ where: { userId: id } });
-    return { message: input.id ? 'Saved' : `Added ${input.name}`, id };
+    let message = input.id ? 'Saved' : `Added ${input.name}`;
+    let invite: string | undefined;
+    if (input.notify && input.email && input.active) {
+      try {
+        invite = await sendAccessEmail(id, admin.name ?? admin.email ?? 'An admin', input.password || undefined);
+        message += invite === 'sent' ? ` · invite emailed to ${input.email}` : ' · email is not set up, so the invite was printed in the server log';
+      } catch (e) {
+        console.error('[invite]', e);
+        invite = 'failed';
+        message += ' · the invite email could not be sent (check EMAIL_SERVER)';
+      }
+    }
+    return { message, id, invite };
   });
 }
 
@@ -432,12 +458,22 @@ export async function setUserPasswordAction(userId: string, password: string | n
     if (!user.email) throw new Error('Add an email for this person first.');
     if (password === null) {
       await db.user.update({ where: { id: userId }, data: { passwordHash: null, passwordUpdatedAt: new Date() } });
-      return 'Password removed – they can still use the email link or Google';
+      return isOfficeEmail(user.email, env().OFFICE_DOMAINS) ? 'Password removed – they sign in with Google' : 'Password removed – they can’t sign in until you set a new one';
     }
     const problem = passwordProblem(password, user.email);
     if (problem) throw new Error(problem);
     await db.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password), passwordUpdatedAt: new Date() } });
     return `Password set for ${user.name ?? user.email}`;
+  });
+}
+
+/** (Re)send someone their access email: Google steps for office emails, else a link to choose a password (the old one keeps working). */
+export async function sendInviteAction(userId: string) {
+  return run(async () => {
+    const admin = await requireAdmin();
+    const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+    const r = await sendAccessEmail(userId, admin.name ?? admin.email ?? 'An admin');
+    return r === 'sent' ? `Invite sent to ${user.email}` : 'Email isn’t set up on this server, so the invite was printed in the server log';
   });
 }
 

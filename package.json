@@ -17,6 +17,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "db:copy": "tsx --env-file=.env scripts/copy-db.ts",
     "import:xlsx": "tsx --env-file=.env scripts/import-xlsx.ts",
     "sync:run": "tsx --env-file=.env scripts/run-jobs.ts",
     "scheduler": "tsx scripts/scheduler.ts",
