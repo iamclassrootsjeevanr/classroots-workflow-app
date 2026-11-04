@@ -209,7 +209,7 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Build the Journey work type** (later, from the real Journey tracker). Journey on database tables like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
+1. **Build the Journey work type** (later, from the real Journey tracker). First the SME / coordinator fills in `docs/JOURNEY-BRIEF.md` (with Claude) and sends back `journey-answers.md` plus the live tracker; the module is written from those answers. Journey on database tables like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
 4. **Checks not yet done:** a real Railway deploy, Google sign-in and email sending with real credentials.
