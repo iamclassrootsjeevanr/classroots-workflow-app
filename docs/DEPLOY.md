@@ -108,7 +108,7 @@ One OAuth client serves all three servers and your Mac. Signed in to the browser
 Signed in as admin on **production** → **People & access**:
 
 1. Admins already in the copied data: **Jeevan** (`jeevan@classrootsedu.com`) and **Kishor** (`kishor@classrootsedu.com`), both with Google, plus `etp4.creates@gmail.com` and `etp2.creates@gmail.com` (Google only, so it cannot sign in: give it a password or deactivate it). More admins: their name → **Edit access** → **Admin** → **Save changes**.
-2. **Deactivate** every remaining `@demo.classroots.local` account (Demo Client, Coordinator, Lead, Viewer). Their history stays.
+2. The Journey team is already in the copied data with office emails and roles (Arjun, Aswin, Devjyoti and Vinay as coordinator + reviewer + creator; eight more SME creators; Jeevan and Kishor as program managers): press **Send invite** next to each. The old demo accounts are gone; only **Sourab** (`sourab@demo.classroots.local`, APK App Developer with test history) is left: give him his real email (**Edit access**) or **Deactivate** him. His history stays either way.
 3. Real office people (`@classrootsedu.com`): **+ Add user** → name, email → APK Testing role → keep **Email them an invite now** → **Add user**. If they are already in the list without an email (from the sheet), use **"Already in the system from the sheet?"** to pick them so their past work links up.
 4. Others (Gmail etc.): **+ Add user** → name, email → **Generate** password → role → keep **Email them an invite now** → **Add user**. The email contains their password.
 5. Swathi, Jeevan and Kishor already have office emails: press **Send invite** next to them.

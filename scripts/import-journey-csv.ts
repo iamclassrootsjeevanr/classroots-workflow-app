@@ -209,7 +209,25 @@ async function main() {
     }, { timeout: 20_000 });
   }
 
-  console.log(`\nRemoved ${removed.count} existing journeys and ${oldRoles.length} old roles. Imported ${planned.length} journeys, ${TEAM.length} people.`);
+  // People the old sheet imports created by first name only (no email) and who now have no role or work: remove them.
+  const orphans = await db.user.findMany({
+    where: {
+      email: null,
+      memberships: { none: {} },
+      assignedItems: { none: {} },
+      ownedItems: { none: {} },
+      createdItems: { none: {} },
+      events: { none: {} },
+      feedback: { none: {} },
+      intervals: { none: {} },
+    },
+    select: { id: true, name: true },
+  });
+  for (const o of orphans) {
+    await db.$transaction([db.notification.deleteMany({ where: { userId: o.id } }), db.workloadSnapshot.deleteMany({ where: { userId: o.id } }), db.user.delete({ where: { id: o.id } })]);
+  }
+
+  console.log(`\nRemoved ${removed.count} existing journeys, ${oldRoles.length} old roles and ${orphans.length} people without email or work${orphans.length ? ` (${orphans.map(o => o.name).join(', ')})` : ''}. Imported ${planned.length} journeys, ${TEAM.length} people.`);
 }
 
 main()
