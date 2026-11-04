@@ -56,6 +56,6 @@ run the `handoff` skill (or follow `.agents/skills/handoff/SKILL.md` directly).
 - Every metric tile, chart slice, bar or column must open the item list (`/w/<key>/items`) with the matching filter. Build links with `itemsUrl` (`src/lib/items-url.ts`). A new work type's `groupSummary` must list `seriesStatuses` for each series (a test enforces it), and new charts take an `itemsHref`.
 - Verify UI in a browser at phone (375px) and desktop widths, light and dark, before calling it done.
 
-**Branches:** `development` (default; feature PRs, squash) → `staging` (Railway staging) → `main` (Railway production), promoted by merge-commit PRs; `hotfix/*` → `main`, then back-merge. Start work with `git checkout development && git pull && git checkout -b <name>/<topic>`. CI (`checks`) and `branch-flow` are required; see README "Branches and environments".
+**Branches:** work happens on **`start-here`** — the one working branch; every handoff saves the latest state there (`.ai/state/start-here.md`) and every session starts there. It merges into `development` (default branch) by PR with **Create a merge commit**, then `development` → `staging` (Railway staging) → `main` (Railway production) by merge-commit PRs; `hotfix/*` → `main`, then back-merge. Any other branch is temporary: handoff deletes it once its work is in `development`. CI (`checks`) and `branch-flow` are required; see README "Branches and environments".
 
 **Done means:** code runs, `npm run typecheck && npm test` pass, `.ai/state/<branch>.md` updated via `handoff`, pushed.

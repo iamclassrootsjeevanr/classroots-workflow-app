@@ -10,11 +10,12 @@ The redesign, work type pages, roles per work type, inbox, APK database tables a
 
 | Branch | Is | Gets code from |
 | --- | --- | --- |
-| `development` | default branch, daily integration | your feature branch (PR, **Squash and merge**) |
+| `start-here` | the one working branch; latest handoff state | your daily work and every AI handoff |
+| `development` | default branch, daily integration | `start-here` (PR, **Create a merge commit**) |
 | `staging` | Railway **staging** | `development` only (PR "Release to staging", **Create a merge commit**) |
 | `main` | Railway **production** | `staging` only (PR "Release to production", **Create a merge commit**, 1 approval) |
 
-Start new work: `git checkout development && git pull && git checkout -b <your-name>/<topic>`. Open the pull request into `development`.
+Start new work: `git checkout start-here && git pull` (the one working branch; every handoff saves there). Open the pull request `start-here → development` with **Create a merge commit**.
 
 Release: `gh pr create --base staging --head development --title "Release to staging"`, test the staging site, then `gh pr create --base main --head staging --title "Release to production"`.
 
