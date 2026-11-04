@@ -86,3 +86,8 @@ Decision: all work and every handoff happen on `start-here` (state `.ai/state/st
 Why: Jeevan wants one obvious place to start and no leftover branches. Replaces "one personal branch per topic".
 By: cursor
 
+## 2026-11-04 — Railway runs three environments: development, staging, production
+Decision: one Railway project, environments `production` (← `main`), `staging` (← `staging`) and `development` (← `development`), made by duplicating production. Each has its own Postgres (empty on duplication, filled with `npm run db:copy`), address, `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`. Shared: one Google OAuth client with all three addresses + localhost, `ADMIN_EMAILS`, `OFFICE_DOMAINS`. Email: production and staging (from name "Classroots Work (staging)"), development none (mails in logs). Checklist: `docs/DEPLOY.md`.
+Why: Jeevan wants every merged change visible on a real address and a release tested on staging before production; migrations then run development → staging → production in turn. Extends the 2026-11-03 branches decision (development was "local / optional").
+By: cursor
+

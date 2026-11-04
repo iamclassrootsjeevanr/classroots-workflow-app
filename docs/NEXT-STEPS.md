@@ -69,10 +69,10 @@ If you see an error:
 
 ## 5. Put the app online (Railway)
 
-Full steps with variable names are in the README under **Deploy → Railway**. Short version:
+**Click-by-click checklist for all three environments (production, staging, development): `docs/DEPLOY.md`.** Variable names: README **Deploy → Railway**. Short version:
 
 1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin. App service → Settings → Source → branch **`main`** (this is **production**).
-   Then Environments → New environment → **Duplicate production** → name `staging` → in it set the app's branch to **`staging`**. Staging gets its own database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for both environments. Test on staging first; production only gets what was merged `staging → main`.
+   Then Environments → New environment → **Duplicate production** twice: `staging` (app branch **`staging`**) and `development` (app branch **`development`**). Each gets its own empty database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for every environment. Test on staging first; production only gets what was merged `staging → main`.
 2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.

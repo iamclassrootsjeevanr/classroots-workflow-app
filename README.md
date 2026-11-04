@@ -552,7 +552,7 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 | Branch | Environment | Who merges into it | How |
 | --- | --- | --- | --- |
 | `start-here` | your machine | you, every day | the one working branch: push freely; every AI handoff saves the latest state here and every session starts here |
-| `development` (default branch) | local / optional Railway "development" | `start-here` | pull request, **Create a merge commit** (keeps `start-here` in step, no force-push), CI must pass |
+| `development` (default branch) | Railway **development** (its own database) | `start-here` | pull request, **Create a merge commit** (keeps `start-here` in step, no force-push), CI must pass |
 | `staging` | Railway **staging** (its own database) | only `development` | pull request "Release to staging", **Create a merge commit**, CI + branch-flow must pass |
 | `main` | Railway **production** | only `staging` | pull request "Release to production", **Create a merge commit**, 1 approval, CI + branch-flow must pass |
 
@@ -581,7 +581,7 @@ Use **Create a merge commit** for these two (the rulesets allow nothing else), s
 
 **Enforced on GitHub** (Settings → Rules → Rulesets): no deleting or force-pushing `development`, `staging` or `main`; changes only by pull request; required checks `checks` (`.github/workflows/ci.yml`: install, `prisma generate`, typecheck, tests) and, for `staging` and `main`, `branch-flow` (`.github/workflows/branch-flow.yml`: rejects any other source branch). Repository admins can bypass in a pull request when needed.
 
-**Railway:** one project with two environments, each with its own Postgres and variables. Production deploys from `main`, staging from `staging` (see [Railway](#railway-app--postgres)).
+**Railway:** one project with three environments (`production` ← `main`, `staging` ← `staging`, `development` ← `development`), each with its own Postgres, address and secrets. Click-by-click: [docs/DEPLOY.md](docs/DEPLOY.md); variables: [Railway](#railway-app--postgres).
 
 ---
 
@@ -613,7 +613,7 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
 
 1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project. In the app service → Settings → Source, set the branch to **`main`**: this environment is **production**.
-   Then **Environments → New environment → Duplicate `production`** and name it `staging`. In `staging`, set the app's branch to **`staging`**; it gets its own Postgres and its own variables (its own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings). Add the staging URL to the Google OAuth client too. Every merge into `staging` or `main` deploys that environment by itself.
+   Then **Environments → New environment → Duplicate `production`** twice: `staging` (app branch **`staging`**) and `development` (app branch **`development`**). Each duplicate gets its own empty Postgres and its own variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings; development without email). Add all three addresses to the Google OAuth client. Every merge into `development`, `staging` or `main` deploys that environment by itself. Step by step: `docs/DEPLOY.md`.
 2. In the app service → Variables, set:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
    - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).

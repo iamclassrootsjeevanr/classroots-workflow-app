@@ -1,7 +1,7 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-04T06:16:00Z · by: cursor · owner: Jeevan
+Updated: 2026-11-04T06:22:42Z · by: cursor · owner: Jeevan
 
 ## Goal
 Put Classroots Work live on Railway (production = `main`) with a copy of the local DB, Google sign-in for @classrootsedu.com,
@@ -10,6 +10,10 @@ from the SME / coordinator's real process (brief sent out this session).
 
 ## Done this stretch
 - Merged PR #12 (`start-here → development`, merge commit): docs/skills/.ai from the previous session. development = a58d975.
+- Rewrote `docs/DEPLOY.md` for three Railway environments (production ← main, staging ← staging, development ← development):
+  steps 1–8 (project, duplicate envs, db:copy to each, one Google OAuth client with 4 addresses, email prod+staging only,
+  people on production, optional cron, final check table), release flow, Later. README "Branches and environments" / Railway
+  and NEXT-STEPS § 5 point to it. Decision logged in `.ai/DECISIONS.md`.
 - Wrote `docs/JOURNEY-BRIEF.md`: plain-English brief for the SME / coordinator. Prompt to paste into Claude, what a work type is
   (APK as the example), today's Journey demo to confirm / change / remove (10 stages, 16 moves, 4 roles, sheet columns, Chapter
   List, stuck limits), 60 questions in blocks 3A–3M (item, stages, moves, roles/people, fields, feedback, dates, dashboards,
@@ -17,8 +21,8 @@ from the SME / coordinator's real process (brief sent out this session).
   answer → module glossary. `docs/NEXT-STEPS.md` § 8.1 points to it.
 
 ## Where things stand
-- Code: development (a58d975) = staging + main (7564280) + docs/skills only. This branch adds the Journey brief (not yet in development).
-- Railway: NOT set up yet. Nothing deployed. `docs/DEPLOY.md` intro / Step 1 still describe PR #8 as open (it was merged; trim when touched).
+- Code: development (a58d975) = staging + main (7564280) + docs/skills only. This branch adds the Journey brief + DEPLOY rewrite (not yet in development).
+- Railway: NOT set up yet. Nothing deployed. Jeevan is sending the Journey brief to the SME, then deploying per `docs/DEPLOY.md`.
 - Local DB (`npm run db:start` or double-click `start.command`): 18 APK versions, Journey demo (93). Admins: Jeevan (password),
   Kishor (Google only), Demo Admin etp4.creates@gmail.com (demo password), etp2.creates@gmail.com (Google only → give a password
   or deactivate). Swathi = swathi@classrootsedu.com.
@@ -28,9 +32,9 @@ from the SME / coordinator's real process (brief sent out this session).
 Nothing mid-edit.
 
 ## Next steps
-1. Open PR `start-here → development` for `docs/JOURNEY-BRIEF.md` + NEXT-STEPS pointer (merge commit).
-2. Railway go-live per `docs/DEPLOY.md` steps 2–6 (needs Jeevan / Kishor accounts): Railway project + Postgres + variables, `/api/health`;
-   on this Mac `npm run db:copy -- --to '<DATABASE_PUBLIC_URL>'`; Google OAuth client; Gmail app password; people cleanup.
+1. Open PR `start-here → development` for `docs/JOURNEY-BRIEF.md`, `docs/DEPLOY.md`, README/NEXT-STEPS pointers (merge commit).
+2. Deploy per `docs/DEPLOY.md` steps 1–8 (needs Jeevan / Kishor accounts): production, then duplicate to staging + development;
+   `npm run db:copy -- --to '<DATABASE_PUBLIC_URL>'` into each; one Google OAuth client; Gmail app password; people on production.
 3. APK sheet sync app → sheet only (push-only mode); sync stays OFF on the server until then.
 4. When `journey-answers.md` + the live tracker come back: translate Appendix A into the Journey module (statuses with category,
    transitions, roles, fields, groupSummary per chapter with seriesStatuses, sheet mapping, stuckAfterHours), status-mapping
