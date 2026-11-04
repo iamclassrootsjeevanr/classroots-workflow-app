@@ -1,7 +1,7 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-04T12:16:02Z · by: cursor · owner: Jeevan
+Updated: 2026-11-04T12:28:08Z · by: cursor · owner: Jeevan
 
 ## Goal
 Journey rebuilt from the SME's answers (done, PR open). Next: go live on Railway (development, staging, production per
@@ -34,7 +34,7 @@ Journey rebuilt from the SME's answers (done, PR open). Next: go live on Railway
 ## Where things stand
 - Code: start-here ahead of development by this work + earlier docs (DEPLOY three envs, JOURNEY-BRIEF). PR to development opened this session.
 - Typecheck, 146 tests and `npm run build` pass. PR #13 (start-here → development) open, CI green.
-- Local dev: DB and `next dev` were restarted in the background by the agent (start.command window ended).
+- Local dev: nothing running. Double-click `start.command` (now guards against a second copy, migrates, regenerates Prisma, clears .next).
 - Railway: NOT set up yet.
 
 ## In progress
