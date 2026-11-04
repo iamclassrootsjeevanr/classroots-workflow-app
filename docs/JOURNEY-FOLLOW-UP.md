@@ -1,62 +1,96 @@
 # Journey — follow-up questions for Arjun (4 Nov 2026)
 
-The Journey part of Classroots Work is built from your `journey-answers.md` and the tracker export (35 journeys).
-These points are still open. Answer in this file (or a reply) and send it back to Jeevan. Nothing here blocks the team from starting.
+Classroots Work now runs the Journey flow from your `journey-answers.md`, with the 35 journeys from your tracker export.
+The points below are still open. Each one says what the app does **until you answer**, so the team can start now.
+Reply in this file (write under each question) and send it back to Jeevan.
 
-## 1. Rows in the tracker that don't add up
+---
 
-The import took the most advanced value and moved on. Please confirm or correct each row:
+## 1. Tracker rows that don't add up
 
-| Journey | What the tracker says | Imported as | Correct? |
+The import took the furthest stage the row shows. Please confirm or correct each one.
+
+| Journey | What the tracker says | In the app now | Correct? If not, what is right |
 |---|---|---|---|
-| G04C05ST1J1 | Submitted for review 1 Nov, but Creation stage is still 4 · Build | Ready for review | |
-| G05C02ST3J1 | Submitted for review 1 Nov, but Creation stage is still 4 · Build | Ready for review | |
-| G05C02ST4J2 | Submitted for review 1 Nov, but Creation stage is still 3a · Spine | Ready for review | |
+| G04C05ST1J1 | Submitted for review 1 Nov, but Creation stage still 4 · Build | Ready for review | |
+| G05C02ST3J1 | Submitted for review 1 Nov, but Creation stage still 4 · Build | Ready for review | |
+| G05C02ST4J2 | Submitted for review 1 Nov, but Creation stage still 3a · Spine | Ready for review | |
 | G05C02ST1J1 | Creation stage Published, but no Submitted for review date | 5 · Ship | |
-| G05C02ST5J1 | Days taken 1, but no Submitted for review date | 4 · Build (Days taken left empty) | |
-| G04C05ST5J1 | Review state Changes asked, but no Review date | Changes asked | |
+| G05C02ST5J1 | Days taken 1, but no Submitted for review date | 4 · Build, Days taken empty | |
+| G04C05ST5J1 | Review state Changes asked, but no Review date | Changes asked, no Closure due | |
 
 ## 2. Days taken and half days
 
-Five G04C05 journeys (ST1J1, ST2J1, ST3J1, ST4J1, ST5J1) say **2.5** days from 28 Oct to 1 Nov. Counting Mon–Fri with both days included gives **3** (Wed, Thu, Fri).
+Five G04C05 journeys (ST1J1, ST2J1, ST3J1, ST4J1, ST5J1) show **2.5** days from Wed 28 Oct to Sun 1 Nov. Counting Mon–Fri with both days included gives **3** (Wed, Thu, Fri).
 
-- How is a half day recorded? (e.g. picked up after lunch = half day?)
-- Should Days taken be calculated by the app (as now), or typed by the creator?
+**Until you answer:** the app calculates Days taken itself (Mon–Fri, both days counted), so these five show 3.
+
+- How is a half day decided? (For example: picked up after lunch, or submitted before lunch?)
+- Should the app keep calculating Days taken, or should the creator type it?
 
 ## 3. Closure due
 
-The app sets Closure due = Review date + **1 working day** (a review on Friday is due Monday). Is that right, or + 1 calendar day?
+**Until you answer:** Closure due = Review date + **1 working day**. A review on Friday is due on Monday.
+
+- Is that right, or should it be + 1 calendar day?
 
 ## 4. The after-steps
 
-Built as stages; the coordinator moves each one on, except Last look after design (the creator). For each, tell us who does it, how long it should take, and whether it can send a journey back:
+**Until you answer:** the coordinator moves each after-step on, except Last look after design, which the creator moves. No time limits are set, and nothing sends a journey back. Design standardization is **paused**: journeys wait there until it is switched on.
 
-| Stage | Who moves it on | Normal duration | Can it send the journey back? To where? |
+| Stage | Who moves it on | Normal duration | Can it send the journey back? To which stage? |
 |---|---|---|---|
-| Design standardization (paused until the design document is ready) | | | |
+| Design standardization | | | |
 | Last look after design | | | |
 | Video replacement | | | |
 | UAT → prod migration | | | |
 | Published on prod | | | |
 | User testing and QA | | | |
 
-Also: when is the design document ready, so Design standardization can be switched on?
+- When will the design document be ready, so Design standardization can be switched on?
+- Is any after-step not needed for some journeys (for example, Video replacement only where there are placeholder videos)?
 
 ## 5. Coordinators per chapter
 
-Arjun steers G04C05, Devjyoti G05C02, Vinay G06C07. Today every coordinator can allocate journeys in every chapter. Should a coordinator be limited to their own chapter?
+You steer G04C05, Devjyoti G05C02 and Vinay G06C07.
 
-## 6. Calendar and chapters
+**Until you answer:** every coordinator can allocate creators and reviewers in every chapter.
+
+- Should each coordinator be limited to their own chapter?
+
+## 6. Holidays and chapter names
+
+**Until you answer:** no holidays are counted. Chapters show their code, or the name already in the system.
 
 - The holiday list for this academic year (dates).
-- The full chapter names for G04C05, G05C02 and G06C07 (the app shows the code where it has no name).
+- The full chapter names for G04C05, G05C02 and G06C07.
 
-## 7. Still to send (from the brief, section 5)
+## 7. Still to send (brief, section 5)
 
 - Screenshots of the Slack tracker.
-- Three real feedback examples as sent to a creator.
-- One link each: a CMS journey, an AI Tutor, an applet build.
+- Three real feedback examples, as you sent them to a creator.
+- One link each to a CMS journey, an AI Tutor and an applet build.
 
 ## 8. Claude moving the creation stage
 
-You asked for Claude to update the creation stage from the relay in real time. That needs a small connection (an API key per relay). Confirm you want it and which relay tool you use; it is planned after go-live.
+You asked for Claude to update the creation stage from the relay in real time. That needs a small connection with an access key.
+
+**Until you answer:** creators move their own stages in the app.
+
+- Do you want this? Which tool runs the relay?
+
+---
+
+### For Jeevan: where each answer goes
+
+| Answer | Change | Needs code? |
+|---|---|---|
+| 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
+| 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
+| 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
+| 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
+| 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
+| 3. Closure due rule | Same place | Yes (one line) |
+| 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
+| 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
+| 8. Claude stage updates | API route with a per-relay key | Yes |

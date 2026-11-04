@@ -209,7 +209,7 @@ async function main() {
     }, { timeout: 20_000 });
   }
 
-  console.log(`\nRemoved ${removed.count} demo journeys and ${oldRoles.length} old roles. Imported ${planned.length} journeys, ${TEAM.length} people.`);
+  console.log(`\nRemoved ${removed.count} existing journeys and ${oldRoles.length} old roles. Imported ${planned.length} journeys, ${TEAM.length} people.`);
 }
 
 main()

@@ -138,7 +138,9 @@ export async function saveStage(workTypeId: string, key: string, input: StageInp
         stuckHours: v.stuckHours === (code.stuckHours ?? null) ? null : v.stuckHours,
       }
     : { label: v.label, color: v.color, category: v.category, state: v.state, nextLabel: v.nextLabel ?? 'Mark done', movedBy: v.movedBy as Prisma.InputJsonValue, stuckHours: v.stuckHours };
-  await db.workflowStage.upsert({ where: { workTypeId_key: { workTypeId, key } }, create: { workTypeId, key, ...data }, update: data });
+  const backToDefaults = code && Object.values(data).every(x => x === null || x === Prisma.DbNull) && existing?.position == null;
+  if (backToDefaults) await db.workflowStage.deleteMany({ where: { workTypeId, key } });
+  else await db.workflowStage.upsert({ where: { workTypeId_key: { workTypeId, key } }, create: { workTypeId, key, ...data }, update: data });
   await refreshStages(true);
 }
 

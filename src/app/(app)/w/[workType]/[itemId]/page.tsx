@@ -8,6 +8,7 @@ import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
+import { lowerLabel } from '@/lib/text';
 import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
 import { correctionsMove } from '@/server/services/work-items';
 import { hydrateApkData } from '@/lib/apk-data';
@@ -166,12 +167,12 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           </div>
           <div className="min-w-52">
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
-            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${(mod.labels?.assignee ?? 'developer').toLowerCase()}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
           </div>
           {owners && (
             <div className="min-w-52">
               <span className="label">{mod.labels?.owner ?? 'Owner'}</span>
-              <AssignSelect owner itemId={item.id} assigneeId={item.ownerId} people={owners} label={`Choose ${(mod.labels?.owner ?? 'owner').toLowerCase()}`} />
+              <AssignSelect owner itemId={item.id} assigneeId={item.ownerId} people={owners} label={`Choose ${lowerLabel(mod.labels?.owner ?? 'owner')}`} />
             </div>
           )}
           {editable && canDeleteItem(ctx) && (

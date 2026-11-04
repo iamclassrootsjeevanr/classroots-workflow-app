@@ -6,6 +6,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { Card, Kpi, KpiGrid, ToneChip } from '@/components/ui';
 import type { NavIcon } from '@/components/icons';
 import { formatDuration } from '@/lib/time';
+import { lowerLabel } from '@/lib/text';
 import { itemsUrl } from '@/lib/items-url';
 import { groupRollup } from '@/lib/groups';
 import { getModule } from '@/modules/registry';
@@ -45,7 +46,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
   const itemsHref = itemsUrl(key);
   const present = new Set(mod.statuses.map(s => s.category));
   const count = (c: StatusCategory) => d.items.filter(i => i.category === c).length;
-  const noun = (mod.labels?.assignee ?? 'developer').toLowerCase();
+  const noun = lowerLabel(mod.labels?.assignee ?? 'developer');
 
   // By status and per-person bars leave Done out; the Done count lives on its card.
   const open = d.statusSlices.filter(s => s.category !== 'done');

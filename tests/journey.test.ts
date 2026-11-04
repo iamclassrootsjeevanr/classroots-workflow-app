@@ -3,6 +3,7 @@ import { addWorkingDays, parseJourneyKey, splitJourneyCell, workingDaysInclusive
 import { journeyApplet as base, journeyPart } from '@/modules/journey-applet/definition';
 import { applyStageConfig } from '@/lib/stages';
 import { groupRollup, groupTrend } from '@/lib/groups';
+import { lowerLabel } from '@/lib/text';
 import { allowedTransitions, canTransition, type ActorContext } from '@/lib/workflow';
 import type { Capability } from '@/lib/access-core';
 
@@ -40,6 +41,14 @@ describe('Closure due = Review date + 1 working day', () => {
     const r = base.compute!({ externalKey: 'G04C05ST3J1', data: { pickedUpAt: '2026-10-26', submittedAt: '2026-10-30', reviewDate: '2026-10-30' } }, { ...monFri, tz: 'Asia/Kolkata', startHour: 10, endHour: 19 });
     expect(r.data).toMatchObject({ daysTaken: 5, subtopic: 'ST3', journeyNo: 1 });
     expect(r.dueAt).toBe('2026-11-02');
+  });
+});
+
+describe('labels mid-sentence', () => {
+  it('lower-cases words but keeps acronyms', () => {
+    expect(lowerLabel('SME creator')).toBe('SME creator');
+    expect(lowerLabel('Tested by')).toBe('tested by');
+    expect(lowerLabel('APK version')).toBe('APK version');
   });
 });
 
