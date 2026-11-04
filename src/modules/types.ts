@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import type { Capability, DataScope, PageKey } from '@/lib/access-core';
 import type { NavIcon } from '@/components/icons';
+import type { WorkCalendar } from '@/lib/time';
 
 /** What a status means for analytics and workload, independent of its label. */
 export type StatusCategory =
@@ -15,6 +16,12 @@ export type StatusCategory =
 /** Stage timestamps a status sets on the item when entered. */
 export type StageMark = 'assigned' | 'started' | 'submitted' | 'review' | 'feedback' | 'approved' | 'completed';
 
+/** active = normal · paused = items reach it and wait (counted as on hold) · skipped = moves jump over it. */
+export type StageState = 'active' | 'paused' | 'skipped';
+
+/** The button that moves an item from a stage on to the next active stage of the main line. */
+export type NextMove = { label: string; by: Actor[]; /** Date fields set to today when pressed (if empty). */ stamp?: string[] };
+
 export type StatusDef = {
   key: string;
   label: string;
@@ -23,15 +30,42 @@ export type StatusDef = {
   marks?: StageMark[];
   /** Value written to / read from the sheet. null = app-only status (not pushed). */
   sheetValue?: string | null;
+  /** main = the stage line items walk along; side = only reached by the module's own moves (e.g. a correction loop). */
+  line?: 'main' | 'side';
+  /** Forward button to the next active stage. Stages with one can be paused, skipped and have stages added after them. */
+  next?: NextMove;
+  /** Initial state in code; after applyStageConfig, the effective state. */
+  state?: StageState;
+  /** Can be renamed but not paused, skipped or removed (first, last and side stages always are). */
+  locked?: boolean;
+  /** Business hours before an item here is flagged as stuck (overrides the category limit). */
+  stuckHours?: number;
+  /** Stages of one phase share a stuck limit measured from entering the phase (see `phaseLimits`). */
+  phase?: string;
+  /** Set by applyStageConfig: the category before a pause turned it into 'hold'. */
+  baseCategory?: StatusCategory;
+  /** Set by applyStageConfig: added by an admin, not in the module code. */
+  custom?: boolean;
 };
 
 /**
  * Who may move an item or edit a field: a capability from the person's roles in this work type.
- * 'ASSIGNEE' = has the "work" capability and the item is assigned to them. Admins may do anything.
+ * 'ASSIGNEE' = has the "work" capability and the item is assigned to them.
+ * 'OWNER' = has the "review" capability and is the item's owner (e.g. its reviewer). Admins may do anything.
  */
-export type Actor = Capability | 'ASSIGNEE';
+export type Actor = Capability | 'ASSIGNEE' | 'OWNER';
 
-export type Transition = { from: string; to: string; by: Actor[]; label?: string };
+/** `to` is a status key, or `@next:<key>` = the next active main-line stage after <key>. */
+export type Transition = {
+  from: string;
+  to: string;
+  by: Actor[];
+  label?: string;
+  /** Date fields set to today when pressed (if empty). */
+  stamp?: string[];
+  /** Can only be done together with feedback (the Feedback card's send-back button). */
+  requires?: 'feedback';
+};
 
 export type FieldType = 'text' | 'longtext' | 'url' | 'date' | 'number';
 
@@ -44,6 +78,8 @@ export type FieldDef = {
   editableBy: Actor[];
   /** Short label for link columns in tables (e.g. "Open CMS"). */
   linkLabel?: string;
+  /** Worked out by the module's `compute` (shown, not typed). */
+  computed?: boolean;
 };
 
 /** How one sheet column maps to the app. */
@@ -96,10 +132,14 @@ export type GroupSummary = {
   columns: TableColumn[];
   compute: (items: GroupSummaryItem[]) => GroupSummaryRow;
   seriesColors?: Record<string, string>;
-  /** Series that counts as success; drives the trend line (share of items) in the group chart. */
   /** Status keys each series stands for, so clicking a chart segment can filter the item list. */
   seriesStatuses?: Record<string, string[]>;
-  successSeries?: string;
+  /** Series that count as success; drive the trend line (share of items) in the group chart. */
+  successSeries?: string | string[];
+  /** Name of the trend line when several series count as success. */
+  successLabel?: string;
+  /** Cell shown as the big number on group cards (default `passRate`). */
+  headline?: string;
   /** Threshold lines on the trend chart, in percent (e.g. the tracker's Good / Stable cut-offs). */
   rateLines?: { label: string; at: number }[];
 };
@@ -127,7 +167,7 @@ export type WorkTypeDefinition = {
   /** Singular noun for one item, e.g. "journey". */
   itemNoun: string;
   /** Column / field names shown in the UI for this work type. */
-  labels?: { assignee?: string; owner?: string; group?: string };
+  labels?: { assignee?: string; owner?: string; group?: string; due?: string };
   /** What each status category is called in this work type's KPI tiles (defaults are journey words). */
   categoryLabels?: Partial<Record<StatusCategory, string>>;
   /** Role keys given to people created from the sheet / import (assignee column, owner column). */
@@ -167,4 +207,18 @@ export type WorkTypeDefinition = {
   };
   /** Hours an item may sit in a category before it is flagged as stuck (business hours). */
   stuckAfterHours?: Partial<Record<StatusCategory, number>>;
+  /** Stuck limits for a run of stages (`StatusDef.phase`), measured from entering the first stage of the run. */
+  phaseLimits?: Record<string, { label: string; hours: number }>;
+  /** Working days of this work type (0 = Sunday … 6 = Saturday); default: the app calendar. */
+  workDays?: number[];
+  /** The due date is met once the item is approved (not when it is completed). */
+  dueEndsAt?: 'approved';
+  /** Inbox messages on stage marks: `submitted` → the owner, `approved` → the assignee. */
+  notifyOn?: { submitted?: boolean; approved?: boolean };
+  /** Calculated fields: called after every change with the item's data; may also set the due date ('YYYY-MM-DD' or null). */
+  compute?: (input: { externalKey: string; data: Record<string, unknown> }, cal: WorkCalendar) => { data: Record<string, unknown>; dueAt?: string | null };
+  /** Read-only values worked out from the stage, shown as list columns (merged into the row's data on read). */
+  view?: (item: { status: string; data: Record<string, unknown> }, mod: WorkTypeDefinition) => Record<string, string>;
+  /** Group summary built from the effective stages (wins over `groupSummary`). */
+  groupSummaryFor?: (mod: WorkTypeDefinition) => GroupSummary;
 };

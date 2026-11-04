@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { compareWithTeam, type ItemLite } from '@/lib/analytics-core';
 import { workTypeTabs } from '@/lib/work-type-tabs';
 import { apkTesting } from '@/modules/apk-testing/definition';
-import { journeyApplet } from '@/modules/journey-applet/definition';
+import { requireModule } from '@/modules/registry';
+
+const journeyApplet = requireModule('journey-applet');
 
 const now = new Date('2026-11-02T10:00:00Z');
 const day = (n: number) => new Date(now.getTime() - n * 86400000);
@@ -48,8 +50,8 @@ describe('workTypeTabs', () => {
     expect(tabs.map(t => t.label)).toEqual(['Overview', 'APK versions', 'Test execution', 'Test cases']);
     expect(new Set(tabs.map(t => t.icon)).size).toBe(4);
   });
-  it('gives Journey Overview and Journey chapters only', () => {
-    expect(workTypeTabs(journeyApplet).map(t => t.label)).toEqual(['Overview', 'Journey chapters']);
+  it('gives Journey Overview, Chapters and Journeys', () => {
+    expect(workTypeTabs(journeyApplet).map(t => t.label)).toEqual(['Overview', 'Chapters', 'Journeys']);
   });
   it('uses different sidebar icons per work type', () => {
     expect(apkTesting.icon).toBeDefined();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { journeyApplet as mod } from '@/modules/journey-applet/definition';
+import { reviewFlow as mod } from './fixtures/review-flow';
 import type { Capability } from '@/lib/access-core';
 import { allowedTransitions, canEditField, canTransition, stagePatch, type StageState } from '@/lib/workflow';
 

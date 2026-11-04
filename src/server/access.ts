@@ -52,12 +52,13 @@ export function scopeWhere(access: Access, types: WorkTypeAccess[]): Prisma.Work
   };
 }
 
-export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null }): ActorContext {
+export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null }): ActorContext {
   const a = access.byKey.get(workTypeKey);
   return {
     isAdmin: access.isAdmin,
     capabilities: a?.capabilities ?? new Set(),
     isAssignee: item.assigneeId === access.userId,
+    isOwner: Boolean(item.ownerId) && item.ownerId === access.userId,
     canEdit: Boolean(a?.canEdit),
   };
 }

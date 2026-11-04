@@ -53,7 +53,7 @@ You do **not** need a Spreadsheet ID. The script finds the tab by name. (The def
 ## 4. Turn sync on in the app
 
 1. Sign in as admin → **Admin → Sheet sync**.
-2. **Journey**: tab `Journeys in Chapters`. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**.
+2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
 3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
 
 If you see an error:
@@ -105,7 +105,7 @@ export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
 DATABASE_URL="$PROD_DB" npx prisma migrate reset --force --skip-seed          # empty tables, latest schema
 DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed  # work types, roles, admin
 DATABASE_URL="$PROD_DB" npm run import:apk -- "$HOME/Downloads/APK Testing Tracker.xlsx"
-DATABASE_URL="$PROD_DB" npm run import:xlsx -- "$HOME/Downloads/<live Journey tracker>.xlsx"
+DATABASE_URL="$PROD_DB" npm run import:journey -- "$HOME/Downloads/<Journey tracker export>.csv" --replace
 unset PROD_DB
 ```
 
@@ -209,7 +209,7 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Build the Journey work type** (later, from the real Journey tracker). First the SME / coordinator fills in `docs/JOURNEY-BRIEF.md` (with Claude) and sends back `journey-answers.md` plus the live tracker; the module is written from those answers. Journey on database tables like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
+1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions for Arjun: `docs/JOURNEY-FOLLOW-UP.md`. When he answers: owners and limits of the after-steps go in Admin → Work types → Stages (no code); Days taken half days, Closure due rule and coordinator-per-chapter need code. Later: an API so Claude can move the creation stage from the relay.
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
 4. **Checks not yet done:** a real Railway deploy, Google sign-in and email sending with real credentials.

@@ -1,8 +1,9 @@
 import 'server-only';
 import { workloadByUser, type ItemLite } from '@/lib/analytics-core';
 import { instantToDateKey } from '@/lib/time';
-import { allowedTransitions, canDeleteItem, canEditField } from '@/lib/workflow';
+import { allowedTransitions, canDeleteItem, canEditField, type ActorContext } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
+import type { WorkTypeDefinition } from '@/modules/types';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
 import { loadLabel } from '@/components/ui';
 import { hydrateApkData } from '@/lib/apk-data';
@@ -20,16 +21,26 @@ export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Pro
     const mod = getModule(it.workTypeKey);
     if (!mod) continue;
     const ctx = actorContextFor(access, it.workTypeKey, it);
-    out.set(
-      it.id,
-      allowedTransitions(mod, it.status, ctx).map(t => ({
-        to: t.to,
-        label: t.label ?? statusDef(mod, t.to).label,
-        statusLabel: statusDef(mod, t.to).label,
-      })),
-    );
+    out.set(it.id, statusOptions(mod, it.status, ctx));
   }
   return out;
+}
+
+/** Moves for the status select. Moves that need feedback are left out: they are made from the item's Feedback card. */
+export function statusOptions(mod: WorkTypeDefinition, status: string, ctx: ActorContext): StatusOption[] {
+  return allowedTransitions(mod, status, ctx)
+    .filter(t => t.requires !== 'feedback')
+    .map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }));
+}
+
+/** People who may own (review) items in this work type: active, with an editing role that reviews. */
+export async function reviewPeople(workTypeKey: string): Promise<PersonOption[]> {
+  const users = await db.user.findMany({
+    where: { active: true, memberships: { some: { workType: { key: workTypeKey }, roles: { some: { role: { capReview: true, canEdit: true } } } } } },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: 'asc' },
+  });
+  return users.map(u => ({ id: u.id, name: u.name ?? u.email ?? '?' }));
 }
 
 /** Ids of the items on which the viewer may edit at least one field (these rows get an Edit button). */
@@ -40,7 +51,7 @@ export async function editableItemsFor(user: CurrentUser, items: ItemRow[]): Pro
     const mod = getModule(it.workTypeKey);
     if (!mod) continue;
     const ctx = actorContextFor(access, it.workTypeKey, it);
-    if (mod.fields.some(f => canEditField(f, ctx))) out.add(it.id);
+    if (mod.fields.some(f => !f.computed && canEditField(f, ctx))) out.add(it.id);
   }
   return out;
 }
@@ -59,7 +70,7 @@ export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: s
     type: f.type,
     linkLabel: f.linkLabel,
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
-    editable: canEditField(f, ctx),
+    editable: !f.computed && canEditField(f, ctx),
   }));
 }
 

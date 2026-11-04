@@ -44,8 +44,8 @@ const status = (flow: FlowLite, key: string): StatusLite => flow.statuses.find(s
  */
 export function rolePreview(flow: FlowLite, role: RoleAbilities): RolePreview {
   const capabilities = new Set(role.capabilities);
-  const asAssignee: ActorContext = { isAdmin: false, capabilities, canEdit: role.canEdit, isAssignee: true };
-  const asOther: ActorContext = { ...asAssignee, isAssignee: false };
+  const asAssignee: ActorContext = { isAdmin: false, capabilities, canEdit: role.canEdit, isAssignee: true, isOwner: true };
+  const asOther: ActorContext = { ...asAssignee, isAssignee: false, isOwner: false };
   const moves: RoleMove[] = [];
   for (const t of flow.transitions) {
     if (!actorMatches(t.by, asAssignee)) continue;

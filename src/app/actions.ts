@@ -9,10 +9,11 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, resolveFeedback, restoreItem, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
+import { addStage, removeStage, saveStage, type StageInput } from '@/server/stages';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
 import type { NotificationView } from '@/lib/notifications-core';
 import { loadVersionCases } from '@/server/apk/queries';
@@ -55,6 +56,10 @@ export async function changeStatusAction(itemId: string, to: string, version?: n
 
 export async function assignAction(itemId: string, assigneeId: string | null) {
   return run(async () => assign(await itemActor(itemId), itemId, assigneeId));
+}
+
+export async function setOwnerAction(itemId: string, ownerId: string | null) {
+  return run(async () => setOwner(await itemActor(itemId), itemId, ownerId));
 }
 
 export async function updateFieldsAction(itemId: string, patch: Record<string, FieldValue>) {
@@ -121,7 +126,7 @@ export async function restoreItemAction(itemId: string) {
 export async function feedbackAction(itemId: string, input: { body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
   return run(async () => {
     await addFeedback(await itemActor(itemId), itemId, input);
-    return input.requestCorrections ? 'Feedback sent and corrections requested' : 'Feedback added';
+    return input.requestCorrections ? 'Feedback sent and changes asked' : 'Feedback added';
   });
 }
 
@@ -129,6 +134,14 @@ export async function resolveFeedbackAction(feedbackId: string) {
   return run(async () => {
     const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
     await resolveFeedback(await itemActor(fb.itemId), feedbackId);
+  });
+}
+
+export async function noteFeedbackAction(feedbackId: string, note: string) {
+  return run(async () => {
+    const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
+    await noteFeedback(await itemActor(fb.itemId), feedbackId, note);
+    return note.trim() ? 'Reply saved' : 'Reply removed';
   });
 }
 
@@ -419,6 +432,29 @@ export async function enableModuleAction(key: string) {
     await requireAdmin();
     await enableModule(key);
     return 'Work type enabled';
+  });
+}
+
+export async function saveStageAction(workTypeId: string, key: string, input: StageInput) {
+  return run(async () => {
+    await requireAdmin();
+    await saveStage(workTypeId, key, input);
+    return 'Stage saved';
+  });
+}
+
+export async function addStageAction(workTypeId: string, afterKey: string, input: StageInput) {
+  return run(async () => {
+    await requireAdmin();
+    const key = await addStage(workTypeId, afterKey, input);
+    return { message: `Stage “${input.label.trim()}” added`, id: key };
+  });
+}
+
+export async function removeStageAction(workTypeId: string, key: string) {
+  return run(async () => {
+    await requireAdmin();
+    return (await removeStage(workTypeId, key)) === 'deleted' ? 'Stage removed' : 'Stage has history, so it is skipped instead of removed';
   });
 }
 

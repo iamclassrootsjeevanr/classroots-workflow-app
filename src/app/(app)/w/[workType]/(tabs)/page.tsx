@@ -94,8 +94,10 @@ export default async function OverviewPage({ params, searchParams }: { params: P
                     {r.result && <ToneChip tone={r.result.tone}>{r.result.label}</ToneChip>}
                   </div>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{r.cells.passRate}</span>
-                    <span className="text-xs text-muted">{r.count} tests</span>
+                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{r.cells[mod.groupSummary!.headline ?? 'passRate']}</span>
+                    <span className="text-xs text-muted">
+                      {r.count} {mod.itemNoun}s
+                    </span>
                   </div>
                   <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={parts.map(([k, n]) => `${k} ${n}`).join(', ')}>
                     {parts.map(([k, n]) => (

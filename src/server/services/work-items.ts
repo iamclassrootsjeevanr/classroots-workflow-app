@@ -2,8 +2,8 @@ import { Prisma, type EventSource, type WorkItem, type WorkType } from '@prisma/
 import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
-import { businessMinutesBetween, dueDateToInstant, minutesBetween, normalizeDate, type WorkCalendar } from '@/lib/time';
-import { canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, type ActorContext } from '@/lib/workflow';
+import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
+import { allowedTransitions, canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
@@ -77,22 +77,59 @@ async function enqueue(tx: Tx, itemId: string, wt: WorkType, mod: WorkTypeDefini
 const columnFor = (mod: WorkTypeDefinition, kind: string, field?: string) =>
   mod.sheet?.columns.find(c => c.kind === kind && (field === undefined || (c.kind === 'data' && c.field === field)))?.column;
 
+/** The module's calculated fields (e.g. Days taken) and due date for this data. dueAt undefined = the module doesn't set it. */
+function computed(mod: WorkTypeDefinition, externalKey: string, data: Record<string, unknown>, cal: WorkCalendar): { data: Record<string, unknown>; dueAt?: Date | null } {
+  if (!mod.compute) return { data };
+  const r = mod.compute({ externalKey, data }, withWorkDays(cal, mod.workDays));
+  return { data: r.data, dueAt: r.dueAt === undefined ? undefined : r.dueAt ? dueDateToInstant(r.dueAt, cal.tz) : null };
+}
+
 // ─── Status ─────────────────────────────────────────────────────
 
-async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to: string, now: Date, cal: WorkCalendar, note?: string, expectedVersion?: number) {
+type StatusOpts = { note?: string; expectedVersion?: number; /** Feedback is being given with this move (the Feedback card). */ withFeedback?: boolean };
+
+async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to: string, now: Date, calendar: WorkCalendar, opts: StatusOpts = {}) {
   const mod = requireModule(item.workType.key);
+  const cal = withWorkDays(calendar, mod.workDays);
   if (item.status === to) return;
   if (actor.ctx && !canTransition(mod, item.status, to, actor.ctx)) {
     throw new ForbiddenError(`You can't move this ${mod.itemNoun} from ${statusDef(mod, item.status).label} to ${statusDef(mod, to).label}.`);
   }
-  const patch = stagePatch(mod, item, to, now);
-  await saveItem(tx, item, patch, expectedVersion);
+  const move = actor.ctx ? transitionFor(mod, item.status, to, actor.ctx) : mod.transitions.find(t => t.from === item.status && t.to === to);
+  if (actor.ctx && move?.requires === 'feedback' && !opts.withFeedback) {
+    throw new Error(`Write the feedback first: “${move.label ?? statusDef(mod, to).label}” is in the Feedback card.`);
+  }
+  const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, to, now) };
+  if (move?.stamp?.length || mod.compute) {
+    const data = { ...((item.data ?? {}) as Record<string, unknown>) };
+    const today = dayKey(now, cal.tz);
+    for (const f of move?.stamp ?? []) if (!data[f]) data[f] = today;
+    const c = computed(mod, item.externalKey, data, cal);
+    update.data = mod.dataSchema.parse(c.data) as Prisma.InputJsonValue;
+    if (c.dueAt !== undefined) update.dueAt = c.dueAt;
+  }
+  await saveItem(tx, item, update, opts.expectedVersion);
   await tx.workItemEvent.create({
-    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: to, source: actor.source, note, at: now },
+    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: to, source: actor.source, note: opts.note, at: now },
   });
   await rollInterval(tx, item.id, to, item.assigneeId, now, cal);
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  await notifyStage(tx, item, mod, actor, to);
+}
+
+/** Inbox messages a work type asks for: submitted → the owner (reviewer), approved → the assignee. */
+async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, actor: ChangeActor, to: string) {
+  if (actor.source !== 'APP' || !mod.notifyOn) return;
+  const marks = statusDef(mod, to).marks ?? [];
+  const href = `/w/${item.workType.key}/${item.id}`;
+  const label = statusDef(mod, to).label;
+  if (mod.notifyOn.submitted && marks.includes('submitted') && item.ownerId && item.ownerId !== actor.userId) {
+    await notify(tx, item.ownerId, { kind: 'item.submitted', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  if (mod.notifyOn.approved && marks.includes('approved') && item.assigneeId && item.assigneeId !== actor.userId) {
+    await notify(tx, item.assigneeId, { kind: 'item.approved', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
 }
 
 export async function changeStatus(actor: ChangeActor, itemId: string, to: string, opts: { note?: string; expectedVersion?: number; at?: Date } = {}) {
@@ -100,7 +137,7 @@ export async function changeStatus(actor: ChangeActor, itemId: string, to: strin
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await changeStatusTx(tx, item, actor, to, opts.at ?? new Date(), cal, opts.note, opts.expectedVersion);
+    await changeStatusTx(tx, item, actor, to, opts.at ?? new Date(), cal, { note: opts.note, expectedVersion: opts.expectedVersion });
   });
 }
 
@@ -139,7 +176,7 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
     await changeStatusTx(tx, fresh, { ...actor, ctx: null }, mod.assignedStatus, now, cal);
   } else {
     // Same stage, new owner: split the interval so workload is attributed correctly.
-    await rollInterval(tx, item.id, fresh.status, assigneeId, now, cal, true);
+    await rollInterval(tx, item.id, fresh.status, assigneeId, now, withWorkDays(cal, mod.workDays), true);
   }
   return fresh;
 }
@@ -150,6 +187,31 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     await assignTx(tx, item, actor, assigneeId, new Date(), cal);
+  });
+}
+
+/** Set the item's owner (Journey: its SME reviewer). Same permission as assigning. */
+export async function setOwner(actor: ChangeActor, itemId: string, ownerId: string | null) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    const mod = requireModule(item.workType.key);
+    if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
+    if (item.ownerId === ownerId) return;
+    const now = new Date();
+    const [from, to] = await Promise.all([
+      item.ownerId ? tx.user.findUnique({ where: { id: item.ownerId }, select: { name: true } }) : null,
+      ownerId ? tx.user.findUnique({ where: { id: ownerId }, select: { name: true } }) : null,
+    ]);
+    await saveItem(tx, item, { ownerId });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: mod.labels?.owner ?? 'owner', fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
+    });
+    const col = columnFor(mod, 'owner');
+    if (col) await enqueue(tx, itemId, item.workType, mod, actor, [col]);
+    if (ownerId && ownerId !== actor.userId && actor.source === 'APP') {
+      await notify(tx, ownerId, { kind: 'item.owner', title: `${mod.labels?.owner ?? 'Owner'} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+    }
   });
 }
 
@@ -177,7 +239,7 @@ function coerce(field: FieldDef, value: FieldValue): string | number | null {
   return String(value).trim();
 }
 
-async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date) {
+async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date, cal: WorkCalendar) {
   const mod = requireModule(item.workType.key);
   const data = { ...((item.data ?? {}) as Record<string, unknown>) };
   const update: Prisma.WorkItemUncheckedUpdateInput = {};
@@ -190,6 +252,7 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   for (const [key, raw] of Object.entries(patch)) {
     const field = mod.fields.find(f => f.key === key);
     if (!field) throw new Error(`Unknown field: ${key}`);
+    if (field.computed && actor.source === 'APP') throw new Error(`${field.label} is calculated; change the dates it comes from.`);
     if (actor.ctx && !canEditField(field, actor.ctx)) throw new ForbiddenError(`You can't edit ${field.label}.`);
     const value = coerce(field, raw);
     let before: string | null;
@@ -213,17 +276,20 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   }
   if (!events.length) return;
   if (Object.keys(shared).length) await writeApkFields(tx, item.id, shared);
-  mod.dataSchema.parse(data);
-  await saveItem(tx, item, { ...update, data: data as Prisma.InputJsonValue });
+  const calc = computed(mod, item.externalKey, data, cal);
+  if (calc.dueAt !== undefined) update.dueAt = calc.dueAt;
+  mod.dataSchema.parse(calc.data);
+  await saveItem(tx, item, { ...update, data: calc.data as Prisma.InputJsonValue });
   await tx.workItemEvent.createMany({ data: events });
   await enqueue(tx, item.id, item.workType, mod, actor, columns);
 }
 
 export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>) {
+  const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await updateFieldsTx(tx, item, actor, patch, new Date());
+    await updateFieldsTx(tx, item, actor, patch, new Date(), cal);
   });
 }
 
@@ -301,17 +367,35 @@ export async function addFeedback(
       await notify(tx, item.assigneeId, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
     }
     if (input.requestCorrections) {
-      const target = mod.statuses.find(s => s.category === 'feedback');
       const fresh = await loadItem(tx, itemId);
-      if (target && fresh.status !== target.key) await changeStatusTx(tx, fresh, actor, target.key, now, cal);
+      const target = correctionsMove(mod, fresh.status, actor.ctx)?.to;
+      if (!target) throw new ForbiddenError(`You can't send this ${mod.itemNoun} back from ${statusDef(mod, fresh.status).label}.`);
+      await changeStatusTx(tx, fresh, actor, target, now, cal, { withFeedback: true });
     }
   });
+}
+
+/** The send-back move from this stage (to a "sent back" stage) this person may make, if any. */
+export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: ActorContext | null) {
+  const moves = ctx ? allowedTransitions(mod, from, ctx) : mod.transitions.filter(t => t.from === from);
+  const move = moves.find(t => t.requires === 'feedback') ?? moves.find(t => statusDef(mod, t.to).category === 'feedback');
+  // An admin's "Set <status>" shortcut reads as a send-back here.
+  return move && !mod.transitions.includes(move) ? { ...move, label: `Send back (${statusDef(mod, move.to).label})` } : move;
 }
 
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
   const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: true } });
   if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !hasCap(actor.ctx, 'review')) throw new ForbiddenError();
   await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
+}
+
+/** The creator's reply to one feedback point (empty clears it). Only the item's assignee (or an admin). */
+export async function noteFeedback(actor: ChangeActor, feedbackId: string, note: string) {
+  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId } });
+  if (actor.ctx && !actor.ctx.isAdmin && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work'))) throw new ForbiddenError('Only the person working on it can reply to feedback.');
+  const text = note.trim();
+  await db.feedback.update({ where: { id: feedbackId }, data: { note: text || null, noteById: text ? actor.userId : null, noteAt: text ? new Date() : null } });
+  if (text) await db.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `Reply to feedback: ${text}`, source: actor.source } });
 }
 
 export async function addComment(actor: ChangeActor, itemId: string, body: string) {
@@ -339,14 +423,16 @@ export type NewItem = {
 };
 
 /** Create an item with its first event and stage interval. Used by the admin UI, importer and sheet sync. */
-export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date()) {
+export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date(), cal: WorkCalendar = DEFAULT_CALENDAR) {
   const mod = requireModule(workType.key);
   const status = input.status ?? (input.assigneeId ? mod.assignedStatus : mod.initialStatus);
   const def = statusDef(mod, status);
   const marks = new Set(def.marks ?? []);
   // APK Testing: version and test case facts go to their own tables; the run keeps only its own data.
   const apk = mod.storage === 'apk' ? await prepareApkCreate(tx, workType, input) : null;
-  const data = mod.dataSchema.parse(apk?.data ?? input.data ?? {}) as Prisma.InputJsonValue;
+  const calc = computed(mod, input.externalKey, (apk?.data ?? input.data ?? {}) as Record<string, unknown>, cal);
+  const data = mod.dataSchema.parse(calc.data) as Prisma.InputJsonValue;
+  const dueAt = input.dueAt ?? calc.dueAt ?? null;
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
@@ -362,7 +448,7 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       chapterId: input.chapterId ?? null,
       groupKey: input.groupKey ?? null,
       sortOrder: input.sortOrder ?? 0,
-      dueAt: input.dueAt ?? null,
+      dueAt,
       receivedAt: now,
       // Items that arrive mid-flow get the stages they have evidently passed stamped at arrival time.
       // Imported history is unknown, so those stamps stay empty rather than faking durations.
@@ -397,12 +483,13 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
 export async function createItem(actor: ChangeActor, workTypeId: string, input: NewItem) {
   if (actor.ctx && !hasCap(actor.ctx, 'create')) throw new ForbiddenError('You don’t have permission to add items here.');
   if (actor.ctx && input.assigneeId && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
+  const cal = await workCalendar();
   return db.$transaction(async tx => {
     const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
     const exists = await tx.workItem.findUnique({ where: { workTypeId_externalKey: { workTypeId, externalKey: input.externalKey } } });
     if (exists) throw new Error(`${input.externalKey} already exists`);
-    const item = await createItemTx(tx, wt, actor, input);
+    const item = await createItemTx(tx, wt, actor, input, new Date(), cal);
     const mod = requireModule(wt.key);
     await enqueue(tx, item.id, wt, mod, actor, (mod.sheet?.columns ?? []).filter(c => c.kind !== 'key').map(c => c.column));
     return item;

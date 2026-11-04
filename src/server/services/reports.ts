@@ -1,7 +1,7 @@
 import { businessMinutesBetween, formatDateTime, type WorkCalendar } from '@/lib/time';
 import { flowTimes, kpis, qualityRates, reviewAndCorrection } from '@/lib/analytics-core';
 import { workCalendar } from '../settings';
-import { loadIntervals, loadItems, type Filters, type ItemRow } from './analytics';
+import { calendarFor, loadIntervals, loadItems, type Filters, type ItemRow } from './analytics';
 
 const hours = (m: number | null | undefined) => (m == null ? '' : (m / 60).toFixed(1));
 const pct = (x: number | null) => (x == null ? '' : `${Math.round(x * 100)}%`);
@@ -71,8 +71,8 @@ function summaryRow(label: string, items: ItemRow[], intervals: Awaited<ReturnTy
 /** Summary per work type, combined, and per developer. */
 export async function buildReport(filters: Filters) {
   const now = new Date();
-  const cal = await workCalendar();
   let items = await loadItems(filters);
+  const cal = calendarFor(await workCalendar(), items.map(i => i.workTypeKey));
   if (filters.from || filters.to) {
     const from = filters.from ?? new Date(0);
     const to = filters.to ?? now;

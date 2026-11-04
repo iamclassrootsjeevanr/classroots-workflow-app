@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import type { User } from '@prisma/client';
 import { auth } from './auth';
 import { db } from './db';
+import { refreshStages } from './stages';
 
 export { ForbiddenError } from './errors';
 
@@ -13,6 +14,7 @@ export type CurrentUser = Pick<User, 'id' | 'name' | 'email' | 'image' | 'isAdmi
 export const currentUser = cache(async (): Promise<CurrentUser | null> => {
   const session = await auth();
   if (!session?.user?.id) return null;
+  await refreshStages();
   const user = await db.user.findUnique({
     where: { id: session.user.id },
     select: { id: true, name: true, email: true, image: true, isAdmin: true, capacity: true, active: true, prefs: true },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { apkTesting } from '@/modules/apk-testing/definition';
-import { journeyApplet } from '@/modules/journey-applet/definition';
+import { reviewFlow as journeyApplet } from './fixtures/review-flow';
 import { flowLite, rolePreview } from '@/lib/role-preview';
 
 const journey = flowLite(journeyApplet);

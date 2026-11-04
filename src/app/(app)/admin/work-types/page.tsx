@@ -43,13 +43,22 @@ export default async function WorkTypesPage() {
                   </p>
                   {mod && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {mod.statuses.map(s => (
-                        <StatusBadge key={s.key} label={s.label} color={s.color} />
-                      ))}
+                      {mod.statuses
+                        .filter(s => s.state !== 'skipped')
+                        .map(s => (
+                          <StatusBadge key={s.key} label={s.state === 'paused' ? `${s.label} (paused)` : s.label} color={s.color} />
+                        ))}
                     </div>
                   )}
                 </div>
-                <WorkTypeStateButtons id={wt.id} state={wt.state} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {mod && (
+                    <Link href={`/admin/work-types/${wt.key}/stages`} className="btn-ghost min-h-8 px-3 text-xs">
+                      Stages
+                    </Link>
+                  )}
+                  <WorkTypeStateButtons id={wt.id} state={wt.state} />
+                </div>
               </div>
             </Card>
           );
