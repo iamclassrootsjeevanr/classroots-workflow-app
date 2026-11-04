@@ -2,7 +2,7 @@
 
 Classroots Work now runs the Journey flow from your `journey-answers.md`, with the 35 journeys from your tracker export.
 The points below are still open. Each one says what the app does **until you answer**, so the team can start now.
-Reply in this file (write under each question) and send it back to Jeevan.
+Please reply in this file (write under each question) and send it back to me.
 
 ---
 
@@ -79,18 +79,5 @@ You asked for Claude to update the creation stage from the relay in real time. T
 
 - Do you want this? Which tool runs the relay?
 
----
-
-### For Jeevan: where each answer goes
-
-| Answer | Change | Needs code? |
-|---|---|---|
-| 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
-| 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
-| 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
-| 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
-| 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
-| 3. Closure due rule | Same place | Yes (one line) |
-| 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
-| 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
-| 8. Claude stage updates | API route with a per-relay key | Yes |
+Thanks,
+Jeevan

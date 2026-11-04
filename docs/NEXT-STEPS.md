@@ -209,7 +209,20 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions for Arjun: `docs/JOURNEY-FOLLOW-UP.md`. When he answers: owners and limits of the after-steps go in Admin → Work types → Stages (no code); Days taken half days, Closure due rule and coordinator-per-chapter need code. Later: an API so Claude can move the creation stage from the relay.
+1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions sent to Arjun: `docs/JOURNEY-FOLLOW-UP.md`. Where each of his answers goes (numbers match that file):
+
+   | Answer | Change | Needs code? |
+   |---|---|---|
+   | 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
+   | 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
+   | 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
+   | 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
+   | 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
+   | 3. Closure due rule | Same place | Yes (one line) |
+   | 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
+   | 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
+   | 8. Claude stage updates | API route with a per-relay key | Yes |
+
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
 4. **Checks not yet done:** a real Railway deploy, Google sign-in and email sending with real credentials.

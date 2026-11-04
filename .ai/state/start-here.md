@@ -1,7 +1,7 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-04T12:14:54Z · by: cursor · owner: Jeevan
+Updated: 2026-11-04T12:16:02Z · by: cursor · owner: Jeevan
 
 ## Goal
 Journey rebuilt from the SME's answers (done, PR open). Next: go live on Railway (development, staging, production per
@@ -28,7 +28,7 @@ Journey rebuilt from the SME's answers (done, PR open). Next: go live on Railway
 - `npm run build` passes (run with dev stopped; `.next` cleared, dev restarted). Labels keep acronyms (`src/lib/text.ts` lowerLabel).
 - Users cleaned (local DB, 18 left): removed 16 Journey-demo accounts without history (first-name-only sheet people, Demo
   Client/Coordinator/Lead/Viewer, aswin@demo). Importer `--replace` now also removes no-email people without roles or work.
-- `docs/JOURNEY-FOLLOW-UP.md` ready to send: each question says what the app does until Arjun answers, plus where each answer goes.
+- `docs/JOURNEY-FOLLOW-UP.md` ready to send (written as from Jeevan); where each answer goes is in NEXT-STEPS § 8.1.
 - Docs: README Journey + Configurable stages, NEXT-STEPS § 4/6/8, `docs/JOURNEY-FOLLOW-UP.md` (questions for Arjun), DECISIONS, LEARNINGS.
 
 ## Where things stand
