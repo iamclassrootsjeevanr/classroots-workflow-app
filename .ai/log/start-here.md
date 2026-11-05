@@ -10,3 +10,4 @@
 - 2026-11-04T12:16Z | cursor | Journey follow-up written as from Jeevan; internal routing table moved to NEXT-STEPS § 8.1
 - 2026-11-04T12:28Z | cursor | start.command: no second copy, prisma generate, fresh .next (fixes 500 ENOENT after double-click)
 - 2026-11-04T13:08Z | cursor | Handoff: Journey rebuilt + configurable stages (PR #13 green); next merge, send follow-up to Arjun, deploy
+- 2026-11-05T05:21Z | cursor | Sheet sync direction: app → sheet (default) mirrors the app into the sheet; two-way kept as option

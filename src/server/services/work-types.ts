@@ -35,7 +35,7 @@ export async function setWorkTypeState(id: string, state: WorkTypeState) {
   });
 }
 
-export async function updateSyncConfig(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string }) {
+export async function updateSyncConfig(id: string, sync: NonNullable<WorkTypeConfig['sync']>) {
   const wt = await db.workType.findUniqueOrThrow({ where: { id } });
   const config = { ...((wt.config ?? {}) as WorkTypeConfig), sync };
   return db.workType.update({ where: { id }, data: { config: config as Prisma.InputJsonValue } });

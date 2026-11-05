@@ -53,8 +53,8 @@ You do **not** need a Spreadsheet ID. The script finds the tab by name. (The def
 ## 4. Turn sync on in the app
 
 1. Sign in as admin → **Admin → Sheet sync**.
-2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
-3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
+2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Direction **App → sheet** (the default: the sheet becomes a copy of the app, edits typed in the sheet are overwritten, rows only in the sheet are left alone). Switch sync **on**, **Save**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
+3. You should see "Wrote N cells, read N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
 
 If you see an error:
 
@@ -109,7 +109,7 @@ DATABASE_URL="$PROD_DB" npm run import:journey -- "$HOME/Downloads/<Journey trac
 unset PROD_DB
 ```
 
-Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Leave sheet sync off until app → sheet sync is built.
+Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Then turn APK sheet sync on with direction **App → sheet** (§ 4): the sheet stays a read-only copy for whoever still opens it.
 
 ## 7. Who can sign in, and how
 

@@ -1,5 +1,5 @@
 /**
- * Pure mapping between work items and sheet rows, plus the 3-way diff used by two-way sync.
+ * Pure mapping between work items and sheet rows, the 3-way diff used by two-way sync and the column picker of app → sheet sync.
  * Values are compared as normalized strings (dates as YYYY-MM-DD).
  */
 import type { FieldType, LinkedSource, SheetColumn, WorkTypeDefinition } from '@/modules/types';
@@ -142,6 +142,19 @@ export function diffRow(sheet: SheetValues, snapshot: SheetValues | null, app: R
     else d.conflicts.push(col);
   }
   return d;
+}
+
+/**
+ * App → sheet: the columns to write so the sheet row matches the app. `sheet` is null when the tab has no row for the item (it is
+ * appended, empty cells skipped). Only columns the tab has are written; app-only statuses (null) are left alone.
+ */
+export function mirrorColumns(sheet: SheetValues | null, app: Record<string, string | null>, headers: string[]): string[] {
+  const has = new Set(headers.map(h => h.trim()));
+  return Object.keys(app).filter(col => {
+    const a = app[col];
+    if (a === null || !has.has(col)) return false;
+    return sheet ? sheet[col] !== undefined && sheet[col] !== a : a !== '';
+  });
 }
 
 

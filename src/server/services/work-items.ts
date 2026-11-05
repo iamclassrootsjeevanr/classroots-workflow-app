@@ -18,8 +18,11 @@ export type ChangeActor = { userId: string | null; ctx: ActorContext | null; sou
 
 type ItemWithType = WorkItem & { workType: WorkType };
 
-export type WorkTypeConfig = { sync?: { enabled?: boolean; tab?: string; spreadsheetId?: string } };
+/** `app-to-sheet` (default): the sheet mirrors the app and sheet edits are overwritten. `two-way`: sheet edits are pulled in. */
+export type SyncDirection = 'app-to-sheet' | 'two-way';
+export type WorkTypeConfig = { sync?: { enabled?: boolean; tab?: string; spreadsheetId?: string; direction?: SyncDirection } };
 export const workTypeConfig = (wt: WorkType) => (wt.config ?? {}) as WorkTypeConfig;
+export const syncDirection = (wt: WorkType): SyncDirection => workTypeConfig(wt).sync?.direction ?? 'app-to-sheet';
 
 async function loadItem(tx: Tx, itemId: string): Promise<ItemWithType> {
   return tx.workItem.findUniqueOrThrow({ where: { id: itemId }, include: { workType: true } });

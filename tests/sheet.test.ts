@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { reviewFlow as mod } from './fixtures/review-flow';
-import { diffRow, itemSheetValues, sheetRowValues, statusFromSheet } from '@/lib/sheet-core';
+import { diffRow, itemSheetValues, mirrorColumns, sheetRowValues, statusFromSheet } from '@/lib/sheet-core';
 import { dueDateToInstant } from '@/lib/time';
 
 describe('3-way diff', () => {
@@ -33,6 +33,29 @@ describe('3-way diff', () => {
   it('never pushes app-only statuses', () => {
     expect(diffRow(base, base, { 'Applet Status': null, Developers: 'Jeevan' })).toEqual({ fromSheet: [], toSheet: [], conflicts: [] });
     expect(diffRow({ ...base, 'Applet Status': 'Done' }, base, { 'Applet Status': null, Developers: 'Jeevan' }).fromSheet).toEqual(['Applet Status']);
+  });
+});
+
+describe('app → sheet mirror', () => {
+  const headers = ['Key', 'Applet Status', 'Developers', 'Notes'];
+
+  it('overwrites cells edited in the sheet and clears cells cleared in the app', () => {
+    const sheet = { 'Applet Status': 'Done', Developers: 'Jeevan', Notes: 'typed in the sheet' };
+    expect(mirrorColumns(sheet, { 'Applet Status': 'WIP', Developers: 'Jeevan', Notes: '' }, headers)).toEqual(['Applet Status', 'Notes']);
+  });
+
+  it('writes nothing when the row already matches', () => {
+    const v = { 'Applet Status': 'WIP', Developers: 'Jeevan' };
+    expect(mirrorColumns(v, v, headers)).toEqual([]);
+  });
+
+  it('appends a missing row with its non-empty cells only', () => {
+    expect(mirrorColumns(null, { 'Applet Status': 'WIP', Developers: '', Notes: 'x' }, headers)).toEqual(['Applet Status', 'Notes']);
+  });
+
+  it('skips columns the tab does not have and app-only statuses', () => {
+    expect(mirrorColumns({ Developers: 'Swathi' }, { 'Applet Status': null, Developers: 'Jeevan', Priority: 'High' }, headers)).toEqual(['Developers']);
+    expect(mirrorColumns(null, { 'Applet Status': null, Priority: 'High' }, headers)).toEqual([]);
   });
 });
 

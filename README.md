@@ -2,7 +2,7 @@
 
 Work tracking, review and analytics for Classroots teams.
 
-Every piece of work moves through a defined workflow, and every step is timestamped and attributed. The app then turns that history into dashboards: workload per person, time spent in each stage, review rounds, delays and stuck items. A Google Sheet can be kept in two-way sync, so teams who prefer the spreadsheet can keep using it.
+Every piece of work moves through a defined workflow, and every step is timestamped and attributed. The app then turns that history into dashboards: workload per person, time spent in each stage, review rounds, delays and stuck items. A Google Sheet can be kept as a copy of the app (or in two-way sync), so teams who prefer the spreadsheet can keep reading it.
 
 Two work types ship today:
 
@@ -29,7 +29,7 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 8. [People, roles and access](#people-roles-and-access)
 9. [Signing in (Google for office staff, password for everyone else)](#signing-in)
 10. [Appearance: theme, text size, density, sidebar](#appearance-theme-text-size-density-sidebar)
-11. [Google Sheet two-way sync](#google-sheet-two-way-sync)
+11. [Google Sheet sync](#google-sheet-sync)
 12. [Add a new kind of work](#add-a-new-kind-of-work)
 13. [Database and migrations](#database-and-migrations)
 14. [Tests and checks](#tests-and-checks)
@@ -232,7 +232,7 @@ src/
     services/analytics.ts          Dashboard data
     services/reports.ts            Report tables, CSV / Excel export
     services/work-types.ts         Enable / pause / archive work types; system roles
-    sync/google-sheet.ts           Two-way sync engine
+    sync/google-sheet.ts           Sync engine (app → sheet, two-way)
     sync/apps-script.ts            HTTP client for Code.gs
     jobs.ts                        Scheduled jobs (sync + daily workload snapshot)
     settings.ts                    Work calendar (business hours, holidays)
@@ -482,7 +482,7 @@ Every item row has **Edit** (opens that item's fields) and **Delete** (asks firs
 
 ---
 
-## Google Sheet two-way sync
+## Google Sheet sync
 
 > **No spreadsheet ID needed.** `apps-script/Code.gs` finds a work type's tab by name: first in the default tracker, then in any Google Sheet the script owner can open (it remembers where it found it). After pasting a new `Code.gs`, deploy a new version and approve the Drive permission once. To pin a tab to one sheet, add the script property `TAB_SHEET::<tab name>` with the sheet's ID.
 >
@@ -495,11 +495,16 @@ Postgres is the source of truth. Sync is **off** until an admin turns it on, so 
 1. Open the Google Sheet → **Extensions → Apps Script**. Replace the code with `apps-script/Code.gs`.
 2. **Project Settings → Script properties**: add `SYNC_TOKEN` with the same value as in `.env`.
 3. **Deploy → Manage deployments → ✎ → New version → Deploy.** Put the `/exec` URL in `APPS_SCRIPT_URL`.
-4. In the app: **Admin → Sheet sync**. Tick **Two-way sync**, check the tab name, **Save**, then **Sync now**.
+4. In the app: **Admin → Sheet sync**. Switch on **Sync with Google Sheet**, pick the **Direction**, check the tab name, **Save**, then **Sync now**.
 
 One deployment can serve several trackers. For a work type whose data lives in another spreadsheet (for example APK Testing), paste that sheet's **Spreadsheet ID** on the Sheet sync page. The script owner needs access to that sheet. Keys can be composite: APK Testing matches rows on `APK Version` + `Test Case ID`.
 
-### What happens on each sync
+### Direction
+
+- **App → sheet** (default): the sheet is a copy of the app. Each sync reads the tab, queues every mapped cell that differs from the app (edits typed in the sheet are overwritten, cells cleared in the app are cleared), appends a row for every item the tab lacks, then pushes. Rows only in the sheet are left alone and counted. Nothing in the app changes and no conflicts are logged. Columns the tab doesn't have and app-only statuses are skipped.
+- **Two-way**: as below.
+
+### What happens on each two-way sync
 
 1. **Push:** queued app changes are written to the sheet. New rows are appended, and an `App Updated At` column is stamped.
 2. **Pull:** every row is read and compared three ways: the sheet now, the last agreed snapshot, and the app now.
@@ -614,7 +619,7 @@ This starts three services:
 No seed step is needed:
 - the first sign-in from an `ADMIN_EMAILS` address creates that admin
 - **Admin → Work types → Enable** creates a work type
-- turning on sync pulls every row in
+- turning on **two-way** sync pulls every row in (the default, app → sheet, only writes to the sheet)
 
 To load the Excel files instead, run the import scripts from a checkout whose `DATABASE_URL` points at the server database.
 

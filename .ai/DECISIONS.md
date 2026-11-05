@@ -101,3 +101,8 @@ Decision: key stays `journey-applet`. One stage line: Allocated → 3a Spine →
 Why: Arjun's journey-answers.md (docs/JOURNEY-BRIEF.md). Rejected: separate work types per phase (one row per journey was his answer).
 By: cursor
 
+
+## 2026-11-05 — Sheet sync has a direction; app → sheet is the default
+Decision: `config.sync.direction` = `'app-to-sheet'` (default when unset) or `'two-way'`, picked under Admin → Sheet sync. App → sheet (`queueMirror` in src/server/sync/google-sheet.ts, column picker `mirrorColumns` in src/lib/sheet-core.ts): read the tab, queue every mapped cell that differs from the app (sheet edits overwritten, '' clears), queue the non-empty cells of items the tab lacks (appended; archived items skipped), push. Rows only in the sheet are left alone (counted in SyncState.missing); `created` = rows to append; nothing in the app changes, `sheetMissing` is cleared. A cell already queued with the same value is not re-queued, so its attempts still reach FAILED. Two-way is unchanged.
+Why: after go-live the team updates work in the app; the APK sheet stays as a copy for readers (2026-11-03 sign-in decision: "APK sheet sync will be app → sheet only"). Kept two-way as an option rather than deleting it.
+By: cursor

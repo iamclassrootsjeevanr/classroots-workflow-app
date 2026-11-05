@@ -10,8 +10,9 @@ import {
   updateSyncAction,
   type ActionResult,
 } from '@/app/actions';
+import type { SyncDirection } from '@/server/services/work-items';
 import { ActionMessage, type PersonOption } from './controls';
-import { Switch } from './form';
+import { Segmented, Switch } from './form';
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -139,9 +140,9 @@ export function EnableModuleButton({ moduleKey }: { moduleKey: string }) {
   );
 }
 
-export function SyncSettings({ id, enabled, tab, spreadsheetId, configured }: { id: string; enabled: boolean; tab: string; spreadsheetId: string; configured: boolean }) {
+export function SyncSettings({ id, enabled, tab, spreadsheetId, direction, configured }: { id: string; enabled: boolean; tab: string; spreadsheetId: string; direction: SyncDirection; configured: boolean }) {
   const { pending, result, exec } = useAction();
-  const [v, setV] = useState({ enabled, tab, spreadsheetId });
+  const [v, setV] = useState({ enabled, tab, spreadsheetId, direction });
   return (
     <form
       className="flex flex-wrap items-end gap-3"
@@ -151,17 +152,34 @@ export function SyncSettings({ id, enabled, tab, spreadsheetId, configured }: { 
       }}
     >
       <div className="w-full overflow-hidden rounded-xl border border-line">
-        <Switch checked={v.enabled} disabled={!configured} onChange={enabled => setV({ ...v, enabled })} label="Two-way sync with Google Sheet" help={configured ? undefined : 'Set APPS_SCRIPT_URL and SYNC_TOKEN first'} />
+        <Switch checked={v.enabled} disabled={!configured} onChange={enabled => setV({ ...v, enabled })} label="Sync with Google Sheet" help={configured ? undefined : 'Set APPS_SCRIPT_URL and SYNC_TOKEN first'} />
+      </div>
+      <div className="w-full">
+        <span className="label">Direction</span>
+        <Segmented
+          label="Direction"
+          value={v.direction}
+          onChange={direction => setV({ ...v, direction })}
+          options={[
+            { value: 'app-to-sheet', label: 'App → sheet' },
+            { value: 'two-way', label: 'Two-way' },
+          ]}
+        />
+        <p className="mt-1 text-xs text-muted">
+          {v.direction === 'app-to-sheet'
+            ? 'The sheet mirrors the app. Edits made in the sheet are overwritten; rows only in the sheet are left alone.'
+            : 'Edits made in the sheet are pulled into the app and new sheet rows become items. If both change a cell, the app wins.'}
+        </p>
       </div>
       <label className="min-w-56">
         <span className="label">Sheet tab</span>
         <input className="input" value={v.tab} onChange={e => setV({ ...v, tab: e.target.value })} />
       </label>
-      <label className="min-w-72 flex-1">
+      <label className="min-w-full flex-1 sm:min-w-72">
         <span className="label">Spreadsheet ID (blank = the script’s default sheet)</span>
         <input className="input font-mono text-xs" value={v.spreadsheetId} placeholder="from the sheet URL: /spreadsheets/d/<ID>/edit" onChange={e => setV({ ...v, spreadsheetId: e.target.value })} />
       </label>
-      <button className="btn-ghost" disabled={pending || (v.enabled === enabled && v.tab === tab && v.spreadsheetId === spreadsheetId)}>
+      <button className="btn-ghost" disabled={pending || (v.enabled === enabled && v.tab === tab && v.spreadsheetId === spreadsheetId && v.direction === direction)}>
         Save
       </button>
       <ActionMessage result={result} />

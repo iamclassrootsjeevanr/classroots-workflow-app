@@ -1,6 +1,10 @@
 /**
- * Two-way sync between Postgres (primary) and a Google Sheet tab.
+ * Sync between Postgres (primary) and a Google Sheet tab.
  *
+ * App → sheet (default): every cell where the sheet differs from the app is queued and pushed, so sheet edits are overwritten;
+ * items without a row are appended; rows only in the sheet are left alone. Nothing in the app changes.
+ *
+ * Two-way:
  * 1. push: pending SyncOutbox cells → sheet (rows created in the app are appended)
  * 2. pull: every sheet row → 3-way diff (sheet now / last snapshot / app now)
  *      sheet-only change → applied in the app as a SHEET event
@@ -12,18 +16,32 @@
 import type { Prisma, WorkType } from '@prisma/client';
 import { requireModule } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
-import { diffRow, itemSheetValues, keyColumns, linkedPayloads, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
+import { diffRow, itemSheetValues, keyColumns, linkedPayloads, mirrorColumns, norm, rowKey, sheetRowValues, statusFromSheet, type SheetValues } from '@/lib/sheet-core';
 import { dueDateToInstant } from '@/lib/time';
 import { db } from '../db';
 import { workCalendar } from '../settings';
-import { createItemTx, internals, workTypeConfig, type ChangeActor, type NewItem } from '../services/work-items';
+import { createItemTx, internals, syncDirection, workTypeConfig, type ChangeActor, type NewItem, type SyncDirection } from '../services/work-items';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '../apk/store';
-import { batchUpdate, ensureLinked, readSheet } from './apps-script';
+import { batchUpdate, ensureLinked, readSheet, type SheetRead } from './apps-script';
 
 const SHEET_ACTOR: ChangeActor = { userId: null, ctx: null, source: 'SHEET' };
 
-export type SyncResult = { workType: string; pushed: number; pulled: number; created: number; conflicts: number; missing: number; failedPushes: number; skipped?: string };
+/**
+ * `created` / `missing` depend on the direction. Two-way: items created from new sheet rows / items whose row is gone.
+ * App → sheet: rows queued to be appended to the sheet / sheet rows with no item (left alone).
+ */
+export type SyncResult = {
+  workType: string;
+  direction: SyncDirection;
+  pushed: number;
+  pulled: number;
+  created: number;
+  conflicts: number;
+  missing: number;
+  failedPushes: number;
+  skipped?: string;
+};
 
 /**
  * Resolves people by display name (sheet columns hold names). Unknown names become placeholder people
@@ -224,11 +242,53 @@ async function applyFromSheet(
   await tx.workItemEvent.createMany({ data: events });
 }
 
+/** App → sheet: queue every cell where the sheet differs from the app, and every cell of items the sheet has no row for. */
+async function queueMirror(wt: WorkType, mod: WorkTypeDefinition, sheet: SheetRead, result: SyncResult) {
+  const rows = new Map<string, SheetValues>();
+  for (const row of sheet.rows) {
+    const key = rowKey(mod, row);
+    if (key && !rows.has(key)) rows.set(key, sheetRowValues(mod, row));
+  }
+  const [items, pending] = await Promise.all([
+    db.workItem.findMany({ where: { workTypeId: wt.id }, include: { assignee: { select: { name: true } }, owner: { select: { name: true } } } }),
+    db.syncOutbox.findMany({ where: { status: 'PENDING', item: { workTypeId: wt.id } }, select: { itemId: true, column: true, value: true } }),
+  ]);
+  // Already queued with the same value: keep it, so its attempts count (and FAILED after 10) is not reset every run.
+  const queued = new Map(pending.map(p => [`${p.itemId}\u0000${p.column}`, p.value]));
+  const keys = new Set(items.map(i => i.externalKey));
+  result.pulled = rows.size;
+  result.missing = [...rows.keys()].filter(k => !keys.has(k)).length;
+
+  for (const item of items) {
+    const values = rows.get(item.externalKey) ?? null;
+    if (!values && item.archivedAt) continue;
+    const app = itemSheetValues(mod, {
+      title: item.title,
+      status: item.status,
+      groupKey: item.groupKey,
+      dueAt: item.dueAt,
+      data: (item.data ?? {}) as Record<string, unknown>,
+      assigneeName: item.assignee?.name ?? null,
+      ownerName: item.owner?.name ?? null,
+    });
+    const all = mirrorColumns(values, app, sheet.headers);
+    if (!values && all.length) result.created++;
+    const cols = all.filter(col => queued.get(`${item.id}\u0000${col}`) !== app[col]);
+    if (!cols.length) continue;
+    await db.$transaction([
+      db.syncOutbox.deleteMany({ where: { itemId: item.id, column: { in: cols }, status: 'PENDING' } }),
+      db.syncOutbox.createMany({ data: cols.map(column => ({ itemId: item.id, column, value: app[column]! })) }),
+    ]);
+  }
+  await db.workItem.updateMany({ where: { workTypeId: wt.id, sheetMissing: true }, data: { sheetMissing: false } });
+}
+
 export async function syncWorkType(workTypeId: string, opts: { force?: boolean } = {}): Promise<SyncResult> {
   const wt = await db.workType.findUniqueOrThrow({ where: { id: workTypeId } });
   const mod = requireModule(wt.key);
   const cfg = workTypeConfig(wt);
-  const result: SyncResult = { workType: wt.name, pushed: 0, pulled: 0, created: 0, conflicts: 0, missing: 0, failedPushes: 0 };
+  const direction = syncDirection(wt);
+  const result: SyncResult = { workType: wt.name, direction, pushed: 0, pulled: 0, created: 0, conflicts: 0, missing: 0, failedPushes: 0 };
   if (!mod.sheet) return { ...result, skipped: 'module has no sheet mapping' };
   if (!cfg.sync?.enabled) return { ...result, skipped: 'sync disabled' };
   if (wt.state !== 'ACTIVE' && !opts.force) return { ...result, skipped: `work type ${wt.state.toLowerCase()}` };
@@ -241,6 +301,14 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
     let sheet = await readSheet(tab, spreadsheetId);
     if (!sheet.complete) {
       throw new Error('The deployed Apps Script is the old version. Paste apps-script/Code.gs, add the SYNC_TOKEN script property, and deploy a new version.');
+    }
+    if (direction === 'app-to-sheet') {
+      await queueMirror(wt, mod, sheet, result);
+      const p = await push(wt, mod, tab, spreadsheetId);
+      result.pushed = p.pushed;
+      result.failedPushes = p.failed;
+      await saveResult(workTypeId, result);
+      return result;
     }
     const p = await push(wt, mod, tab, spreadsheetId);
     result.pushed = p.pushed;
@@ -312,18 +380,7 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
       await db.workItem.updateMany({ where: { id: { in: missing } }, data: { sheetMissing: true } });
     }
 
-    await db.syncState.update({
-      where: { workTypeId },
-      data: {
-        lastSuccessAt: new Date(),
-        lastError: result.failedPushes ? `${result.failedPushes} cell(s) failed to push` : null,
-        pulled: result.pulled,
-        created: result.created,
-        pushed: result.pushed,
-        conflicts: result.conflicts,
-        missing: result.missing,
-      },
-    });
+    await saveResult(workTypeId, result);
     return result;
   } catch (e) {
     let message = e instanceof Error ? e.message : String(e);
@@ -334,6 +391,21 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
     await db.syncState.update({ where: { workTypeId }, data: { lastError: message } });
     throw e instanceof Error ? Object.assign(e, { message }) : new Error(message);
   }
+}
+
+async function saveResult(workTypeId: string, result: SyncResult) {
+  await db.syncState.update({
+    where: { workTypeId },
+    data: {
+      lastSuccessAt: new Date(),
+      lastError: result.failedPushes ? `${result.failedPushes} cell(s) failed to push` : null,
+      pulled: result.pulled,
+      created: result.created,
+      pushed: result.pushed,
+      conflicts: result.conflicts,
+      missing: result.missing,
+    },
+  });
 }
 
 export async function syncAll(opts: { force?: boolean } = {}) {

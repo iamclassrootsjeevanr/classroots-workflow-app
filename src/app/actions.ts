@@ -9,7 +9,7 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
@@ -466,11 +466,12 @@ export async function setWorkTypeStateAction(id: string, state: WorkTypeState) {
   });
 }
 
-export async function updateSyncAction(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string }) {
+export async function updateSyncAction(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string; direction: SyncDirection }) {
   return run(async () => {
     await requireAdmin();
-    await updateSyncConfig(id, { enabled: sync.enabled, tab: sync.tab.trim(), spreadsheetId: (sync.spreadsheetId ?? '').trim() });
-    return sync.enabled ? 'Sync on' : 'Sync off';
+    const direction: SyncDirection = sync.direction === 'two-way' ? 'two-way' : 'app-to-sheet';
+    await updateSyncConfig(id, { enabled: sync.enabled, tab: sync.tab.trim(), spreadsheetId: (sync.spreadsheetId ?? '').trim(), direction });
+    return sync.enabled ? `Sync on (${direction === 'two-way' ? 'two-way' : 'app → sheet'})` : 'Sync off';
   });
 }
 
@@ -480,6 +481,9 @@ export async function syncNowAction(workTypeId: string) {
     const r = await syncWorkType(workTypeId, { force: true });
     await snapshotWorkload();
     if (r.skipped) return `Skipped: ${r.skipped}`;
+    if (r.direction === 'app-to-sheet') {
+      return `Wrote ${r.pushed} cells, read ${r.pulled} rows${r.created ? `, ${r.created} rows to add` : ''}${r.missing ? `, ${r.missing} rows only in the sheet (left alone)` : ''}`;
+    }
     return `Pushed ${r.pushed}, read ${r.pulled} rows, created ${r.created}, conflicts ${r.conflicts}${r.missing ? `, ${r.missing} missing from sheet` : ''}`;
   });
 }
