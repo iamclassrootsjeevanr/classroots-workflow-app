@@ -9,6 +9,24 @@ type Client = Prisma.TransactionClient | typeof db;
 export type NewNotification = { kind: string; title: string; body?: string | null; href?: string | null; data?: Prisma.InputJsonValue };
 
 /** Put a message in someone's inbox. Works inside a transaction. */
+/** Active people who assign work in this work type and steer this group (members limited to other groups are left out). */
+export async function stewardIds(client: Client, workTypeId: string, groupKey: string | null): Promise<string[]> {
+  const users = await client.user.findMany({
+    where: {
+      active: true,
+      memberships: {
+        some: {
+          workTypeId,
+          roles: { some: { role: { capAssign: true, canEdit: true } } },
+          OR: [{ groupKeys: { isEmpty: true } }, ...(groupKey ? [{ groupKeys: { has: groupKey } }] : [])],
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return users.map(u => u.id);
+}
+
 export async function notify(client: Client, userId: string, n: NewNotification) {
   return client.notification.create({ data: { userId, kind: n.kind, title: n.title, body: n.body ?? null, href: n.href ?? null, data: n.data ?? {} } });
 }

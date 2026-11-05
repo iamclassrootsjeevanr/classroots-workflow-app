@@ -9,7 +9,7 @@ import { db } from '@/server/db';
 import { loadVersionOptions } from '@/server/apk/queries';
 import { queryItemsPage, type ItemsFilters } from '@/server/services/items-query';
 import { loadWorkTypePage } from '@/server/work-type-page';
-import { assignablePeople, deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
+import { assignableItemsFor, assignablePeople, deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
 
 type Search = ItemsFilters & { page?: string };
 
@@ -25,13 +25,14 @@ const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeri
 export default async function ItemsPage({ params, searchParams }: { params: Promise<{ workType: string }>; searchParams: Promise<Search> }) {
   const { workType: key } = await params;
   const sp = await searchParams;
-  const { user, access, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
+  const { user, access, wtAccess, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
 
   const shown = await queryItemsPage(mod, scope, sp, user.id, Number(sp.page));
-  const [options, edits, deletable, people, owners, devs, groups, gradeRows] = await Promise.all([
+  const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows] = await Promise.all([
     editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? deletableItemsFor(user, shown.rows) : Promise.resolve(undefined),
+    editable ? assignableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     can('assign') && editable ? assignablePeople(lite, [key]) : Promise.resolve(undefined),
     db.user.findMany({ where: { ownedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.user.findMany({ where: { assignedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -60,7 +61,16 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
           {mod.versions ? (
             <AddTestCaseButton workTypeId={wt.id} versions={versions} assigneeId={canTest ? user.id : undefined} />
           ) : (
-            <NewItemForm workTypeId={wt.id} noun={mod.itemNoun} smes={smeOptions.map(u => ({ id: u.id, name: u.name! }))} developers={people ?? []} />
+            <NewItemForm
+              workTypeId={wt.id}
+              noun={mod.itemNoun}
+              smes={smeOptions.map(u => ({ id: u.id, name: u.name! }))}
+              developers={people ?? []}
+              labels={mod.labels}
+              groups={mod.groupFromKey ? (wtAccess.groupKeys && !access.isAdmin ? [...wtAccess.groupKeys].sort() : groupNames) : undefined}
+              keyExample={mod.keyExample}
+              showDue={!mod.fields.some(f => f.key === 'dueAt' && f.computed)}
+            />
           )}
         </div>
       )}
@@ -79,7 +89,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       />
 
       <Card>
-        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
+        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} tz={tz} labels={mod.labels} table={mod.table} empty="No items match these filters." />
         <Pager basePath={`/w/${key}/items`} params={sp as Record<string, string | undefined>} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
     </>

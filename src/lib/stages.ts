@@ -48,6 +48,19 @@ export function nextActiveAfter(statuses: StatusDef[], key: string): string | un
   return main.slice(i + 1).find(s => s.state !== 'skipped')?.key;
 }
 
+/** Where a move into `to` lands for this item: stages whose `skipWhen` matches its data are passed on to the next stage. */
+export function landingStage(statuses: StatusDef[], to: string, data: Record<string, unknown>): string {
+  let at = to;
+  for (let i = 0; i < statuses.length; i++) {
+    const s = statuses.find(x => x.key === at);
+    if (!s?.skipWhen || String(data[s.skipWhen.field] ?? '') !== s.skipWhen.equals) return at;
+    const next = nextActiveAfter(statuses, at);
+    if (!next) return at;
+    at = next;
+  }
+  return at;
+}
+
 function resolveTarget(statuses: StatusDef[], to: string): string | undefined {
   if (to.startsWith(NEXT_TO)) return nextActiveAfter(statuses, to.slice(NEXT_TO.length));
   const s = statuses.find(x => x.key === to);
@@ -101,7 +114,7 @@ export function applyStageConfig(base: WorkTypeDefinition, rows: StageRow[]): Wo
     if (!s.next || (s.line ?? 'main') !== 'main') continue;
     const to = nextActiveAfter(statuses, s.key);
     if (!to || explicit.some(t => t.from === s.key && t.to === to)) continue;
-    generated.push({ from: s.key, to, by: [...s.next.by], label: s.next.label, ...(s.next.stamp ? { stamp: s.next.stamp } : {}) });
+    generated.push({ from: s.key, to, by: [...s.next.by], label: s.next.label, ...(s.next.stamp ? { stamp: s.next.stamp } : {}), ...(s.next.set ? { set: s.next.set } : {}) });
   }
   const paused = new Set(statuses.filter(s => s.state === 'paused').map(s => s.key));
   const transitions = [...explicit, ...generated].filter(t => !paused.has(t.from));

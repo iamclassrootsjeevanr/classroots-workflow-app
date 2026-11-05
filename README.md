@@ -2,13 +2,13 @@
 
 Work tracking, review and analytics for Classroots teams.
 
-Every piece of work moves through a defined workflow, and every step is timestamped and attributed. The app then turns that history into dashboards: workload per person, time spent in each stage, review rounds, delays and stuck items. A Google Sheet can be kept in two-way sync, so teams who prefer the spreadsheet can keep using it.
+Every piece of work moves through a defined workflow, and every step is timestamped and attributed. The app then turns that history into dashboards: workload per person, time spent in each stage, review rounds, delays and stuck items. A Google Sheet can be kept as a copy of the app (or in two-way sync), so teams who prefer the spreadsheet can keep reading it.
 
 Two work types ship today:
 
 | Work type | What one item is | Flow |
 | --- | --- | --- |
-| **Journey** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
+| **Journey** | One SME journey built with Claude, reviewed by an SME, then taken to prod | Allocated → In creation (3a Spine … Published) → Review ↺ Changes asked → Closed → after-steps → Done |
 | **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
@@ -29,7 +29,7 @@ Works on phones, tablets and desktops: tables turn into cards on small screens a
 8. [People, roles and access](#people-roles-and-access)
 9. [Signing in (Google for office staff, password for everyone else)](#signing-in)
 10. [Appearance: theme, text size, density, sidebar](#appearance-theme-text-size-density-sidebar)
-11. [Google Sheet two-way sync](#google-sheet-two-way-sync)
+11. [Google Sheet sync](#google-sheet-sync)
 12. [Add a new kind of work](#add-a-new-kind-of-work)
 13. [Database and migrations](#database-and-migrations)
 14. [Tests and checks](#tests-and-checks)
@@ -173,6 +173,7 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `APPS_SCRIPT_URL` | for sync | `/exec` URL of the deployed `apps-script/Code.gs`. |
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
 | `CRON_SECRET` | for jobs | Protects `/api/cron/run`. The scheduler and Vercel Cron send it as a Bearer token. |
+| `RELAY_KEY` | for the relay | Bearer key of the journey relay (Claude) for `/api/relay`: read journeys, set Creation stage, nothing else. Empty = off. |
 | `DEMO_PASSWORD` | local only | Password for `npm run demo:users` accounts. |
 
 ---
@@ -205,7 +206,7 @@ prisma/
   seed.ts                          Base data: system roles, admins, work calendar, work types
 scripts/
   local-db.mjs                     Local embedded Postgres (`npm run db:start`)
-  import-xlsx.ts                   Import the Journey tracker workbook
+  import-journey-csv.ts            Import the Journey tracker (Slack list CSV) with the SME's corrections
   import-apk-xlsx.ts               Import the APK Testing tracker workbook
   demo-users.ts                    Demo sign-ins
   set-password.ts                  Set a password from the terminal
@@ -232,7 +233,7 @@ src/
     services/analytics.ts          Dashboard data
     services/reports.ts            Report tables, CSV / Excel export
     services/work-types.ts         Enable / pause / archive work types; system roles
-    sync/google-sheet.ts           Two-way sync engine
+    sync/google-sheet.ts           Sync engine (app → sheet, two-way)
     sync/apps-script.ts            HTTP client for Code.gs
     jobs.ts                        Scheduled jobs (sync + daily workload snapshot)
     settings.ts                    Work calendar (business hours, holidays)
@@ -309,17 +310,31 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 ### Journey (`src/modules/journey-applet/definition.ts`)
 
-One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`).
+One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`, `docs/JOURNEY-FOLLOW-UP.md`).
 
-`Allocated → 3a Spine → 3b Script → 4 Build → 5 Ship → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
+`Allocated → In creation → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
 
-- **SME creator** (the journey's assignee) moves it through creation, submits it and makes the corrections. Submit stamps *Submitted for review*.
-- **SME reviewer** (the journey's owner; actor `OWNER`) starts the review (stamps *Review date*), asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. Other reviewers can't act on it.
-- **Coordinator** adds journeys, picks creator and reviewer, edits details and moves the after-steps. **Program manager**: dashboards and reports, view only.
-- **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted); **Closure due** = Review date + 1 working day, stored as the due date. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
-- Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day.
-- Inbox: assigned, submitted (to the reviewer), feedback, review closed (to the creator), overdue past Closure due (reviewer + coordinators, from the cron job).
-- The list shows the Slack tracker's columns (Creation stage, Review state, Final status are worked out from the stage). No Google Sheet sync.
+**Creation stage is a field, not a stage of the line** (`3a · Spine → 3b · Script → 4 · Build → 5 · Ship → Published`, published = in UAT). A creator can submit for review at any creation stage and keeps building during the review, so the two are never worked out from each other. It sits beside Status on the journey page (`headerFields`), is changed by the creator, a coordinator or Claude (relay API below), and every change is in the history with its time. **Start** sets it to 3a · Spine; setting it on an Allocated journey moves that journey to In creation (`fieldMoves`).
+
+- **SME creator** (the journey's assignee) sets the creation stage, submits, makes the corrections and does the last look after design (½ day; can send it back to Design standardization). Submit stamps *Submitted for review* and *Submitted in* (first / second half, from the clock: before 14:30 = first half).
+- **SME reviewer** (the journey's owner; actor `OWNER`) starts the review, asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. *Review date* is stamped when the review is done: feedback sent or review closed. Other reviewers can't act on it or give it feedback (`canGiveFeedback`). A journey submitted with no SME reviewer sends its chapter's coordinators an Inbox message to pick one.
+- **Coordinator** adds journeys, picks creator and reviewer, edits details, marks *Needs video replacement* (No = the journey skips Video replacement, `skipWhen`), moves the after-steps, and sends a journey back from User testing and QA to Changes asked (with feedback). A coordinator can be limited to their own chapters (People & access → Chapters they steer); Arjun G04C05, Devjyoti G05C02, Vinay G06C07; Aswin is admin. **Program manager**: dashboards and reports, view only.
+- **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted), where the pick-up day counts ½ if picked up in its second half and the submit day ½ if submitted in its first half (*Picked up in* / *Submitted in*). **Closure due** = Review date + 1 working day, stored as the due date. Holidays are not counted; the coordinator corrects a date by hand. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
+- Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day, last look ½ day.
+- Inbox: assigned, submitted (to the reviewer, or to the chapter's coordinators when there is none), feedback, review closed (to the creator), overdue past Closure due (reviewer + the chapter's coordinators, from the cron job).
+- Who sees and does what (brief A4, tested in `tests/journey-roles.test.ts`): everyone sees every journey. **SME creator**: their own journeys' creation stage, dates, halves, links and moves; read and comment elsewhere. **SME reviewer**: their own journeys' review moves, feedback, dates and review date. **Coordinator**: in their chapters, assign creator and reviewer, add (the chapter comes from the key), edit every detail, delete, after-step moves; elsewhere read only. **Program manager**: Dashboard, Journeys (view only), Reports, Export. New journeys: the form offers only the coordinator's chapters and refuses a key from another chapter.
+- The list shows the Slack tracker's columns (Review state and Final status are worked out from the stage). No Google Sheet sync.
+
+**Journey relay API (Claude).** The relay ([buildjourneyrelay](https://buildjourneyrelay.classrootsedu.in), driven from Claude Desktop) keeps the creation stage in step. It sends `Authorization: Bearer <RELAY_KEY>`; the key can only read journeys and set their Creation stage, and its changes show as **Claude** in the history (event source `RELAY`). No key set = the API is off.
+
+```bash
+curl -H "Authorization: Bearer $RELAY_KEY" "$APP_URL/api/relay/journeys?chapter=G04C05"     # every journey with its creation stage
+curl -H "Authorization: Bearer $RELAY_KEY" "$APP_URL/api/relay/journeys/G04C05ST1J1"         # one journey
+curl -X POST -H "Authorization: Bearer $RELAY_KEY" -H "Content-Type: application/json" \
+  -d '{"stage": "4 Build", "at": "2026-11-05T10:30:00+05:30"}' "$APP_URL/api/relay/journeys/G04C05ST1J1/creation-stage"
+```
+
+`stage` accepts `3a Spine`, `4 · Build`, `build`, `Published` and the like; `at` (optional) is when it changed on the relay: not in the future, at most 31 days back, and never before the journey's last recorded change. Answers are JSON: the journey, its `creationStage`, `stage` (the line) and `changed`; errors are `{"error": …}` with 400 (bad input), 401 (key), 404 (no such journey) or 409 (Journey paused).
 
 ### Configurable stages (Admin → Work types → Stages)
 
@@ -482,7 +497,7 @@ Every item row has **Edit** (opens that item's fields) and **Delete** (asks firs
 
 ---
 
-## Google Sheet two-way sync
+## Google Sheet sync
 
 > **No spreadsheet ID needed.** `apps-script/Code.gs` finds a work type's tab by name: first in the default tracker, then in any Google Sheet the script owner can open (it remembers where it found it). After pasting a new `Code.gs`, deploy a new version and approve the Drive permission once. To pin a tab to one sheet, add the script property `TAB_SHEET::<tab name>` with the sheet's ID.
 >
@@ -495,11 +510,16 @@ Postgres is the source of truth. Sync is **off** until an admin turns it on, so 
 1. Open the Google Sheet → **Extensions → Apps Script**. Replace the code with `apps-script/Code.gs`.
 2. **Project Settings → Script properties**: add `SYNC_TOKEN` with the same value as in `.env`.
 3. **Deploy → Manage deployments → ✎ → New version → Deploy.** Put the `/exec` URL in `APPS_SCRIPT_URL`.
-4. In the app: **Admin → Sheet sync**. Tick **Two-way sync**, check the tab name, **Save**, then **Sync now**.
+4. In the app: **Admin → Sheet sync**. Switch on **Sync with Google Sheet**, pick the **Direction**, check the tab name, **Save**, then **Sync now**.
 
 One deployment can serve several trackers. For a work type whose data lives in another spreadsheet (for example APK Testing), paste that sheet's **Spreadsheet ID** on the Sheet sync page. The script owner needs access to that sheet. Keys can be composite: APK Testing matches rows on `APK Version` + `Test Case ID`.
 
-### What happens on each sync
+### Direction
+
+- **App → sheet** (default): the sheet is a copy of the app. Each sync reads the tab, queues every mapped cell that differs from the app (edits typed in the sheet are overwritten, cells cleared in the app are cleared), appends a row for every item the tab lacks, then pushes. Rows only in the sheet are left alone and counted. Nothing in the app changes and no conflicts are logged. Columns the tab doesn't have and app-only statuses are skipped.
+- **Two-way**: as below.
+
+### What happens on each two-way sync
 
 1. **Push:** queued app changes are written to the sheet. New rows are appended, and an `App Updated At` column is stamped.
 2. **Pull:** every row is read and compared three ways: the sheet now, the last agreed snapshot, and the app now.
@@ -614,7 +634,7 @@ This starts three services:
 No seed step is needed:
 - the first sign-in from an `ADMIN_EMAILS` address creates that admin
 - **Admin → Work types → Enable** creates a work type
-- turning on sync pulls every row in
+- turning on **two-way** sync pulls every row in (the default, app → sheet, only writes to the sheet)
 
 To load the Excel files instead, run the import scripts from a checkout whose `DATABASE_URL` points at the server database.
 

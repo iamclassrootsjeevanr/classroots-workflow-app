@@ -9,9 +9,9 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
-import { enableModule, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
+import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { addStage, removeStage, saveStage, type StageInput } from '@/server/stages';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
@@ -21,6 +21,8 @@ import { editFieldsForItem } from '@/server/view';
 import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
+import { capabilitiesIn } from '@/lib/access-core';
+import { getModule } from '@/modules/registry';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
 import { isOfficeEmail, missingPasswordProblem } from '@/lib/invite';
 import { env } from '@/server/env';
@@ -156,15 +158,27 @@ export async function createItemAction(workTypeId: string, input: { externalKey:
     const wt = [...access.byKey.values()].find(a => a.workTypeId === workTypeId);
     if (!wt) throw new ForbiddenError('You don’t have access to this work type.');
     if (!input.externalKey.trim() || !input.title.trim()) throw new Error('Key and title are required');
-    const chapter = input.groupKey ? await db.chapter.findUnique({ where: { code: input.groupKey.trim() } }) : null;
-    const ctx = { isAdmin: access.isAdmin, capabilities: wt.capabilities, isAssignee: false, canEdit: wt.canEdit };
+    const mod = getModule(wt.workTypeKey);
+    const externalKey = mod?.groupFromKey ? input.externalKey.trim().toUpperCase() : input.externalKey.trim();
+    let groupKey = input.groupKey?.trim() || null;
+    if (mod?.groupFromKey) {
+      const fromKey = mod.groupFromKey(externalKey);
+      if (!fromKey) throw new Error(`A ${mod.itemNoun} key looks like ${mod.keyExample ?? 'the others'}.`);
+      if (groupKey && groupKey !== fromKey) throw new Error(`${externalKey} belongs to ${fromKey}, not ${groupKey}.`);
+      groupKey = fromKey;
+    }
+    const chapter = groupKey ? await db.chapter.findUnique({ where: { code: groupKey } }) : null;
+    if (!access.isAdmin && wt.groupKeys && !wt.groupKeys.has(groupKey ?? '')) {
+      throw new ForbiddenError(`You can add items only in ${[...wt.groupKeys].join(', ')}.`);
+    }
+    const ctx = { isAdmin: access.isAdmin, capabilities: capabilitiesIn(wt, groupKey), isAssignee: false, canEdit: wt.canEdit };
     await createItem({ userId: user.id, ctx, source: 'APP' }, workTypeId, {
-      externalKey: input.externalKey.trim(),
+      externalKey,
       title: input.title.trim(),
       ownerId: input.ownerId || null,
       assigneeId: input.assigneeId || null,
       dueAt: input.dueAt ? dueDateToInstant(input.dueAt) : null,
-      groupKey: input.groupKey?.trim() || null,
+      groupKey,
       chapterId: chapter?.id ?? null,
       data: { ...(chapter ? { chapterTitle: chapter.title } : {}), ...Object.fromEntries(Object.entries(input.data ?? {}).filter(([, v]) => typeof v === 'string' && v.trim())) },
     });
@@ -255,6 +269,8 @@ const accessInput = z.object({
   enabled: z.boolean(),
   /** Roles held in this work type; data scope, edit right and pages come from the roles. */
   roleIds: z.array(z.string()),
+  /** Groups (Journey: chapters) where their assign / add / edit-details rights apply; empty = every group. */
+  groupKeys: z.array(z.string().trim().min(1)).optional(),
 });
 
 const userInput = z.object({
@@ -319,7 +335,8 @@ export async function saveUserAction(raw: UserInput) {
           await tx.workTypeMember.deleteMany({ where: { workTypeId: a.workTypeId, userId: user.id } });
           continue;
         }
-        await tx.workTypeMember.upsert({ where: key, create: { workTypeId: a.workTypeId, userId: user.id }, update: {} });
+        const groupKeys = [...new Set(a.groupKeys ?? [])];
+        await tx.workTypeMember.upsert({ where: key, create: { workTypeId: a.workTypeId, userId: user.id, groupKeys }, update: { groupKeys } });
         await tx.workTypeMemberRole.deleteMany({ where: { workTypeId: a.workTypeId, userId: user.id } });
         await tx.workTypeMemberRole.createMany({ data: [...new Set(a.roleIds)].map(roleId => ({ workTypeId: a.workTypeId, userId: user.id, roleId })) });
       }
@@ -395,6 +412,14 @@ export async function saveRoleAction(raw: RoleInput) {
   });
 }
 
+export async function resetRoleAction(id: string) {
+  return run(async () => {
+    await requireAdmin();
+    const r = await resetSystemRole(id);
+    return `“${r.name}” is back to the flow’s default`;
+  });
+}
+
 export async function deleteRoleAction(id: string) {
   return run(async () => {
     await requireAdmin();
@@ -466,11 +491,12 @@ export async function setWorkTypeStateAction(id: string, state: WorkTypeState) {
   });
 }
 
-export async function updateSyncAction(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string }) {
+export async function updateSyncAction(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string; direction: SyncDirection }) {
   return run(async () => {
     await requireAdmin();
-    await updateSyncConfig(id, { enabled: sync.enabled, tab: sync.tab.trim(), spreadsheetId: (sync.spreadsheetId ?? '').trim() });
-    return sync.enabled ? 'Sync on' : 'Sync off';
+    const direction: SyncDirection = sync.direction === 'two-way' ? 'two-way' : 'app-to-sheet';
+    await updateSyncConfig(id, { enabled: sync.enabled, tab: sync.tab.trim(), spreadsheetId: (sync.spreadsheetId ?? '').trim(), direction });
+    return sync.enabled ? `Sync on (${direction === 'two-way' ? 'two-way' : 'app → sheet'})` : 'Sync off';
   });
 }
 
@@ -480,6 +506,9 @@ export async function syncNowAction(workTypeId: string) {
     const r = await syncWorkType(workTypeId, { force: true });
     await snapshotWorkload();
     if (r.skipped) return `Skipped: ${r.skipped}`;
+    if (r.direction === 'app-to-sheet') {
+      return `Wrote ${r.pushed} cells, read ${r.pulled} rows${r.created ? `, ${r.created} rows to add` : ''}${r.missing ? `, ${r.missing} rows only in the sheet (left alone)` : ''}`;
+    }
     return `Pushed ${r.pushed}, read ${r.pulled} rows, created ${r.created}, conflicts ${r.conflicts}${r.missing ? `, ${r.missing} missing from sheet` : ''}`;
   });
 }

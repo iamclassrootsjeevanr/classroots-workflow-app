@@ -2,13 +2,15 @@ import { Prisma, type EventSource, type WorkItem, type WorkType } from '@prisma/
 import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
-import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
-import { allowedTransitions, canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
+import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
+import { landingStage, nextActiveAfter } from '@/lib/stages';
+import { lowerLabel, matchOption } from '@/lib/text';
+import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
-import { notify } from './notifications';
+import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 
 type Tx = Prisma.TransactionClient;
@@ -18,15 +20,18 @@ export type ChangeActor = { userId: string | null; ctx: ActorContext | null; sou
 
 type ItemWithType = WorkItem & { workType: WorkType };
 
-export type WorkTypeConfig = { sync?: { enabled?: boolean; tab?: string; spreadsheetId?: string } };
+/** `app-to-sheet` (default): the sheet mirrors the app and sheet edits are overwritten. `two-way`: sheet edits are pulled in. */
+export type SyncDirection = 'app-to-sheet' | 'two-way';
+export type WorkTypeConfig = { sync?: { enabled?: boolean; tab?: string; spreadsheetId?: string; direction?: SyncDirection } };
 export const workTypeConfig = (wt: WorkType) => (wt.config ?? {}) as WorkTypeConfig;
+export const syncDirection = (wt: WorkType): SyncDirection => workTypeConfig(wt).sync?.direction ?? 'app-to-sheet';
 
 async function loadItem(tx: Tx, itemId: string): Promise<ItemWithType> {
   return tx.workItem.findUniqueOrThrow({ where: { id: itemId }, include: { workType: true } });
 }
 
 function guardActive(item: ItemWithType, actor: ChangeActor) {
-  if (actor.source === 'APP' && item.workType.state !== 'ACTIVE') throw new PausedError(item.workType.name);
+  if ((actor.source === 'APP' || actor.source === 'RELAY') && item.workType.state !== 'ACTIVE') throw new PausedError(item.workType.name);
 }
 
 async function saveItem(tx: Tx, item: WorkItem, data: Prisma.WorkItemUncheckedUpdateInput, expectedVersion?: number) {
@@ -99,26 +104,36 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   if (actor.ctx && move?.requires === 'feedback' && !opts.withFeedback) {
     throw new Error(`Write the feedback first: “${move.label ?? statusDef(mod, to).label}” is in the Feedback card.`);
   }
-  const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, to, now) };
-  if (move?.stamp?.length || mod.compute) {
-    const data = { ...((item.data ?? {}) as Record<string, unknown>) };
-    const today = dayKey(now, cal.tz);
-    for (const f of move?.stamp ?? []) if (!data[f]) data[f] = today;
+  const data = { ...((item.data ?? {}) as Record<string, unknown>) };
+  const today = dayKey(now, cal.tz);
+  for (const f of move?.stamp ?? []) {
+    if (data[f]) continue;
+    data[f] = today;
+    for (const half of mod.fields.filter(x => x.halfOf === f)) if (!data[half.key]) data[half.key] = halfOfDay(now, cal);
+  }
+  for (const [f, v] of Object.entries(move?.set ?? {})) if (!data[f]) data[f] = v;
+  const landing = landingStage(mod.statuses, to, data);
+  const note = landing === to ? opts.note : [opts.note, `${statusDef(mod, to).label} not needed`].filter(Boolean).join(' · ');
+  const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, landing, now) };
+  if (move?.stamp?.length || move?.set || mod.compute) {
     const c = computed(mod, item.externalKey, data, cal);
     update.data = mod.dataSchema.parse(c.data) as Prisma.InputJsonValue;
     if (c.dueAt !== undefined) update.dueAt = c.dueAt;
   }
   await saveItem(tx, item, update, opts.expectedVersion);
   await tx.workItemEvent.create({
-    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: to, source: actor.source, note: opts.note, at: now },
+    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: landing, source: actor.source, note, at: now },
   });
-  await rollInterval(tx, item.id, to, item.assigneeId, now, cal);
+  await rollInterval(tx, item.id, landing, item.assigneeId, now, cal);
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
-  await notifyStage(tx, item, mod, actor, to);
+  await notifyStage(tx, item, mod, actor, landing);
 }
 
-/** Inbox messages a work type asks for: submitted → the owner (reviewer), approved → the assignee. */
+/**
+ * Inbox messages a work type asks for: submitted → the owner (reviewer), or the group's coordinators when nobody owns it yet
+ * (they pick the reviewer); approved → the assignee.
+ */
 async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, actor: ChangeActor, to: string) {
   if (actor.source !== 'APP' || !mod.notifyOn) return;
   const marks = statusDef(mod, to).marks ?? [];
@@ -126,6 +141,13 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   const label = statusDef(mod, to).label;
   if (mod.notifyOn.submitted && marks.includes('submitted') && item.ownerId && item.ownerId !== actor.userId) {
     await notify(tx, item.ownerId, { kind: 'item.submitted', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  if (mod.notifyOn.submitted && marks.includes('submitted') && !item.ownerId) {
+    const ownerLabel = lowerLabel(mod.labels?.owner ?? 'reviewer');
+    for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
+      if (userId === actor.userId) continue;
+      await notify(tx, userId, { kind: 'item.needs-owner', title: `${label}, no ${ownerLabel}: ${shortKey(item.externalKey)}`, body: `${item.title} · pick the ${ownerLabel}`, href });
+    }
   }
   if (mod.notifyOn.approved && marks.includes('approved') && item.assigneeId && item.assigneeId !== actor.userId) {
     await notify(tx, item.assigneeId, { kind: 'item.approved', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
@@ -236,6 +258,11 @@ function coerce(field: FieldDef, value: FieldValue): string | number | null {
     if (!/^https?:\/\//i.test(s)) throw new Error(`${field.label} must start with http:// or https://`);
     return s;
   }
+  if (field.type === 'select') {
+    const option = matchOption(field.options ?? [], String(value));
+    if (!option) throw new Error(`${field.label} must be one of: ${(field.options ?? []).join(', ')}`);
+    return option;
+  }
   return String(value).trim();
 }
 
@@ -282,14 +309,21 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   await saveItem(tx, item, { ...update, data: calc.data as Prisma.InputJsonValue });
   await tx.workItemEvent.createMany({ data: events });
   await enqueue(tx, item.id, item.workType, mod, actor, columns);
+
+  for (const m of mod.fieldMoves ?? []) {
+    if (item.status !== m.from || patch[m.field] == null || patch[m.field] === '') continue;
+    const to = mod.statuses.find(s => s.key === m.to)?.state === 'skipped' ? nextActiveAfter(mod.statuses, m.to) : m.to;
+    if (to) await changeStatusTx(tx, await loadItem(tx, item.id), { ...actor, ctx: null }, to, now, cal);
+    break;
+  }
 }
 
-export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>) {
+export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date } = {}) {
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await updateFieldsTx(tx, item, actor, patch, new Date(), cal);
+    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal);
   });
 }
 
@@ -356,8 +390,9 @@ export async function addFeedback(
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    if (actor.ctx && !hasCap(actor.ctx, 'review')) throw new ForbiddenError('Only reviewers can give feedback. Use a comment instead.');
     const mod = requireModule(item.workType.key);
+    const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
+    if (actor.ctx && !canGiveFeedback(mod, actor.ctx) && !sendsBack) throw new ForbiddenError(`Only the ${lowerLabel(mod.labels?.owner ?? 'reviewer')} of this ${mod.itemNoun} can give feedback. Use a comment instead.`);
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
@@ -384,8 +419,9 @@ export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: Acto
 }
 
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: true } });
-  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !hasCap(actor.ctx, 'review')) throw new ForbiddenError();
+  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { include: { workType: { select: { key: true } } } } } });
+  const mod = requireModule(fb.item.workType.key);
+  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
   await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
 }
 

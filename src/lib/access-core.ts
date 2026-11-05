@@ -43,8 +43,11 @@ export type RoleLite = {
   pageExport: boolean;
 };
 
-/** A person's membership of one work type is just the roles they hold there. */
-export type MembershipLite = { roles: RoleLite[] };
+/** A person's membership of one work type: the roles they hold there, and the groups their steward rights are limited to. */
+export type MembershipLite = { roles: RoleLite[]; groupKeys?: string[] };
+
+/** Rights that a membership's groups limit (Journey: a coordinator steers only their own chapters). Work and review follow the item. */
+export const GROUP_CAPABILITIES: readonly Capability[] = ['assign', 'create', 'manageFields'];
 
 export type WorkTypeLite = { id: string; key: string; name: string; state: 'ACTIVE' | 'PAUSED' | 'ARCHIVED' };
 
@@ -58,6 +61,8 @@ export type WorkTypeAccess = {
   dataScope: DataScope;
   canEdit: boolean;
   pages: ReadonlySet<PageKey>;
+  /** Groups where GROUP_CAPABILITIES apply; null = every group. */
+  groupKeys: ReadonlySet<string> | null;
 };
 
 export type Access = {
@@ -127,6 +132,7 @@ export function buildAccess(
         dataScope: 'ALL',
         canEdit: true,
         pages: new Set(PAGES),
+        groupKeys: null,
       });
       continue;
     }
@@ -144,9 +150,16 @@ export function buildAccess(
       dataScope: c.dataScope,
       canEdit: c.canEdit,
       pages: c.pages,
+      groupKeys: m.groupKeys?.length ? new Set(m.groupKeys) : null,
     });
   }
   return { userId, isAdmin, byKey };
+}
+
+/** The person's capabilities on an item of this group: outside their groups they keep work and review only. */
+export function capabilitiesIn(a: Pick<WorkTypeAccess, 'capabilities' | 'groupKeys'>, groupKey: string | null | undefined): ReadonlySet<Capability> {
+  if (!a.groupKeys || (groupKey && a.groupKeys.has(groupKey))) return a.capabilities;
+  return new Set([...a.capabilities].filter(c => !GROUP_CAPABILITIES.includes(c)));
 }
 
 export function workTypesWith(access: Access, page: PageKey): WorkTypeAccess[] {

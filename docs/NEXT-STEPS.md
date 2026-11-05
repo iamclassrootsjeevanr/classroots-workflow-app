@@ -53,8 +53,8 @@ You do **not** need a Spreadsheet ID. The script finds the tab by name. (The def
 ## 4. Turn sync on in the app
 
 1. Sign in as admin → **Admin → Sheet sync**.
-2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
-3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
+2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Direction **App → sheet** (the default: the sheet becomes a copy of the app, edits typed in the sheet are overwritten, rows only in the sheet are left alone). Switch sync **on**, **Save**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
+3. You should see "Wrote N cells, read N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
 
 If you see an error:
 
@@ -109,7 +109,7 @@ DATABASE_URL="$PROD_DB" npm run import:journey -- "$HOME/Downloads/<Journey trac
 unset PROD_DB
 ```
 
-Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Leave sheet sync off until app → sheet sync is built.
+Then add people again (§ 7). People named in the trackers come in without an email: **+ Add user → "Already in the system from the sheet?"** → pick them → add email and role, so their past work links to their login. The imports only **add** rows; run them on switch-over day and from then on update work in the app. Then turn APK sheet sync on with direction **App → sheet** (§ 4): the sheet stays a read-only copy for whoever still opens it.
 
 ## 7. Who can sign in, and how
 
@@ -209,19 +209,19 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions sent to Arjun: `docs/JOURNEY-FOLLOW-UP.md`. Where each of his answers goes (numbers match that file):
+1. **Journey work type — built (4 Nov 2026), Arjun's follow-up answers built (5 Nov 2026)** (`docs/JOURNEY-FOLLOW-UP.md`, README "Work types → Journey"):
 
-   | Answer | Change | Needs code? |
-   |---|---|---|
-   | 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
-   | 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
-   | 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
-   | 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
-   | 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
-   | 3. Closure due rule | Same place | Yes (one line) |
-   | 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
-   | 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
-   | 8. Claude stage updates | API route with a per-relay key | Yes |
+   | Answer | Built as |
+   |---|---|
+   | 1. Row corrections; Creation stage and Review state are separate | Creation stage is its own field; the corrections and current review states are in the importer (`ANSWERS` in `scripts/import-journey-csv.ts`) |
+   | 2. Half days | *Picked up in* / *Submitted in* (first / second half); Days taken counts the halves |
+   | 3. Closure due | Unchanged: Review date + 1 working day. Review date = the day the review is done |
+   | 4. After-steps | Last look ½ day and can send back to design; Video replacement skipped when *Needs video replacement* = No; QA sends back to Changes asked; Design standardization stays paused (Hitheshwar's design document) |
+   | 5. Coordinators | Limited to their chapter (People & access → Chapters they steer); Aswin admin (`ADMIN_EMAILS`) |
+   | 6. Holidays, chapter names | No holiday list (corrected by hand); chapter names set by the importer |
+   | 8. Claude | `/api/relay` with `RELAY_KEY` (README "Journey relay API"); give the key to the relay team |
+
+   Still open: after a QA fix the journey goes Changes asked → Correction verification → Closed → the after-steps again from Design standardization. Ask Arjun whether it should go straight back to User testing and QA.
 
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.

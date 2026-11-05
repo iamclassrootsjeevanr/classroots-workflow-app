@@ -7,7 +7,7 @@ import { db } from '@/server/db';
 import { env } from '@/server/env';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
-import { workTypeConfig } from '@/server/services/work-items';
+import { syncDirection, workTypeConfig } from '@/server/services/work-items';
 
 export const metadata = { title: 'Sheet sync' };
 
@@ -25,7 +25,7 @@ export default async function SyncPage() {
 
   return (
     <>
-      <PageHeader title="Google Sheet sync" subtitle="The database is the source of truth. Changes made in the app are written to the sheet; edits made in the sheet are pulled in. If both change the same cell, the app wins and the conflict is logged." />
+      <PageHeader title="Google Sheet sync" subtitle="The database is the source of truth. App → sheet keeps the sheet a copy of the app. Two-way also pulls sheet edits in; if both change the same cell, the app wins and the conflict is logged." />
 
       {!configured && (
         <p className="note-warn mb-4">
@@ -36,10 +36,11 @@ export default async function SyncPage() {
       <div className="space-y-4">
         {types.map(t => {
           const cfg = workTypeConfig(t).sync ?? {};
+          const direction = syncDirection(t);
           const s = t.syncState;
           return (
             <Card key={t.id} title={t.name}>
-              <SyncSettings id={t.id} enabled={Boolean(cfg.enabled)} tab={cfg.tab ?? getModule(t.key)!.sheet!.defaultTab} spreadsheetId={cfg.spreadsheetId ?? ''} configured={configured} />
+              <SyncSettings id={t.id} enabled={Boolean(cfg.enabled)} tab={cfg.tab ?? getModule(t.key)!.sheet!.defaultTab} spreadsheetId={cfg.spreadsheetId ?? ''} direction={direction} configured={configured} />
               <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <div className="label">Last run</div>
@@ -51,7 +52,11 @@ export default async function SyncPage() {
                 </div>
                 <div>
                   <div className="label">Last result</div>
-                  {s ? `${s.pushed} pushed · ${s.pulled} rows read · ${s.created} new · ${s.conflicts} conflicts · ${s.missing} missing` : '—'}
+                  {!s
+                    ? '—'
+                    : direction === 'app-to-sheet'
+                      ? `${s.pushed} cells written · ${s.pulled} rows read · ${s.created} rows to add · ${s.missing} only in the sheet`
+                      : `${s.pushed} pushed · ${s.pulled} rows read · ${s.created} new · ${s.conflicts} conflicts · ${s.missing} missing`}
                 </div>
                 <div>
                   <div className="label">Error</div>
@@ -74,7 +79,7 @@ export default async function SyncPage() {
               Project Settings → Script properties → add <code>SYNC_TOKEN</code> with the same value as in the app’s <code>.env</code>.
             </li>
             <li>Deploy → Manage deployments → pencil → New version → Deploy (the URL stays the same).</li>
-            <li>Tick “Two-way sync”, save, then “Sync now”. The scheduler keeps it in sync every few minutes after that.</li>
+            <li>Switch on “Sync with Google Sheet”, pick a direction (App → sheet unless the team still edits the sheet), save, then “Sync now”. The scheduler keeps it in sync every few minutes after that.</li>
           </ol>
           <p className="mt-2 text-xs text-muted">{pending} change(s) waiting to be written to the sheet.</p>
         </Card>

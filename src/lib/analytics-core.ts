@@ -104,7 +104,8 @@ export function delayDays(it: Pick<ItemLite, 'dueAt' | 'completedAt' | 'category
   if (!it.dueAt) return null;
   const end = it.handedOff ? (it.approvedAt ?? null) : (it.completedAt ?? (isClosed(it.category) ? null : now));
   if (!end) return null;
-  return Math.floor((end.getTime() - it.dueAt.getTime()) / 86400000);
+  // Calendar days in the team's time zone: due dates are stored as 23:59 on the day, so hours would round a late item to 0.
+  return Math.round((startOfLocalDay(end).getTime() - startOfLocalDay(it.dueAt).getTime()) / 86400000);
 }
 
 export type FlowTimes = {

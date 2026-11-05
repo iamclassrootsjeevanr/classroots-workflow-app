@@ -21,6 +21,8 @@ const schema = z.object({
   APPS_SCRIPT_URL: z.string().optional(),
   SYNC_TOKEN: z.string().optional(),
   CRON_SECRET: z.string().optional(),
+  /** Key the journey relay (Claude) sends to /api/relay: it can only read journeys and set their Creation stage. */
+  RELAY_KEY: z.string().optional(),
   NODE_ENV: z.string().default('development'),
 });
 

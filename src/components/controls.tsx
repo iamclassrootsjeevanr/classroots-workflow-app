@@ -128,7 +128,39 @@ export function AssignSelect({ itemId, assigneeId, people, compact, owner, label
   );
 }
 
-export type EditableField = { key: string; label: string; type: string; value: string; editable: boolean; linkLabel?: string };
+/** A choice field saved as soon as it changes (e.g. a journey's Creation stage beside its status). */
+export function FieldSelect({ itemId, field }: { itemId: string; field: EditableField }) {
+  const { pending, result, exec } = useAction();
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pending) setNext(null);
+  }, [pending]);
+  if (!field.editable) return <div className="py-1.5 text-sm">{field.value || <span className="text-muted">—</span>}</div>;
+  return (
+    <div className="min-w-0">
+      <select
+        aria-label={field.label}
+        className="input"
+        value={next ?? field.value}
+        disabled={pending}
+        onChange={e => {
+          setNext(e.target.value);
+          exec(() => updateFieldsAction(itemId, { [field.key]: e.target.value || null }));
+        }}
+      >
+        <option value="">—</option>
+        {(field.options ?? []).map(o => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      {result && !result.ok && <ActionMessage result={result} />}
+    </div>
+  );
+}
+
+export type EditableField = { key: string; label: string; type: string; value: string; editable: boolean; linkLabel?: string; options?: readonly string[] };
 
 /** A link field shown as a button that opens the URL in a new tab. */
 export function LinkButton({ href, label, size = 'sm' }: { href: string; label: string; size?: 'xs' | 'sm' }) {
@@ -208,6 +240,15 @@ function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
                 onChange={e => setDraft(e.target.value)}
                 onKeyDown={e => e.key === 'Escape' && cancel()}
               />
+            ) : field.type === 'select' ? (
+              <select id={id} className="input" autoFocus value={draft} disabled={pending} onChange={e => setDraft(e.target.value)} onKeyDown={e => e.key === 'Escape' && cancel()}>
+                <option value="">—</option>
+                {(field.options ?? []).map(o => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
             ) : (
               <input
                 id={id}

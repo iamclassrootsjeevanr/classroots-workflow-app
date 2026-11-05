@@ -47,6 +47,14 @@ export function canTransition(mod: WorkTypeDefinition, from: string, to: string,
   return allowedTransitions(mod, from, ctx).some(t => t.to === to);
 }
 
+/** Who writes and resolves feedback: reviewers, and where the flow's send-back belongs to the item's owner (Journey), only that owner. */
+export function canGiveFeedback(mod: Pick<WorkTypeDefinition, 'transitions'>, ctx: ActorContext): boolean {
+  if (ctx.isAdmin) return true;
+  if (!hasCap(ctx, 'review')) return false;
+  const ownerOnly = mod.transitions.some(t => t.requires === 'feedback' && t.by.includes('OWNER'));
+  return !ownerOnly || Boolean(ctx.isOwner);
+}
+
 export function canEditField(field: FieldDef, ctx: ActorContext): boolean {
   return actorMatches(field.editableBy, ctx);
 }

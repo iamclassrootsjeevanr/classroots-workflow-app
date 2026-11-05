@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldSelect, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
@@ -8,8 +8,8 @@ import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
-import { lowerLabel } from '@/lib/text';
-import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { eventWho, lowerLabel } from '@/lib/text';
+import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
 import { correctionsMove } from '@/server/services/work-items';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '@/server/apk/store';
@@ -79,10 +79,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     label: f.label,
     type: f.type,
     linkLabel: f.linkLabel,
+    options: f.options,
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
     editable: editable && !f.computed && canEditField(f, ctx),
   }));
-  const isReviewer = hasCap(ctx, 'review');
+  const isReviewer = canGiveFeedback(mod, ctx);
   const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
   const canReply = editable && (ctx.isAdmin || (ctx.isAssignee && hasCap(ctx, 'work')));
   const replyAuthors = new Map(
@@ -108,16 +109,17 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   // Bug and remarks get their own card (and the time log) for work types that track them.
   const NOTE_KEYS = ['bug', 'comments', 'developerRemarks'];
   const noteFields = mod.timeLog ? fields.filter(f => NOTE_KEYS.includes(f.key)) : [];
-  const detailFields = mod.timeLog ? fields.filter(f => !NOTE_KEYS.includes(f.key)) : fields;
+  const headerFields = fields.filter(f => mod.headerFields?.includes(f.key));
+  const detailFields = fields.filter(f => !(mod.timeLog && NOTE_KEYS.includes(f.key)) && !headerFields.includes(f));
   const lastEdit = (key: string) => {
     const e = item.events.find(ev => ev.type === 'FIELD_CHANGED' && ev.field === key);
-    return e ? `${e.actor?.name ?? e.actor?.email ?? 'System'} · ${formatDateTime(e.at, tz)}` : null;
+    return e ? `${eventWho(e)} · ${formatDateTime(e.at, tz)}` : null;
   };
   const logIntervals = intervals.map(iv => ({ status: iv.status, enteredAt: iv.enteredAt, exitedAt: iv.exitedAt, businessMinutes: iv.businessMinutes }));
   const lookup = { label: (s: string) => statusDef(mod, s).label, category: (s: string) => statusDef(mod, s).category, fieldLabel: (f: string) => mod.fields.find(x => x.key === f)?.label ?? f };
   const logEntries = mod.timeLog
     ? buildTimeLog(
-        item.events.map(e => ({ id: e.id, at: e.at, type: e.type, field: e.field, fromValue: e.fromValue, toValue: e.toValue, note: e.note, who: e.actor?.name ?? e.actor?.email ?? (e.source === 'SHEET' ? 'Google Sheet' : e.source === 'IMPORT' ? 'Import' : 'System') })),
+        item.events.map(e => ({ id: e.id, at: e.at, type: e.type, field: e.field, fromValue: e.fromValue, toValue: e.toValue, note: e.note, who: eventWho(e) })),
         logIntervals,
         lookup,
       )
@@ -165,6 +167,12 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <span className="label">Status</span>
             <StatusSelect itemId={item.id} version={item.version} current={{ key: item.status, label: def.label, color: def.color }} options={transitions} />
           </div>
+          {headerFields.map(f => (
+            <div key={f.key} className="min-w-40">
+              <span className="label">{f.label}</span>
+              <FieldSelect itemId={item.id} field={f} />
+            </div>
+          ))}
           <div className="min-w-52">
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
             {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
@@ -220,7 +228,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           </Card>
 
           <Card title={`Feedback (${item.feedback.length})`}>
-            {isReviewer && editable && (
+            {(isReviewer || sendBack) && editable && (
               <div className="mb-4">
                 <FeedbackForm itemId={item.id} canRequestCorrections={Boolean(sendBack)} correctionsLabel={sendBack?.label} />
               </div>
@@ -282,7 +290,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                 <li key={e.id} className="border-l-2 border-line pl-3">
                   <div className="text-xs text-muted tabular-nums">{formatDateTime(e.at, tz)}</div>
                   <div>
-                    <b>{e.actor?.name ?? e.actor?.email ?? (e.source === 'SHEET' ? 'Google Sheet' : e.source === 'IMPORT' ? 'Import' : 'System')}</b>{' '}
+                    <b>{eventWho(e)}</b>{' '}
                     <span className="text-muted">{EVENT_TEXT[e.type] ?? e.type.toLowerCase()}</span>{' '}
                     {e.type === 'STATUS_CHANGED' && (
                       <>
@@ -293,7 +301,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                     {(e.type === 'ASSIGNED' || e.type === 'UNASSIGNED') && <>{e.fromValue ? `${e.fromValue} → ` : ''}<b>{e.toValue ?? 'nobody'}</b></>}
                     {(e.type === 'FIELD_CHANGED' || e.type === 'SYNC_CONFLICT') && (
                       <>
-                        <span className="font-medium">{e.field}</span>
+                        <span className="font-medium">{mod.fields.find(f => f.key === e.field)?.label ?? e.field}</span>
                         <span className="block truncate text-xs text-muted" title={`${e.fromValue ?? '—'} → ${e.toValue ?? '—'}`}>
                           {e.fromValue ?? '—'} → {e.toValue ?? '—'}
                         </span>

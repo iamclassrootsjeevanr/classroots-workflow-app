@@ -13,7 +13,7 @@ import {
   type IntervalLite,
   type ItemLite,
 } from '@/lib/analytics-core';
-import { zonedToUtc } from '@/lib/time';
+import { dueDateToInstant, zonedToUtc } from '@/lib/time';
 
 const ist = (d: number, h: number) => zonedToUtc(2026, 11, d, h, 0, 'Asia/Kolkata');
 
@@ -84,6 +84,14 @@ describe('quality and delay', () => {
     expect(q.onTimeRate).toBe(0.5);
     expect(reviewRoundDistribution([a, b])).toEqual([{ rounds: 1, count: 1 }, { rounds: 2, count: 1 }]);
     expect(delayDays(b, new Date())).toBe(2);
+  });
+
+  it('counts delay in calendar days against a due date stored as 23:59 local', () => {
+    const open = (due: string) => item({ dueAt: dueDateToInstant(due), category: 'feedback', completedAt: null });
+    const now = new Date('2026-11-05T07:30:00Z'); // 13:00 IST on 5 Nov
+    expect(delayDays(open('2026-11-04'), now)).toBe(1); // a day late, not "due today"
+    expect(delayDays(open('2026-11-05'), now)).toBe(0); // due today, not "1d left"
+    expect(delayDays(open('2026-11-07'), now)).toBe(-2);
   });
 
   it('counts KPIs', () => {

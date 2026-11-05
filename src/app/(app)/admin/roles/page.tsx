@@ -3,6 +3,7 @@ import { RoleForm } from '@/components/role-editor';
 import { PageHeader, Tabs } from '@/components/ui';
 import { flowLite } from '@/lib/role-preview';
 import { getModule } from '@/modules/registry';
+import { rightsDrift, rolesForModule } from '@/modules/roles';
 import { db } from '@/server/db';
 import { requireAdmin } from '@/server/rbac';
 import { ensureSystemRoles } from '@/server/services/work-types';
@@ -55,6 +56,10 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
                     workTypeId={current.id}
                     flows={[flowLite(mod)]}
                     isSystem={r.isSystem}
+                    drift={(() => {
+                      const t = r.isSystem ? rolesForModule(mod).find(x => x.key === r.key) : undefined;
+                      return t ? rightsDrift(r, t) : undefined;
+                    })()}
                     members={r._count.members}
                     initial={{
                       id: r.id,

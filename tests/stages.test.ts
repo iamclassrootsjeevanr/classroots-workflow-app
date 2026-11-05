@@ -24,9 +24,9 @@ describe('applyStageConfig with code defaults', () => {
   const mod = applyStageConfig(base, []);
 
   it('builds a forward move for every main-line stage', () => {
-    expect(moves(mod, 'allocated')).toEqual(['Start→spine']);
-    expect(moves(mod, 'ship')).toEqual(['Submit for review→ready_for_review']);
-    expect(mod.transitions.find(t => t.from === 'ship')?.stamp).toEqual(['submittedAt']);
+    expect(moves(mod, 'allocated')).toEqual(['Start→creating']);
+    expect(moves(mod, 'creating')).toEqual(['Submit for review→ready_for_review']);
+    expect(mod.transitions.find(t => t.from === 'creating')?.stamp).toEqual(['submittedAt']);
     expect(moves(mod, 'review_in_progress')).toEqual(['Ask for changes→changes_asked', 'Close review→closed']);
     expect(moves(mod, 'correction_verification')).toEqual(['Ask for changes again→changes_asked', 'Close review→closed']);
     expect(moves(mod, 'done')).toEqual([]);
@@ -46,7 +46,7 @@ describe('applyStageConfig with code defaults', () => {
     expect(isLockedStage(base, 'done')).toBe(true);
     expect(isLockedStage(base, 'changes_asked')).toBe(true);
     expect(isLockedStage(base, 'closed')).toBe(true);
-    expect(isLockedStage(base, 'spine')).toBe(false);
+    expect(isLockedStage(base, 'creating')).toBe(false);
     expect(apkTesting.statuses.every(s => isLockedStage(apkTesting, s.key))).toBe(true);
   });
 
@@ -59,11 +59,11 @@ describe('applyStageConfig with code defaults', () => {
 
 describe('admin stage changes', () => {
   it('skipping a stage makes moves jump over it', () => {
-    const mod = applyStageConfig(base, [row('script', { state: 'skipped' })]);
-    expect(moves(mod, 'spine')).toEqual(['Spine done→build']);
-    expect(nextActiveAfter(mod.statuses, 'spine')).toBe('build');
+    const mod = applyStageConfig(base, [row('video_replacement', { state: 'skipped' })]);
+    expect(moves(mod, 'last_look')).toEqual(['Send back to design→design_standardization', 'Last look done→uat_to_prod']);
+    expect(nextActiveAfter(mod.statuses, 'last_look')).toBe('uat_to_prod');
     // Items already sitting in the skipped stage can still move on.
-    expect(moves(mod, 'script')).toEqual(['Script done→build']);
+    expect(moves(mod, 'video_replacement')).toEqual(['Videos replaced→uat_to_prod']);
   });
 
   it('resuming a paused stage gives its button back', () => {
@@ -80,33 +80,33 @@ describe('admin stage changes', () => {
   });
 
   it('renames, recolours, re-times and re-assigns a stage button', () => {
-    const mod = applyStageConfig(base, [row('build', { label: 'Build applets', color: '#000000', stuckHours: 6, nextLabel: 'Applets built', movedBy: ['assign'] })]);
-    const s = mod.statuses.find(x => x.key === 'build')!;
-    expect(s).toMatchObject({ label: 'Build applets', color: '#000000', stuckHours: 6 });
-    expect(mod.transitions.find(t => t.from === 'build')).toMatchObject({ label: 'Applets built', by: ['assign'], to: 'ship' });
+    const mod = applyStageConfig(base, [row('uat_to_prod', { label: 'Migrate', color: '#000000', stuckHours: 6, nextLabel: 'Migrated', movedBy: ['manageFields'] })]);
+    const s = mod.statuses.find(x => x.key === 'uat_to_prod')!;
+    expect(s).toMatchObject({ label: 'Migrate', color: '#000000', stuckHours: 6 });
+    expect(mod.transitions.find(t => t.from === 'uat_to_prod')).toMatchObject({ label: 'Migrated', by: ['manageFields'], to: 'published_prod' });
   });
 
   it('adds a custom stage between two stages', () => {
     const positions = stagePositions(base, []);
-    const pos = positionAfter(applyStageConfig(base, []), positions, 'build');
-    expect(pos).toBe(45);
+    const pos = positionAfter(applyStageConfig(base, []), positions, 'creating');
+    expect(pos).toBe(25);
     const mod = applyStageConfig(base, [row('qa_check', { custom: true, label: 'QA check', category: 'review', position: pos, nextLabel: 'QA passed', movedBy: ['review'] })]);
-    expect(mod.statuses.map(s => s.key).slice(3, 6)).toEqual(['build', 'qa_check', 'ship']);
-    expect(moves(mod, 'build')).toEqual(['Build done→qa_check']);
-    expect(moves(mod, 'qa_check')).toEqual(['QA passed→ship']);
+    expect(mod.statuses.map(s => s.key).slice(1, 4)).toEqual(['creating', 'qa_check', 'ready_for_review']);
+    expect(moves(mod, 'creating')).toEqual(['Submit for review→qa_check']);
+    expect(moves(mod, 'qa_check')).toEqual(['QA passed→ready_for_review']);
     expect(mod.statuses.find(s => s.key === 'qa_check')?.custom).toBe(true);
     expect(mod.statuses.find(s => s.key === 'qa_check')?.locked).toBeFalsy();
   });
 
   it('retargets a correction-loop exit when the stage after review is changed', () => {
-    const mod = applyStageConfig(base, [row('sign_off', { custom: true, label: 'Sign-off', category: 'review', position: 75, nextLabel: 'Signed off', movedBy: ['review'] })]);
+    const mod = applyStageConfig(base, [row('sign_off', { custom: true, label: 'Sign-off', category: 'review', position: 45, nextLabel: 'Signed off', movedBy: ['review'] })]);
     expect(moves(mod, 'correction_verification')).toContain('Close review→sign_off');
     expect(moves(mod, 'review_in_progress')).toContain('Close review→sign_off');
   });
 
   it('builds the chapter summary from the effective stages', () => {
-    const mod = applyStageConfig(base, [row('qa_check', { custom: true, label: 'QA check', category: 'review', position: 45, movedBy: ['review'] })]);
-    expect(mod.groupSummary?.seriesStatuses?.Creating).toEqual(['spine', 'script', 'build', 'qa_check', 'ship']);
+    const mod = applyStageConfig(base, [row('qa_check', { custom: true, label: 'QA check', category: 'review', position: 25, movedBy: ['review'] })]);
+    expect(mod.groupSummary?.seriesStatuses?.Creating).toEqual(['creating', 'qa_check']);
     expect(mod.groupSummary?.seriesStatuses?.['In review']).toEqual(['ready_for_review', 'review_in_progress', 'correction_verification']);
   });
 
@@ -122,8 +122,8 @@ describe('stuck rules', () => {
   const iv = (status: string, from: number, to: number | null): IntervalLite => ({ itemId: 'a', status, category: 'active', assigneeId: 'u', enteredAt: at(from), exitedAt: to == null ? null : at(to), round: 1 });
 
   it('measures the creation phase from entering its first stage', () => {
-    const list = [iv('allocated', 0, 1), iv('spine', 1, 2), iv('script', 2, null)];
-    expect(stuckRules(mod, list)(list[2])).toEqual({ hours: 18, since: at(0) });
+    const list = [iv('allocated', 0, 1), iv('creating', 1, null)];
+    expect(stuckRules(mod, list)(list[1])).toEqual({ hours: 18, since: at(0) });
   });
 
   it('uses the stage limit for review stages and none for paused stages', () => {

@@ -1,6 +1,6 @@
 import type { Prisma, WorkTypeState } from '@prisma/client';
 import { allModules, getModule, requireModule } from '@/modules/registry';
-import { rolesForModule } from '@/modules/roles';
+import { rolesForModule, templateColumns } from '@/modules/roles';
 import type { WorkTypeDefinition } from '@/modules/types';
 import { db } from '../db';
 import { env } from '../env';
@@ -35,7 +35,7 @@ export async function setWorkTypeState(id: string, state: WorkTypeState) {
   });
 }
 
-export async function updateSyncConfig(id: string, sync: { enabled: boolean; tab: string; spreadsheetId?: string }) {
+export async function updateSyncConfig(id: string, sync: NonNullable<WorkTypeConfig['sync']>) {
   const wt = await db.workType.findUniqueOrThrow({ where: { id } });
   const config = { ...((wt.config ?? {}) as WorkTypeConfig), sync };
   return db.workType.update({ where: { id }, data: { config: config as Prisma.InputJsonValue } });
@@ -60,29 +60,18 @@ export async function ensureModuleRoles(workTypeId: string, mod: WorkTypeDefinit
   const have = new Set((await db.accessRole.findMany({ where: { workTypeId }, select: { key: true } })).map(r => r.key));
   const missing = rolesForModule(mod).filter(r => !have.has(r.key));
   for (const r of missing) {
-    await db.accessRole.create({
-      data: {
-        workTypeId,
-        key: r.key,
-        name: r.name,
-        description: r.description,
-        color: r.color,
-        isSystem: true,
-        capWork: r.capabilities.includes('work'),
-        capReview: r.capabilities.includes('review'),
-        capAssign: r.capabilities.includes('assign'),
-        capCreate: r.capabilities.includes('create'),
-        capManageFields: r.capabilities.includes('manageFields'),
-        dataScope: r.dataScope,
-        canEdit: r.canEdit,
-        pageDashboard: r.pages.includes('dashboard'),
-        pageItems: r.pages.includes('items'),
-        pageReports: r.pages.includes('reports'),
-        pageExport: r.pages.includes('export'),
-      },
-    });
+    await db.accessRole.create({ data: { workTypeId, key: r.key, isSystem: true, ...templateColumns(r) } });
   }
   return missing.length;
+}
+
+/** Put a built-in role back to its flow's default (name, description, rights, pages). */
+export async function resetSystemRole(roleId: string) {
+  const role = await db.accessRole.findUniqueOrThrow({ where: { id: roleId }, include: { workType: { select: { key: true } } } });
+  const mod = getModule(role.workType.key);
+  const t = mod && rolesForModule(mod).find(r => r.key === role.key);
+  if (!role.isSystem || !t) throw new Error('Only built-in roles have a default to go back to.');
+  return db.accessRole.update({ where: { id: roleId }, data: templateColumns(t) });
 }
 
 /** Make sure every enabled work type has the roles its flow needs. Safe to run often. */
