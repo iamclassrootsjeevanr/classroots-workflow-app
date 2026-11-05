@@ -14,3 +14,4 @@
 - 2026-11-05T05:46Z | cursor | Journey built to Arjun's answers: Creation stage field, half days, after-step rules, coordinators per chapter, Claude relay API
 - 2026-11-05T07:44Z | cursor | Journey role audit: matrix test, reset drifted roles, feedback by own reviewer, no-reviewer notice, chapter-aware new journey form, delay in calendar days
 - 2026-11-05T10:11Z | cursor | Handoff: Journey built and role-audited; PR #14 open and green; next merge, Arjun's QA question, Railway
+- 2026-11-05T10:14Z | codex | Handoff: merged Journey PR #14 into development; deployment awaits Railway setup
