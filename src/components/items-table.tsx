@@ -26,7 +26,7 @@ type Props = {
   /** Work type keys whose item pages the viewer may open; others render as plain text. Default: all. */
   linkable?: ReadonlySet<string>;
   /** Column names for this work type (mixed lists keep the defaults). */
-  labels?: { assignee?: string; owner?: string };
+  labels?: { assignee?: string; owner?: string; due?: string };
   /** Hide default columns / add data columns (from the work type definition). */
   table?: WorkTypeDefinition['table'];
 };
@@ -38,6 +38,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
+  const dueLabel = labels?.due ?? 'Expected';
   const anyActions = Boolean(fieldEdits?.size || deletable?.size);
   const hide = new Set(table?.hide ?? []);
   const extra = table?.extra ?? [];
@@ -110,7 +111,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                     </div>
                     {title(it, 'mt-0.5 block text-md leading-snug font-medium text-ink')}
                   </div>
-                  {showDelay && <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} />}</span>}
+                  {showDelay && <span className="shrink-0 text-xs">{it.category === 'done' && !it.completedAt ? '' : <Delay days={it.delay} finished={Boolean(it.completedAt || it.handedOff)} />}</span>}
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                   <div className="min-w-0">
@@ -131,7 +132,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                   )}
                   {showExpected && (
                     <div className="min-w-0">
-                      <dt className="text-muted">Expected</dt>
+                      <dt className="text-muted">{dueLabel}</dt>
                       <dd className="mt-0.5 text-sm">{formatDate(it.dueAt, tz) || '—'}</dd>
                     </div>
                   )}
@@ -177,7 +178,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                 <th key={c.field}>{c.label}</th>
               ))}
               {showUpdated && <th>Last update</th>}
-              {showExpected && <th>Expected</th>}
+              {showExpected && <th>{dueLabel}</th>}
               {showDelay && <th>Delay</th>}
               <th>Links</th>
               {anyActions && <th className="pin-end">Actions</th>}
@@ -235,7 +236,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                   ))}
                   {showUpdated && <td className="whitespace-nowrap text-xs text-muted tabular-nums">{formatDateTime(it.updatedAt, tz)}</td>}
                   {showExpected && <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>}
-                  {showDelay && <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} />}</td>}
+                  {showDelay && <td className="whitespace-nowrap text-xs">{it.category === 'done' && !it.completedAt ? '—' : <Delay days={it.delay} finished={Boolean(it.completedAt || it.handedOff)} />}</td>}
                   <td className="whitespace-nowrap text-xs">
                     {links.length ? (
                       <span className="inline-flex flex-wrap gap-1">

@@ -27,11 +27,12 @@ export const VIEWER: RoleTemplate = {
   pages: ['dashboard', 'items', 'reports'],
 };
 
-/** Capabilities the flow actually asks for (transitions and field edits). */
-export function flowCapabilities(mod: Pick<WorkTypeDefinition, 'transitions' | 'fields'>): Set<Capability | 'ASSIGNEE'> {
+/** Capabilities the flow actually asks for (moves, stage buttons and field edits). 'OWNER' needs the review capability. */
+export function flowCapabilities(mod: Pick<WorkTypeDefinition, 'transitions' | 'fields'> & Partial<Pick<WorkTypeDefinition, 'statuses'>>): Set<Capability | 'ASSIGNEE'> {
   const used = new Set<Capability | 'ASSIGNEE'>();
-  const add = (by: Actor[]) => by.forEach(a => used.add(a));
+  const add = (by: Actor[]) => by.forEach(a => used.add(a === 'OWNER' ? 'review' : a));
   mod.transitions.forEach(t => add(t.by));
+  mod.statuses?.forEach(s => s.next && add(s.next.by));
   mod.fields.forEach(f => add(f.editableBy));
   return used;
 }

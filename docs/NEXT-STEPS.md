@@ -53,7 +53,7 @@ You do **not** need a Spreadsheet ID. The script finds the tab by name. (The def
 ## 4. Turn sync on in the app
 
 1. Sign in as admin → **Admin → Sheet sync**.
-2. **Journey**: tab `Journeys in Chapters`. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**.
+2. **APK Testing**: tab `Test Execution`. Leave Spreadsheet ID empty. Switch sync **on**, press **Sync now**. (Journey has no sheet: its tracker is a Slack list, imported with `npm run import:journey`.)
 3. You should see "pulled N rows" and no red error. Then add a test APK version in the app (APK versions → New APK version) and press Sync now: check the sheet gets a row in **APK Releases**, new cases in **Test Cases**, a new row in **Version Summary**, and the version in **Lists** (via the formula), then the tests in **Test Execution**.
 
 If you see an error:
@@ -69,10 +69,10 @@ If you see an error:
 
 ## 5. Put the app online (Railway)
 
-Full steps with variable names are in the README under **Deploy → Railway**. Short version:
+**Click-by-click checklist for all three environments (production, staging, development): `docs/DEPLOY.md`.** Variable names: README **Deploy → Railway**. Short version:
 
 1. railway.app → New project → Deploy from GitHub repo → pick this repo. Add the **PostgreSQL** plugin. App service → Settings → Source → branch **`main`** (this is **production**).
-   Then Environments → New environment → **Duplicate production** → name `staging` → in it set the app's branch to **`staging`**. Staging gets its own database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for both environments. Test on staging first; production only gets what was merged `staging → main`.
+   Then Environments → New environment → **Duplicate production** twice: `staging` (app branch **`staging`**) and `development` (app branch **`development`**). Each gets its own empty database and variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`). Do steps 2–6 for every environment. Test on staging first; production only gets what was merged `staging → main`.
 2. App service → Variables: `DATABASE_URL` (the Postgres private URL + `?connection_limit=10&pool_timeout=20`), `AUTH_SECRET`, `AUTH_URL` (the public URL), `ADMIN_EMAILS`, `APP_TIMEZONE`, `APPS_SCRIPT_URL`, `SYNC_TOKEN`, `CRON_SECRET`, and for sign-in (§ 7) `OFFICE_DOMAINS`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and optionally `EMAIL_SERVER`, `EMAIL_FROM`.
 3. Generate a domain; set `AUTH_URL` to it; redeploy. The app runs the database migrations by itself on start.
 4. Add a Railway **Cron** service every 5 minutes: `curl -fsS -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"`.
@@ -105,7 +105,7 @@ export PROD_DB='postgresql://postgres:...@xxx.proxy.rlwy.net:12345/railway'
 DATABASE_URL="$PROD_DB" npx prisma migrate reset --force --skip-seed          # empty tables, latest schema
 DATABASE_URL="$PROD_DB" ADMIN_EMAILS=jeevan@classrootsedu.com npm run db:seed  # work types, roles, admin
 DATABASE_URL="$PROD_DB" npm run import:apk -- "$HOME/Downloads/APK Testing Tracker.xlsx"
-DATABASE_URL="$PROD_DB" npm run import:xlsx -- "$HOME/Downloads/<live Journey tracker>.xlsx"
+DATABASE_URL="$PROD_DB" npm run import:journey -- "$HOME/Downloads/<Journey tracker export>.csv" --replace
 unset PROD_DB
 ```
 
@@ -209,7 +209,20 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Build the Journey work type** (later, from the real Journey tracker). Journey on database tables like APK: follow the pattern in README "APK Testing data model" (shared facts in their own tables, one link table to the run, hydrate on read, `FieldDef.source` for fields that live in shared tables, `storage` flag on the module, migration that moves existing data).
+1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions sent to Arjun: `docs/JOURNEY-FOLLOW-UP.md`. Where each of his answers goes (numbers match that file):
+
+   | Answer | Change | Needs code? |
+   |---|---|---|
+   | 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
+   | 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
+   | 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
+   | 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
+   | 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
+   | 3. Closure due rule | Same place | Yes (one line) |
+   | 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
+   | 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
+   | 8. Claude stage updates | API route with a per-relay key | Yes |
+
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
 4. **Checks not yet done:** a real Railway deploy, Google sign-in and email sending with real credentials.

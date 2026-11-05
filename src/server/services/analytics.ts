@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { getModule, statusDef } from '@/modules/registry';
-import type { StatusCategory } from '@/modules/types';
+import type { StatusCategory, WorkTypeDefinition } from '@/modules/types';
+import { stuckRules } from '@/lib/stages';
 import {
   delayDays,
   flowTimes,
@@ -19,7 +20,7 @@ import {
   type ItemLite,
   type Summary,
 } from '@/lib/analytics-core';
-import { addDays } from '@/lib/time';
+import { addDays, withWorkDays, type WorkCalendar } from '@/lib/time';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '../apk/store';
 import { db } from '../db';
@@ -92,7 +93,17 @@ export async function loadLiteItems(workTypeKey: string, where?: Prisma.WorkItem
     workTypeKey,
     category: mod ? statusDef(mod, r.status).category : ('queue' as StatusCategory),
     weight: mod?.workloadWeight ?? 1,
+    handedOff: handedOff(mod, r.approvedAt),
   }));
+}
+
+/** The assignee's part is over: approved, in a work type whose due date ends at approval (Journey: review closed). */
+const handedOff = (mod: WorkTypeDefinition | undefined, approvedAt: Date | null) => mod?.dueEndsAt === 'approved' && Boolean(approvedAt);
+
+/** The work type's own calendar (working days) when every item is of one work type. */
+export function calendarFor(cal: WorkCalendar, workTypeKeys: (string | undefined)[]): WorkCalendar {
+  const keys = [...new Set(workTypeKeys.filter(Boolean))];
+  return keys.length === 1 ? withWorkDays(cal, getModule(keys[0]!)?.workDays) : cal;
 }
 
 export async function loadItems(filters: Filters = {}, opts: { includePausedTypes?: boolean } = {}): Promise<ItemRow[]> {
@@ -144,7 +155,9 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       reviewRounds: r.reviewRounds,
       reopenCount: r.reopenCount,
       weight: mod?.workloadWeight ?? 1,
+      handedOff: handedOff(mod, r.approvedAt),
     };
+    const data = hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest);
     return {
       ...base,
       workTypeName: r.workType.name,
@@ -156,7 +169,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       chapterTitle: r.chapter?.title ?? ((r.data as Record<string, unknown>)?.chapterTitle as string | undefined) ?? null,
       grade: r.chapter?.grade ?? null,
       delay: delayDays(base, now),
-      data: hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest),
+      data: mod?.view ? { ...data, ...mod.view({ status: r.status, data }, mod) } : data,
       feedbackCount: r.feedbackCount,
       lastFeedbackAt: r.lastFeedbackAt,
       updatedAt: r.updatedAt,
@@ -224,9 +237,8 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
   const now = new Date();
   const to = filters.to ?? now;
   const from = filters.from ?? addDays(to, -7 * (opts.weeks ?? 12));
-  const cal = await workCalendar();
-
   const items = await loadItems(filters);
+  const cal = calendarFor(await workCalendar(), filters.workTypeKeys?.length === 1 ? filters.workTypeKeys : items.map(i => i.workTypeKey));
   const wtByItem = new Map(items.map(i => [i.id, i.workTypeKey]));
   const intervals = await loadIntervals(items.map(i => i.id), wtByItem);
   const inRange = intervals.filter(iv => (iv.exitedAt ?? now) >= from && iv.enteredAt <= to);
@@ -239,8 +251,16 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
   });
   const users = people.map(p => ({ id: p.id, name: p.name ?? p.email ?? 'Unknown', capacity: p.capacity }));
 
-  const limits = items.length ? getModule(items[0].workTypeKey)?.stuckAfterHours ?? {} : {};
   const openIntervals = intervals.filter(iv => !iv.exitedAt);
+  const rulesByType = new Map<string, ReturnType<typeof stuckRules>>();
+  const stuckRule = (iv: IntervalLite) => {
+    const key = wtByItem.get(iv.itemId) ?? '';
+    if (!rulesByType.has(key)) {
+      const mod = getModule(key);
+      rulesByType.set(key, mod ? stuckRules(mod, intervals.filter(x => wtByItem.get(x.itemId) === key)) : () => undefined);
+    }
+    return rulesByType.get(key)!(iv);
+  };
   const itemById = new Map(items.map(i => [i.id, i]));
 
   return {
@@ -260,7 +280,7 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
     workload: workloadByUser(items, users, now),
     heatmap: workloadHeatmap(intervals, users.map(u => u.id), opts.heatmapDays ?? 21, now, cal.tz),
     users,
-    stuck: stuckItems(openIntervals, limits, now, cal)
+    stuck: stuckItems(openIntervals, stuckRule, now, cal)
       .map(s => ({ ...s, item: itemById.get(s.itemId)! }))
       .filter(s => s.item),
     byDeveloper: users.map(u => {
@@ -277,8 +297,8 @@ export type DashboardData = Awaited<ReturnType<typeof dashboard>>;
 /** Per-person stage times, for "my time per stage vs team". */
 export async function stageTimesFor(userId: string, filters: Filters = {}) {
   const now = new Date();
-  const cal = await workCalendar();
   const items = await loadItems(filters);
+  const cal = calendarFor(await workCalendar(), items.map(i => i.workTypeKey));
   const wtByItem = new Map(items.map(i => [i.id, i.workTypeKey]));
   const intervals = await loadIntervals(items.map(i => i.id), wtByItem, addDays(now, -120));
   const mine = intervals.filter(iv => iv.assigneeId === userId);
@@ -292,7 +312,7 @@ export async function stageTimesFor(userId: string, filters: Filters = {}) {
 /** You vs team average for one work type. The team side is aggregate numbers only. */
 export async function comparison(userId: string, workTypeKey: string) {
   const now = new Date();
-  const cal = await workCalendar();
+  const cal = calendarFor(await workCalendar(), [workTypeKey]);
   const all = await loadItems({ workTypeKeys: [workTypeKey] });
   return compareWithTeam(all.filter(i => i.assigneeId === userId), all, now, cal);
 }

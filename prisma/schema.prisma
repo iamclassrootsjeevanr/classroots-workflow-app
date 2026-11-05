@@ -143,6 +143,36 @@ model WorkType {
   apkCases     ApkTestCase[]
   items     WorkItem[]
   syncState SyncState?
+  stages    WorkflowStage[]
+}
+
+/// An admin's changes to one stage of a work type's flow. Built-in stages come from the module definition and only get a
+/// row once edited (null = keep the code default); custom stages exist only here. Merged by applyStageConfig (src/lib/stages.ts).
+model WorkflowStage {
+  id         String   @id @default(cuid())
+  workTypeId String
+  /// Status key stored on items. Never changes once items have used it.
+  key        String
+  label      String?
+  color      String?
+  /// StatusCategory: queue | active | review | feedback | approved | done | hold
+  category   String?
+  position   Int?
+  /// active | paused (items wait here) | skipped (moves jump over it)
+  state      String?
+  /// Label of the button that moves an item on to the next stage.
+  nextLabel  String?
+  /// Actor[] allowed to press that button: "ASSIGNEE", "OWNER" or a capability.
+  movedBy    Json?
+  /// Business hours before an item here is flagged as stuck.
+  stuckHours Float?
+  /// Added by an admin (not in the module code).
+  custom     Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+
+  workType WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([workTypeId, key])
 }
 
 /// Admin-managed role: a named set of capabilities, given to people per work type.
@@ -344,6 +374,10 @@ model Feedback {
   severity   String?
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
+  /// The creator's reply to this feedback point.
+  note       String?
+  noteById   String?
+  noteAt     DateTime?
 
   item   WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   author User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)

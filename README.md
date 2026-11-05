@@ -113,11 +113,12 @@ npm run demo:users          # optional: one sign-in per role (see "Demo accounts
 ### 6. (Optional) Load real data from the Excel trackers
 
 ```bash
-npm run import:xlsx -- "$HOME/Downloads/JC-TrackerDemo.xlsx"          # Journey
-npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"     # APK Testing
+npm run import:journey -- "$HOME/Downloads/journey-tracker.csv"            # Journey: dry run, lists rows to check
+npm run import:journey -- "$HOME/Downloads/journey-tracker.csv" --replace  # Journey: replaces all journeys
+npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"         # APK Testing
 ```
 
-Both imports are safe to re-run. Items that already exist are skipped.
+The APK import is safe to re-run (existing items are skipped). The Journey import reads the SME's Slack "Journey tracker" list exported as CSV; with `--replace` it deletes every journey first, then creates the chapters, the Journey team with their roles and every row (`scripts/import-journey-csv.ts`).
 
 ### 7. Run the app
 
@@ -214,7 +215,7 @@ src/
   modules/                         Work-type modules: the "what"
     types.ts                       WorkTypeDefinition contract
     registry.ts                    List of enabled module definitions
-    journey-applet/definition.ts   Statuses, transitions, fields, sheet mapping
+    journey-applet/definition.ts   Stages, moves, roles, fields, chapter rollup (no sheet)
     apk-testing/definition.ts      Same, plus a per-APK-version summary
   lib/                             Pure logic, no database (unit-tested)
     workflow.ts                    Who may move which status; stage timestamps
@@ -308,12 +309,21 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 ### Journey (`src/modules/journey-applet/definition.ts`)
 
-`Received from SME → YTS (assigned) → WIP → Ready for Review → In Review → Corrections in Progress ↺ → Reviewed → Done`. Items can also go **On Hold** or **Blocked**.
+One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`).
 
-- **Do the work** role (e.g. Developer), on their own items: start, submit, re-submit, withdraw, hold or block, and mark reviewed work done.
-- **Review** role (e.g. SME / Reviewer): start review, approve, request corrections with feedback, and reopen.
-- **Assign** / **Create** roles (e.g. Coordinator): assign developers and add journeys.
-- **Admins**: everything, including setting any status.
+`Allocated → 3a Spine → 3b Script → 4 Build → 5 Ship → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
+
+- **SME creator** (the journey's assignee) moves it through creation, submits it and makes the corrections. Submit stamps *Submitted for review*.
+- **SME reviewer** (the journey's owner; actor `OWNER`) starts the review (stamps *Review date*), asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. Other reviewers can't act on it.
+- **Coordinator** adds journeys, picks creator and reviewer, edits details and moves the after-steps. **Program manager**: dashboards and reports, view only.
+- **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted); **Closure due** = Review date + 1 working day, stored as the due date. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
+- Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day.
+- Inbox: assigned, submitted (to the reviewer), feedback, review closed (to the creator), overdue past Closure due (reviewer + coordinators, from the cron job).
+- The list shows the Slack tracker's columns (Creation stage, Review state, Final status are worked out from the stage). No Google Sheet sync.
+
+### Configurable stages (Admin → Work types → Stages)
+
+The module code holds the default stages; an admin can rename them, change colour, kind and time limit, change the button and who may press it, set a stage **Paused** (items arrive and wait, counted as on hold) or **Skipped** (moves jump over it), and **add a stage** after any stage that has a "next" button. Stages with history are skipped, never deleted. Only the changes are stored (`WorkflowStage`, null = code default); `applyStageConfig` in `src/lib/stages.ts` merges them and generates the "next stage" moves, and `getModule` returns the merged definition (refreshed every 10 s and on save, `src/server/stages.ts`). First, last and loop stages are fixed. Work types without `next` buttons (APK Testing) can only be renamed and re-timed.
 
 ### APK Testing (`src/modules/apk-testing/definition.ts`)
 
@@ -508,8 +518,8 @@ Sync runs on **Sync now**, from `npm run sync:run`, and on a schedule: the Docke
 ## Add a new kind of work
 
 1. Copy `src/modules/journey-applet/definition.ts` to `src/modules/<your-key>/definition.ts` and define:
-   - `statuses`: each with a **category** (`queue`, `active`, `review`, `feedback`, `approved`, `done` or `hold`). Categories drive all the analytics.
-   - `transitions`: who may move from which status to which. Use a capability (`work`, `review`, `assign`, `create`, `manageFields`) or `ASSIGNEE`.
+   - `statuses`: each with a **category** (`queue`, `active`, `review`, `feedback`, `approved`, `done` or `hold`). Categories drive all the analytics. A stage with `next: { label, by }` gets a button to the next active stage and can be paused, skipped or followed by admin-added stages; `line: 'side'` marks loop stages.
+   - `transitions`: extra moves (loops, send-backs). Use a capability (`work`, `review`, `assign`, `create`, `manageFields`), `ASSIGNEE` or `OWNER`; `to: '@next:<key>'` = the next active stage after `<key>`; `requires: 'feedback'` and `stamp: [field]` as needed.
    - `fields` and `dataSchema`: module-specific fields, stored in `WorkItem.data` (JSON).
    - `columns`: the list table columns.
    - optionally `sheet` (the column mapping for sync), `groupSummary`, `stuckAfterHours` and `labels`.
@@ -552,7 +562,7 @@ The pure logic lives in `src/lib/` precisely so it can be unit-tested without a 
 | Branch | Environment | Who merges into it | How |
 | --- | --- | --- | --- |
 | `start-here` | your machine | you, every day | the one working branch: push freely; every AI handoff saves the latest state here and every session starts here |
-| `development` (default branch) | local / optional Railway "development" | `start-here` | pull request, **Create a merge commit** (keeps `start-here` in step, no force-push), CI must pass |
+| `development` (default branch) | Railway **development** (its own database) | `start-here` | pull request, **Create a merge commit** (keeps `start-here` in step, no force-push), CI must pass |
 | `staging` | Railway **staging** (its own database) | only `development` | pull request "Release to staging", **Create a merge commit**, CI + branch-flow must pass |
 | `main` | Railway **production** | only `staging` | pull request "Release to production", **Create a merge commit**, 1 approval, CI + branch-flow must pass |
 
@@ -581,7 +591,7 @@ Use **Create a merge commit** for these two (the rulesets allow nothing else), s
 
 **Enforced on GitHub** (Settings → Rules → Rulesets): no deleting or force-pushing `development`, `staging` or `main`; changes only by pull request; required checks `checks` (`.github/workflows/ci.yml`: install, `prisma generate`, typecheck, tests) and, for `staging` and `main`, `branch-flow` (`.github/workflows/branch-flow.yml`: rejects any other source branch). Repository admins can bypass in a pull request when needed.
 
-**Railway:** one project with two environments, each with its own Postgres and variables. Production deploys from `main`, staging from `staging` (see [Railway](#railway-app--postgres)).
+**Railway:** one project with three environments (`production` ← `main`, `staging` ← `staging`, `development` ← `development`), each with its own Postgres, address and secrets. Click-by-click: [docs/DEPLOY.md](docs/DEPLOY.md); variables: [Railway](#railway-app--postgres).
 
 ---
 
@@ -613,7 +623,7 @@ To load the Excel files instead, run the import scripts from a checkout whose `D
 The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migrations run on every start) and probes `/api/health`.
 
 1. **New project → Deploy from GitHub repo** (this repo). Add the **PostgreSQL** plugin to the same project. In the app service → Settings → Source, set the branch to **`main`**: this environment is **production**.
-   Then **Environments → New environment → Duplicate `production`** and name it `staging`. In `staging`, set the app's branch to **`staging`**; it gets its own Postgres and its own variables (its own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings). Add the staging URL to the Google OAuth client too. Every merge into `staging` or `main` deploys that environment by itself.
+   Then **Environments → New environment → Duplicate `production`** twice: `staging` (app branch **`staging`**) and `development` (app branch **`development`**). Each duplicate gets its own empty Postgres and its own variables (own `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`; same Google and email settings; development without email). Add all three addresses to the Google OAuth client. Every merge into `development`, `staging` or `main` deploys that environment by itself. Step by step: `docs/DEPLOY.md`.
 2. In the app service → Variables, set:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`, with `?connection_limit=10&pool_timeout=20` added at the end. Use the private URL (`postgres.railway.internal`) so traffic stays inside Railway.
    - `AUTH_SECRET` (`openssl rand -base64 32`) and `AUTH_URL` = the public URL Railway gives you (or your custom domain).
@@ -649,7 +659,7 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 | `npm run db:studio` | Browse the database |
 | `npm run demo:users` | Create the demo sign-ins |
 | `npm run user:password -- <email>` | Set someone's password from the terminal |
-| `npm run import:xlsx -- <file>` | Import the Journey tracker workbook (safe to re-run) |
+| `npm run import:journey -- <file.csv> [--replace]` | Journey from the Slack tracker CSV: dry run lists rows to check; `--replace` replaces all journeys |
 | `npm run db:copy -- --to <url> [--replace]` | Copy this machine's database into another one (e.g. Railway); same migrations required, sheet sync switched off in the copy |
 | `npm run import:apk -- <file>` | Import the APK Testing workbook (safe to re-run) |
 | `npm run sync:run` | Run sheet sync and the workload snapshot once |

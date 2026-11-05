@@ -47,12 +47,14 @@ export type TrendPoint = Record<string, string | number | null> & { name: string
 /** Chart input for "results per group over time": stacked counts plus the success rate (percent) per group. */
 export function groupTrend(mod: WorkTypeDefinition, rows: GroupRollupRow[]) {
   const base = groupSeries(mod, rows);
-  const success = mod.groupSummary?.successSeries;
+  const raw = mod.groupSummary?.successSeries;
+  const success = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
   const shorts = shortLabels(rows.map(r => r.group));
   const points: TrendPoint[] = base.rows.map((r, i) => {
     const total = rows[i].count;
-    const good = success ? Number(rows[i].series?.[success] ?? 0) : 0;
-    return { ...r, short: shorts[i], total, rate: success && total ? Math.round((good / total) * 1000) / 10 : null };
+    const good = success.reduce((s, label) => s + Number(rows[i].series?.[label] ?? 0), 0);
+    return { ...r, short: shorts[i], total, rate: success.length && total ? Math.round((good / total) * 1000) / 10 : null };
   });
-  return { points, series: base.series, successLabel: success ?? null, rateLines: mod.groupSummary?.rateLines ?? [] };
+  const successLabel = success.length ? (mod.groupSummary?.successLabel ?? success.join(' + ')) : null;
+  return { points, series: base.series, successLabel, rateLines: mod.groupSummary?.rateLines ?? [] };
 }

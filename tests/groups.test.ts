@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { apkTesting, apkVersionResult } from '@/modules/apk-testing/definition';
-import { journeyApplet } from '@/modules/journey-applet/definition';
+import { reviewFlow as journeyApplet } from './fixtures/review-flow';
 import { groupRollup, groupSeries, groupTrend, shortLabels, type GroupableItem } from '@/lib/groups';
 import { rowKey } from '@/lib/sheet-core';
 

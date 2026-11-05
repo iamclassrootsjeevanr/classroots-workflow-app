@@ -12,7 +12,7 @@ export type TimelineInterval = {
 };
 
 /** Gantt-style bar of every stage the item went through, with exact date/time and business-hour duration. */
-export function StageTimeline({ intervals, now, tz }: { intervals: TimelineInterval[]; now: Date; tz: string }) {
+export function StageTimeline({ intervals, now, tz, assigneeLabel = 'Developer' }: { intervals: TimelineInterval[]; now: Date; tz: string; assigneeLabel?: string }) {
   if (!intervals.length) return <p className="text-sm text-muted">No stage history yet.</p>;
   const start = intervals[0].enteredAt.getTime();
   const end = Math.max(now.getTime(), ...intervals.map(i => (i.exitedAt ?? now).getTime()));
@@ -45,7 +45,7 @@ export function StageTimeline({ intervals, now, tz }: { intervals: TimelineInter
             <th>Entered</th>
             <th>Left</th>
             <th>Business time</th>
-            <th>Developer</th>
+            <th>{assigneeLabel}</th>
           </tr>
         </thead>
         <tbody>

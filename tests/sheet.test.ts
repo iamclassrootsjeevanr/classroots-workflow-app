@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { journeyApplet as mod } from '@/modules/journey-applet/definition';
+import { reviewFlow as mod } from './fixtures/review-flow';
 import { diffRow, itemSheetValues, sheetRowValues, statusFromSheet } from '@/lib/sheet-core';
 import { dueDateToInstant } from '@/lib/time';
 

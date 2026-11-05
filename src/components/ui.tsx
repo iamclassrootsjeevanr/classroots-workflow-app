@@ -150,9 +150,10 @@ export function Tabs({ items, active }: { items: { href: string; label: string }
   );
 }
 
-export function Delay({ days }: { days: number | null }) {
+/** Days late (positive) or left; `finished` items that met their date read "On time". */
+export function Delay({ days, finished }: { days: number | null; finished?: boolean }) {
   if (days == null) return <span className="text-muted">—</span>;
-  if (days <= 0) return <span className="text-ok tabular-nums">{days === 0 ? 'Due today' : `${-days}d left`}</span>;
+  if (days <= 0) return <span className="text-ok tabular-nums">{finished ? 'On time' : days === 0 ? 'Due today' : `${-days}d left`}</span>;
   return <span className="font-medium text-bad tabular-nums">{days}d late</span>;
 }
 

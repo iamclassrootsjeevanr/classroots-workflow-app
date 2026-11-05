@@ -7,6 +7,8 @@ export type ActorContext = {
   capabilities: ReadonlySet<Capability>;
   /** The acting user is the item's assignee. */
   isAssignee: boolean;
+  /** The acting user is the item's owner (e.g. its reviewer). */
+  isOwner?: boolean;
   /** False = view only in this work type. */
   canEdit: boolean;
 };
@@ -18,7 +20,14 @@ export function hasCap(ctx: ActorContext, cap: Capability): boolean {
 export function actorMatches(by: Actor[], ctx: ActorContext): boolean {
   if (ctx.isAdmin) return true;
   if (!ctx.canEdit) return false;
-  return by.some(a => (a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : ctx.capabilities.has(a)));
+  return by.some(a =>
+    a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : a === 'OWNER' ? Boolean(ctx.isOwner) && ctx.capabilities.has('review') : ctx.capabilities.has(a),
+  );
+}
+
+/** The move from `from` to `to` this person would make (undefined = not allowed). */
+export function transitionFor(mod: WorkTypeDefinition, from: string, to: string, ctx: ActorContext): Transition | undefined {
+  return allowedTransitions(mod, from, ctx).find(t => t.to === to);
 }
 
 /** Transitions offered to this actor from the item's current status. Admins may move to any status. */

@@ -4,6 +4,8 @@ import { db } from './db';
 import { loadItems, workPeopleWhere } from './services/analytics';
 import { appTz } from './settings';
 import { syncAll } from './sync/google-sheet';
+import { refreshStages } from './stages';
+import { notifyOverdue } from './services/overdue';
 
 /** Store today's load per person (one row per user per day; re-running updates it). */
 export async function snapshotWorkload(now = new Date()) {
@@ -25,9 +27,11 @@ export async function snapshotWorkload(now = new Date()) {
   return loads.length;
 }
 
-/** Everything the scheduler runs: sheet sync for each work type, then the workload snapshot. */
+/** Everything the scheduler runs: sheet sync for each work type, the workload snapshot, overdue messages. */
 export async function runJobs() {
+  await refreshStages(true);
   const sync = await syncAll();
   const snapshots = await snapshotWorkload();
-  return { sync, snapshots };
+  const overdue = await notifyOverdue();
+  return { sync, snapshots, overdue };
 }

@@ -6,6 +6,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { Card, Kpi, KpiGrid, ToneChip } from '@/components/ui';
 import type { NavIcon } from '@/components/icons';
 import { formatDuration } from '@/lib/time';
+import { lowerLabel } from '@/lib/text';
 import { itemsUrl } from '@/lib/items-url';
 import { groupRollup } from '@/lib/groups';
 import { getModule } from '@/modules/registry';
@@ -45,7 +46,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
   const itemsHref = itemsUrl(key);
   const present = new Set(mod.statuses.map(s => s.category));
   const count = (c: StatusCategory) => d.items.filter(i => i.category === c).length;
-  const noun = (mod.labels?.assignee ?? 'developer').toLowerCase();
+  const noun = lowerLabel(mod.labels?.assignee ?? 'developer');
 
   // By status and per-person bars leave Done out; the Done count lives on its card.
   const open = d.statusSlices.filter(s => s.category !== 'done');
@@ -94,8 +95,10 @@ export default async function OverviewPage({ params, searchParams }: { params: P
                     {r.result && <ToneChip tone={r.result.tone}>{r.result.label}</ToneChip>}
                   </div>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{r.cells.passRate}</span>
-                    <span className="text-xs text-muted">{r.count} tests</span>
+                    <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{r.cells[mod.groupSummary!.headline ?? 'passRate']}</span>
+                    <span className="text-xs text-muted">
+                      {r.count} {mod.itemNoun}s
+                    </span>
                   </div>
                   <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={parts.map(([k, n]) => `${k} ${n}`).join(', ')}>
                     {parts.map(([k, n]) => (

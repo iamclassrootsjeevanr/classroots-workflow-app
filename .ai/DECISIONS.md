@@ -86,3 +86,18 @@ Decision: all work and every handoff happen on `start-here` (state `.ai/state/st
 Why: Jeevan wants one obvious place to start and no leftover branches. Replaces "one personal branch per topic".
 By: cursor
 
+## 2026-11-04 — Railway runs three environments: development, staging, production
+Decision: one Railway project, environments `production` (← `main`), `staging` (← `staging`) and `development` (← `development`), made by duplicating production. Each has its own Postgres (empty on duplication, filled with `npm run db:copy`), address, `AUTH_URL`, `AUTH_SECRET`, `CRON_SECRET`. Shared: one Google OAuth client with all three addresses + localhost, `ADMIN_EMAILS`, `OFFICE_DOMAINS`. Email: production and staging (from name "Classroots Work (staging)"), development none (mails in logs). Checklist: `docs/DEPLOY.md`.
+Why: Jeevan wants every merged change visible on a real address and a release tested on staging before production; migrations then run development → staging → production in turn. Extends the 2026-11-03 branches decision (development was "local / optional").
+By: cursor
+
+## 2026-11-04 — Stages are configurable by admins (WorkflowStage overrides over module code)
+Decision: module code keeps the default stages; `WorkflowStage` rows store only an admin's changes (null = code default) plus custom stages. `applyStageConfig` (src/lib/stages.ts, pure, tested) merges them, generates "next stage" moves from `StatusDef.next`, retargets moves around skipped stages (`to: '@next:<key>'`), turns paused stages into 'hold'. `getModule` returns the merged module from a registry cache refreshed every 10 s from `currentUser` and on save (src/server/stages.ts). Rows are written only when edited (not seeded on enable), so later code changes still reach unedited stages. First/last/side/`locked` stages and stages without `next` (all of APK Testing) can't be paused/skipped. Removing a stage with history skips it.
+Why: Jeevan wants to add, pause or skip stages anywhere as the Journey after-steps get standardised, without a deploy. Rejected: a fully DB-defined workflow (would touch every module consumer and lose type-checked defaults).
+By: cursor
+
+## 2026-11-04 — Journey rebuilt from the SME's answers; demo data replaced by the real tracker
+Decision: key stays `journey-applet`. One stage line: Allocated → 3a Spine → 3b Script → 4 Build → 5 Ship → Ready for review → In progress (↺ Changes asked / Correction verification) → Closed → 6 after-steps → Done. New actor `OWNER` (the item's owner with the review capability) so only a journey's own SME reviewer reviews it; "Ask for changes" `requires: 'feedback'`; moves `stamp` Submitted for review / Review date; module `compute` sets Days taken (Mon–Fri inclusive) and Closure due (Review date + 1 working day) as `dueAt`; `dueEndsAt: 'approved'` ends workload/delay/overdue at review close (`ItemLite.handedOff`); per-module `workDays` (Journey Mon–Fri), per-stage `stuckHours` and `phaseLimits` (creation 18 h). Roles: SME creator, SME reviewer, Coordinator, Program manager. No Google Sheet for Journey (tracker is a Slack list): `npm run import:journey -- <csv> --replace` replaced the 93 demo journeys with the 35 real ones; old importer `import:xlsx` removed; old flow kept as test fixture `tests/fixtures/review-flow.ts`.
+Why: Arjun's journey-answers.md (docs/JOURNEY-BRIEF.md). Rejected: separate work types per phase (one row per journey was his answer).
+By: cursor
+

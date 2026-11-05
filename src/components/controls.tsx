@@ -12,7 +12,9 @@ import {
   commentAction,
   feedbackAction,
   loadEditFieldsAction,
+  noteFeedbackAction,
   resolveFeedbackAction,
+  setOwnerAction,
   updateFieldsAction,
   type ActionResult,
 } from '@/app/actions';
@@ -93,7 +95,8 @@ export function StatusSelect({
 
 export type PersonOption = { id: string; name: string; hint?: string };
 
-export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean }) {
+/** Who works on the item (default), or with `owner` who owns it (e.g. its SME reviewer). */
+export function AssignSelect({ itemId, assigneeId, people, compact, owner, label = 'Assign developer' }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean; owner?: boolean; label?: string }) {
   const { pending, result, exec } = useAction();
   const [next, setNext] = useState<string | null>(null);
   useEffect(() => {
@@ -102,13 +105,14 @@ export function AssignSelect({ itemId, assigneeId, people, compact }: { itemId: 
   return (
     <div className="min-w-0">
       <select
-        aria-label="Assign developer"
+        aria-label={label}
         className={`input ${compact ? 'w-auto py-1 text-xs' : ''}`}
         value={next ?? assigneeId ?? ''}
         disabled={pending}
         onChange={e => {
+          const id = e.target.value || null;
           setNext(e.target.value);
-          exec(() => assignAction(itemId, e.target.value || null));
+          exec(() => (owner ? setOwnerAction(itemId, id) : assignAction(itemId, id)));
         }}
       >
         <option value="">Unassigned</option>
@@ -411,7 +415,7 @@ export function EditItemButton({ itemId, itemKey, title, compact }: { itemId: st
   );
 }
 
-export function FeedbackForm({ itemId, canRequestCorrections }: { itemId: string; canRequestCorrections: boolean }) {
+export function FeedbackForm({ itemId, canRequestCorrections, correctionsLabel = 'Send back for corrections' }: { itemId: string; canRequestCorrections: boolean; correctionsLabel?: string }) {
   const { pending, result, exec } = useAction();
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('');
@@ -442,7 +446,7 @@ export function FeedbackForm({ itemId, canRequestCorrections }: { itemId: string
         </button>
         {canRequestCorrections && (
           <button className="btn-danger" disabled={pending || !body.trim()} onClick={() => submit(true)}>
-            Send back for corrections
+            {correctionsLabel}
           </button>
         )}
       </div>
@@ -457,6 +461,46 @@ export function ResolveFeedbackButton({ id, resolved }: { id: string; resolved: 
     <button className="text-xs font-medium text-brand hover:underline disabled:opacity-50" disabled={pending} onClick={() => exec(() => resolveFeedbackAction(id))}>
       {resolved ? 'Reopen' : 'Mark resolved'}
     </button>
+  );
+}
+
+/** The creator's reply under one feedback point ("Their note" in the tracker). Read-only for everyone else. */
+export function FeedbackReply({ id, note, by, editable }: { id: string; note: string | null; by?: string | null; editable: boolean }) {
+  const { pending, result, exec } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(note ?? '');
+  if (!editing) {
+    return (
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 border-t border-line pt-2 text-sm">
+        {note ? (
+          <p className="min-w-0 flex-1 whitespace-pre-wrap">
+            <span className="text-xs font-medium text-muted">{by ?? 'Reply'}: </span>
+            {note}
+          </p>
+        ) : (
+          <span className="flex-1 text-xs text-muted">No reply yet.</span>
+        )}
+        {editable && (
+          <button type="button" className="text-xs font-medium text-brand hover:underline" onClick={() => setEditing(true)}>
+            {note ? 'Edit reply' : 'Reply'}
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 space-y-2 border-t border-line pt-2">
+      <textarea className="input min-h-16" aria-label="Your reply" placeholder="What you changed, or why not" value={text} onChange={e => setText(e.target.value)} />
+      <div className="flex gap-2">
+        <button type="button" className="btn-primary" disabled={pending} onClick={() => exec(() => noteFeedbackAction(id, text), () => setEditing(false))}>
+          {pending ? 'Saving…' : 'Save reply'}
+        </button>
+        <button type="button" className="btn-ghost" disabled={pending} onClick={() => setEditing(false)}>
+          Cancel
+        </button>
+      </div>
+      <ActionMessage result={result} />
+    </div>
   );
 }
 

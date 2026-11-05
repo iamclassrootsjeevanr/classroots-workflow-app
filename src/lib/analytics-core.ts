@@ -26,7 +26,12 @@ export type ItemLite = {
   reopenCount: number;
   /** Workload weight of this item (default 1). */
   weight?: number;
+  /** The assignee's part is over (approved, in a work type whose due date ends at approval): no workload, delay or overdue. */
+  handedOff?: boolean;
 };
+
+/** When the due date was met or missed: approval for handed-off items, else completion. */
+const dueEnd = (it: Pick<ItemLite, 'completedAt' | 'approvedAt' | 'handedOff'>) => (it.handedOff ? it.approvedAt : it.completedAt);
 
 export type IntervalLite = {
   itemId: string;
@@ -86,7 +91,7 @@ export function kpis(items: ItemLite[], now: Date): Kpis {
     if (it.category === 'approved') k.approved++;
     if (it.category === 'done') k.done++;
     if (it.category === 'hold') k.onHold++;
-    if (isOpen(it.category) && it.dueAt) {
+    if (isOpen(it.category) && it.dueAt && !it.handedOff) {
       if (it.dueAt < now) k.overdue++;
       else if (it.dueAt <= weekEnd) k.dueThisWeek++;
     }
@@ -95,9 +100,9 @@ export function kpis(items: ItemLite[], now: Date): Kpis {
 }
 
 /** Delay in whole days vs due date (positive = late). Open items are measured against now. */
-export function delayDays(it: Pick<ItemLite, 'dueAt' | 'completedAt' | 'category'>, now: Date): number | null {
+export function delayDays(it: Pick<ItemLite, 'dueAt' | 'completedAt' | 'category'> & Partial<Pick<ItemLite, 'approvedAt' | 'handedOff'>>, now: Date): number | null {
   if (!it.dueAt) return null;
-  const end = it.completedAt ?? (isClosed(it.category) ? null : now);
+  const end = it.handedOff ? (it.approvedAt ?? null) : (it.completedAt ?? (isClosed(it.category) ? null : now));
   if (!end) return null;
   return Math.floor((end.getTime() - it.dueAt.getTime()) / 86400000);
 }
@@ -180,8 +185,8 @@ export function reviewRoundDistribution(items: ItemLite[]): { rounds: number; co
 export function qualityRates(items: ItemLite[]) {
   const approved = items.filter(i => i.approvedAt || i.completedAt);
   const firstPass = approved.filter(i => i.reviewRounds <= 1 && i.reopenCount === 0).length;
-  const withDue = items.filter(i => i.completedAt && i.dueAt);
-  const onTime = withDue.filter(i => i.completedAt! <= i.dueAt!).length;
+  const withDue = items.filter(i => dueEnd(i) && i.dueAt);
+  const onTime = withDue.filter(i => dueEnd(i)! <= i.dueAt!).length;
   return {
     firstPassRate: approved.length ? firstPass / approved.length : null,
     onTimeRate: withDue.length ? onTime / withDue.length : null,
@@ -261,8 +266,9 @@ export function workloadByUser(items: ItemLite[], users: UserLite[], now: Date):
       const w: Workload = { userId: u.id, name: u.name, capacity: u.capacity, open: 0, queued: 0, inProgress: 0, inReview: 0, onHold: 0, overdue: 0, dueNext7d: 0, doneLast30d: 0, active: 0, level: 'idle', utilization: 0 };
       let weighted = 0;
       for (const i of mine) {
-        if (i.completedAt && i.completedAt >= ago30) w.doneLast30d++;
-        if (i.category === 'done' || i.category === 'approved') continue;
+        const finished = dueEnd(i);
+        if (finished && finished >= ago30) w.doneLast30d++;
+        if (i.category === 'done' || i.category === 'approved' || i.handedOff) continue;
         w.open++;
         if (i.category === 'queue') w.queued++;
         if (i.category === 'active' || i.category === 'feedback') w.inProgress++;
@@ -308,19 +314,23 @@ export function workloadHeatmap(intervals: IntervalLite[], userIds: string[], da
 
 export type StuckItem = { itemId: string; status: string; category: StatusCategory; since: Date; businessHours: number; limitHours: number };
 
+/** A stuck limit for one open stay: hours, measured from `since` (default: entering the stage). */
+export type StuckRule = { hours: number; since?: Date };
+
 export function stuckItems(
   openIntervals: IntervalLite[],
-  limits: Partial<Record<StatusCategory, number>>,
+  limits: Partial<Record<StatusCategory, number>> | ((iv: IntervalLite) => StuckRule | undefined),
   now: Date,
   cal: WorkCalendar = DEFAULT_CALENDAR,
 ): StuckItem[] {
   const out: StuckItem[] = [];
   for (const iv of openIntervals) {
     if (iv.exitedAt) continue;
-    const limit = limits[iv.category];
-    if (!limit) continue;
-    const hours = businessMinutesBetween(iv.enteredAt, now, cal) / 60;
-    if (hours > limit) out.push({ itemId: iv.itemId, status: iv.status, category: iv.category, since: iv.enteredAt, businessHours: hours, limitHours: limit });
+    const rule = typeof limits === 'function' ? limits(iv) : limits[iv.category] ? { hours: limits[iv.category]! } : undefined;
+    if (!rule?.hours) continue;
+    const since = rule.since ?? iv.enteredAt;
+    const hours = businessMinutesBetween(since, now, cal) / 60;
+    if (hours > rule.hours) out.push({ itemId: iv.itemId, status: iv.status, category: iv.category, since, businessHours: hours, limitHours: rule.hours });
   }
   return out.sort((a, b) => b.businessHours / b.limitHours - a.businessHours / a.limitHours);
 }

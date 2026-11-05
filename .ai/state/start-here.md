@@ -1,46 +1,59 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-03T13:50:05Z · by: cursor · owner: Jeevan
+Updated: 2026-11-04T13:08:45Z · by: cursor · owner: Jeevan
 
 ## Goal
-Put Classroots Work live on Railway (production = `main`) with a copy of the local DB, Google sign-in for @classrootsedu.com,
-email for invites / forgot password, real people. Then build app → sheet sync for APK. Journey is built later.
+Journey rebuilt from the SME's answers (done, PR open). Next: go live on Railway (development, staging, production per
+`docs/DEPLOY.md`), then app → sheet sync for APK.
 
 ## Done this stretch
-- `start-here` is now the one working branch (renamed from jeevan/railway). Handoff/resume skills updated (`.agents/skills/*`,
-  mirrored by `python3 .ai/bin/sync.py`): handoff always saves here, merges origin/development in, and deletes merged branches.
-- Deleted branches jeevan/go-live and jeevan/deploy (local + GitHub); removed their state files and upgrade-ai-kit's (logs kept).
-- Docs: AGENTS.md "Branches", README "Branches and environments" / Contributing, NEXT-STEPS § 1 now describe `start-here`.
+- Journey work type rebuilt from Arjun's `journey-answers.md` + tracker CSV (35 journeys, 3 chapters G04C05/G05C02/G06C07):
+  stages Allocated → 3a Spine → 3b Script → 4 Build → 5 Ship → Ready for review → In progress (↺ Changes asked / Correction
+  verification) → Closed → Design standardization (paused) → Last look → Video replacement → UAT→prod → Published on prod →
+  User testing and QA → Done. Roles SME creator / SME reviewer / Coordinator / Program manager. `src/modules/journey-applet/definition.ts`.
+- Configurable stages: `WorkflowStage` table (migration 20261104120000_workflow_stages), `src/lib/stages.ts` (applyStageConfig,
+  stuckRules), `src/server/stages.ts` (cache refresh + save/add/remove), Admin → Work types → Stages
+  (`src/app/(app)/admin/work-types/[key]/stages/page.tsx`, `src/components/stage-editor.tsx`).
+- Workflow rules: `OWNER` actor, `requires: 'feedback'`, `stamp`, module `compute` (Days taken, Closure due → dueAt, `src/lib/journey.ts`),
+  `dueEndsAt: 'approved'` (handedOff: no workload/delay after review close), per-module `workDays`, per-stage `stuckHours`,
+  `phaseLimits`; SME reviewer picker on the item page (`setOwner`); creator replies on feedback (Feedback.note); inbox for
+  submitted / review closed / overdue (`src/server/services/overdue.ts`, run by cron).
+- Local DB: 93 demo journeys + old Journey roles replaced via `npm run import:journey -- /tmp/journey-tracker-2026-11-04.csv --replace`
+  (14 people with @classrootsedu.com emails and roles). `scripts/import-xlsx.ts` removed. APK untouched (428 items).
+- Tests: tests/stages.test.ts, tests/journey.test.ts; old flow kept as fixture tests/fixtures/review-flow.ts.
+- Browser-checked as admin (desktop + 375px, light + dark): overview, Journeys list, item page full review loop, Stages screen
+  (add QA check after Build, skip Script, then reverted). Test changes undone: tracker re-imported (G05C02ST2J1 back to Ready
+  for review, no feedback), WorkflowStage table empty. Saving a stage back to its code defaults now deletes its row.
+- `npm run build` passes (run with dev stopped; `.next` cleared, dev restarted). Labels keep acronyms (`src/lib/text.ts` lowerLabel).
+- Users cleaned (local DB, 18 left): removed 16 Journey-demo accounts without history (first-name-only sheet people, Demo
+  Client/Coordinator/Lead/Viewer, aswin@demo). Importer `--replace` now also removes no-email people without roles or work.
+- `docs/JOURNEY-FOLLOW-UP.md` ready to send (written as from Jeevan); where each answer goes is in NEXT-STEPS § 8.1.
+- `start.command` fixed (500 ENOENT after double-click): no second copy, prisma generate, fresh .next.
+- Docs: README Journey + Configurable stages, NEXT-STEPS § 4/6/8, `docs/JOURNEY-FOLLOW-UP.md` (questions for Arjun), DECISIONS, LEARNINGS.
 
 ## Where things stand
-- Code: development = staging = main (main 7564280, PRs #6–#11 merged). This branch adds only docs/skills/.ai changes (not yet in development).
-- Railway: NOT set up yet. Nothing deployed.
-- Local DB (`npm run db:start` or double-click `start.command`): 18 APK versions (17 tested + 2.0.1.14_2026-11-02, 20 tests
-  Not Tested, Jeevan); Journey demo (93). Admins: Jeevan (jeevan@classrootsedu.com, password), Kishor (kishor@classrootsedu.com,
-  Google only), Demo Admin (etp4.creates@gmail.com, demo password), etp2.creates@gmail.com (Google only → can't sign in on the
-  server: give a password or deactivate). Swathi = swathi@classrootsedu.com.
+- Code: start-here ahead of development by this work + earlier docs (DEPLOY three envs, JOURNEY-BRIEF).
+- Typecheck, 146 tests and `npm run build` pass. PR #13 (start-here → development) open, CI green.
+- Local dev: nothing running. Double-click `start.command` (now guards against a second copy, migrates, regenerates Prisma, clears .next).
+- Railway: NOT set up yet.
 
 ## In progress
 Nothing mid-edit.
 
-## Next steps — follow `docs/DEPLOY.md` (Jeevan + Kishor; help when asked)
-1. Open PR `start-here → development` for this branch's docs/skills (merge commit), release when convenient.
-2. DEPLOY step 2 Railway: project from repo (branch main; Kishor needs GitHub collaborator access or a Railway invite), Postgres,
-   domain, variables (DATABASE_URL ref + ?connection_limit=10&pool_timeout=20, AUTH_SECRET, AUTH_URL,
-   ADMIN_EMAILS=jeevan@classrootsedu.com,kishor@classrootsedu.com, OFFICE_DOMAINS=classrootsedu.com, APP_TIMEZONE); /api/health ok.
-3. Step 3 on Jeevan's Mac: `npm run db:copy -- --to '<DATABASE_PUBLIC_URL>'`; sign in, change demo password.
-4. Step 4 Google OAuth client (Internal) with the Railway address → AUTH_GOOGLE_ID/SECRET.
-5. Step 5 Gmail app password → EMAIL_SERVER/EMAIL_FROM; test Forgot password.
-6. Step 6 people: deactivate @demo accounts, fix etp2.creates, Send invite to Jeevan/Swathi/Kishor, add real people.
-7. Then build APK sheet sync app → sheet only (push-only mode, existing versions pushed); sync stays OFF on the server until then.
-8. Later: Journey from the real tracker; switch the server to live data (NEXT-STEPS § 6 "Later").
+## Next steps
+1. Merge PR #13 start-here → development (merge commit); it is open, clean, CI green.
+2. Send `docs/JOURNEY-FOLLOW-UP.md` to Arjun. His answers: after-step owners/limits → Admin → Stages (no code); half-day Days
+   taken, Closure due rule, coordinator-per-chapter scope → code.
+3. Deploy per `docs/DEPLOY.md` (production, then staging + development). db:copy now carries the 35 real journeys.
+   On each server, Admin → Work types shows Journey with the new stages; the Journey people sign in with Google.
+4. APK sheet sync app → sheet only; then an API so Claude can move a journey's creation stage from the relay.
 
 ## Blockers / open questions
 - Needs Jeevan/Kishor: Railway account, Google Cloud (Workspace admin), mailbox app password.
+- Needs Arjun: the answers in `docs/JOURNEY-FOLLOW-UP.md`.
 
 ## Key files
-- `docs/DEPLOY.md` (the checklist), `docs/NEXT-STEPS.md` (§ 6 data, § 7 sign-in), README "Branches and environments", "Deploy".
-- `.agents/skills/handoff/SKILL.md`, `.agents/skills/resume/SKILL.md`.
-- `scripts/copy-db.ts`, `Dockerfile`, `railway.json`, `src/server/auth.ts`, `src/server/mail.ts`, `src/lib/invite.ts`,
-  `src/server/sync/google-sheet.ts`, `apps-script/Code.gs`.
+- `src/modules/journey-applet/definition.ts`, `src/lib/stages.ts`, `src/server/stages.ts`, `src/lib/journey.ts`, `src/modules/types.ts`.
+- `src/server/services/work-items.ts` (changeStatusTx: stamps/compute/notify; correctionsMove; setOwner; noteFeedback).
+- `scripts/import-journey-csv.ts`, `docs/JOURNEY-FOLLOW-UP.md`, `docs/DEPLOY.md`.

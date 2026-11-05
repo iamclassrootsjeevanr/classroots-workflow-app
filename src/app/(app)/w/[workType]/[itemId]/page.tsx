@@ -1,14 +1,16 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
 import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
-import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey } from '@/lib/time';
+import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
-import { allowedTransitions, canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { lowerLabel } from '@/lib/text';
+import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { correctionsMove } from '@/server/services/work-items';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '@/server/apk/store';
 import { getModule, statusDef } from '@/modules/registry';
@@ -16,7 +18,7 @@ import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
 import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
-import { assignablePeople } from '@/server/view';
+import { assignablePeople, reviewPeople, statusOptions } from '@/server/view';
 
 const EVENT_TEXT: Record<string, string> = {
   CREATED: 'created',
@@ -59,15 +61,18 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   if (!canSeeItem(access, key, item)) notFound();
 
   const tz = appTz();
-  const cal = await workCalendar();
+  const cal = withWorkDays(await workCalendar(), mod.workDays);
   const now = new Date();
   const ctx = actorContextFor(access, key, item);
   const editable = item.workType.state === 'ACTIVE';
   const def = statusDef(mod, item.status);
-  const transitions = editable
-    ? allowedTransitions(mod, item.status, ctx).map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }))
-    : [];
-  const people = hasCap(ctx, 'assign') && editable ? await assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null;
+  const transitions = editable ? statusOptions(mod, item.status, ctx) : [];
+  const canAssign = hasCap(ctx, 'assign') && editable;
+  const showOwner = !mod.table?.hide?.includes('owner');
+  const [people, owners] = await Promise.all([
+    canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
+    canAssign && showOwner ? reviewPeople(key) : null,
+  ]);
   const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   const fields: EditableField[] = mod.fields.map(f => ({
     key: f.key,
@@ -75,11 +80,16 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     type: f.type,
     linkLabel: f.linkLabel,
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
-    editable: editable && canEditField(f, ctx),
+    editable: editable && !f.computed && canEditField(f, ctx),
   }));
   const isReviewer = hasCap(ctx, 'review');
-  const canRequestCorrections = isReviewer && transitions.some(t => statusDef(mod, t.to).category === 'feedback');
-  const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, category: def.category }, now);
+  const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
+  const canReply = editable && (ctx.isAdmin || (ctx.isAssignee && hasCap(ctx, 'work')));
+  const replyAuthors = new Map(
+    (await db.user.findMany({ where: { id: { in: item.feedback.map(f => f.noteById).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map(u => [u.id, u.name]),
+  );
+  const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
+  const dueLabel = mod.labels?.due ?? 'Expected';
 
   const intervals = item.intervals.map(iv => {
     const d = statusDef(mod, iv.status);
@@ -142,7 +152,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{item.title}</h1>
           <p className="mt-1 text-sm text-muted">
             {[item.groupKey, item.chapter?.title ?? (data.chapterTitle as string | undefined), item.chapter?.grade ? `Grade ${item.chapter.grade}` : null].filter(Boolean).join(' · ')}
-            {item.owner?.name && !mod.table?.hide?.includes('owner') && <> · SME {item.owner.name}</>}
+            {item.owner?.name && showOwner && !owners && (
+              <>
+                {' '}· {mod.labels?.owner ?? 'SME'} {item.owner.name}
+              </>
+            )}
           </p>
           {item.sheetMissing && <p className="mt-1 text-xs text-warn">Not found in the Google Sheet on the last sync.</p>}
         </div>
@@ -153,8 +167,14 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           </div>
           <div className="min-w-52">
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
-            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
           </div>
+          {owners && (
+            <div className="min-w-52">
+              <span className="label">{mod.labels?.owner ?? 'Owner'}</span>
+              <AssignSelect owner itemId={item.id} assigneeId={item.ownerId} people={owners} label={`Choose ${lowerLabel(mod.labels?.owner ?? 'owner')}`} />
+            </div>
+          )}
           {editable && canDeleteItem(ctx) && (
             <div className="sm:ml-3 sm:border-l sm:border-line sm:pl-4">
               <DeleteItemButton itemId={item.id} itemKey={item.externalKey} redirectTo={`/w/${key}/items`} />
@@ -175,7 +195,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="min-w-0 space-y-5 xl:col-span-2">
           <Card title="Stage timeline" actions={<span className="text-xs text-muted">business hours: {cal.startHour}:00–{cal.endHour}:00</span>}>
-            <StageTimeline intervals={intervals} now={now} tz={tz} />
+            <StageTimeline intervals={intervals} now={now} tz={tz} assigneeLabel={mod.labels?.assignee} />
           </Card>
 
           {noteFields.length > 0 && (
@@ -202,7 +222,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           <Card title={`Feedback (${item.feedback.length})`}>
             {isReviewer && editable && (
               <div className="mb-4">
-                <FeedbackForm itemId={item.id} canRequestCorrections={canRequestCorrections} />
+                <FeedbackForm itemId={item.id} canRequestCorrections={Boolean(sendBack)} correctionsLabel={sendBack?.label} />
               </div>
             )}
             {item.feedback.length ? (
@@ -217,6 +237,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                       <span className="ml-auto">{(ctx.isAssignee || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
                     </div>
                     <p className="text-sm whitespace-pre-wrap">{f.body}</p>
+                    {(f.note || canReply) && <FeedbackReply id={f.id} note={f.note} by={f.noteById ? replyAuthors.get(f.noteById) : null} editable={canReply} />}
                   </li>
                 ))}
               </ul>
@@ -233,11 +254,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
               <dd>
                 <StatusBadge label={def.label} color={def.color} />
               </dd>
-              <dt className="text-muted">Expected</dt>
+              <dt className="text-muted">{dueLabel}</dt>
               <dd>{formatDate(item.dueAt, tz) || '—'}</dd>
               <dt className="text-muted">Delay</dt>
               <dd>
-                <Delay days={delay} />
+                <Delay days={delay} finished={Boolean(item.completedAt) || (mod.dueEndsAt === 'approved' && Boolean(item.approvedAt))} />
               </dd>
               <dt className="text-muted">Review rounds</dt>
               <dd>{item.reviewRounds}</dd>

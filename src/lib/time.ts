@@ -20,6 +20,11 @@ export const DEFAULT_CALENDAR: WorkCalendar = {
   holidays: new Set(),
 };
 
+/** The calendar with a work type's own working days (holidays and hours stay the app's). */
+export function withWorkDays(cal: WorkCalendar, workDays?: number[]): WorkCalendar {
+  return workDays?.length ? { ...cal, workDays } : cal;
+}
+
 const partsCache = new Map<string, Intl.DateTimeFormat>();
 function partsFormatter(tz: string) {
   let f = partsCache.get(tz);
