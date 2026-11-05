@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import type { Prisma } from '@prisma/client';
-import { buildAccess, canSeeItem, workTypesWith, type Access, type ItemOwnership, type MembershipLite, type PageKey, type WorkTypeAccess } from '@/lib/access-core';
+import { buildAccess, canSeeItem, capabilitiesIn, workTypesWith, type Access, type ItemOwnership, type MembershipLite, type PageKey, type WorkTypeAccess } from '@/lib/access-core';
 import type { ActorContext } from '@/lib/workflow';
 import { db } from './db';
 import { ForbiddenError } from './errors';
@@ -14,7 +14,7 @@ export const getAccess = cache(async (user: CurrentUser): Promise<Access> => {
     db.workType.findMany({ select: { id: true, key: true, name: true, state: true }, orderBy: { name: 'asc' } }),
     db.workTypeMember.findMany({ where: { userId: user.id }, include: { roles: { include: { role: true } } } }),
   ]);
-  const byType = new Map<string, MembershipLite>(memberships.map(m => [m.workTypeId, { roles: m.roles.map(r => r.role) }]));
+  const byType = new Map<string, MembershipLite>(memberships.map(m => [m.workTypeId, { roles: m.roles.map(r => r.role), groupKeys: m.groupKeys }]));
   return buildAccess(user.id, user.isAdmin, workTypes, byType);
 });
 
@@ -52,11 +52,12 @@ export function scopeWhere(access: Access, types: WorkTypeAccess[]): Prisma.Work
   };
 }
 
-export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null }): ActorContext {
+/** What the person may do on this item. `groupKey` is required: steward rights stop at the groups a membership is limited to. */
+export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null; groupKey: string | null }): ActorContext {
   const a = access.byKey.get(workTypeKey);
   return {
     isAdmin: access.isAdmin,
-    capabilities: a?.capabilities ?? new Set(),
+    capabilities: a ? capabilitiesIn(a, item.groupKey) : new Set(),
     isAssignee: item.assigneeId === access.userId,
     isOwner: Boolean(item.ownerId) && item.ownerId === access.userId,
     canEdit: Boolean(a?.canEdit),
@@ -68,7 +69,7 @@ export async function itemActorContext(user: CurrentUser, itemId: string) {
   const access = await getAccess(user);
   const item = await db.workItem.findUniqueOrThrow({
     where: { id: itemId },
-    select: { workTypeId: true, assigneeId: true, ownerId: true, createdById: true, workType: { select: { key: true } } },
+    select: { workTypeId: true, assigneeId: true, ownerId: true, createdById: true, groupKey: true, workType: { select: { key: true } } },
   });
   if (!canSeeItem(access, item.workType.key, item as ItemOwnership)) throw new ForbiddenError('You don’t have access to this item.');
   return { access, item, ctx: actorContextFor(access, item.workType.key, item) };

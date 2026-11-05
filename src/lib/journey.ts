@@ -1,5 +1,17 @@
-/** Journey rules from the SME tracker: journey keys, Days taken and Closure due. Pure: dates are 'YYYY-MM-DD' strings. */
+/** Journey rules from the SME tracker: journey keys, Creation stage, Days taken and Closure due. Pure: dates are 'YYYY-MM-DD' strings. */
+import { matchOption } from './text';
 import type { WorkCalendar } from './time';
+
+/** The relay (buildjourneyrelay) uses the same steps; "Published" = published in UAT. */
+export const CREATION_STAGES = ['3a · Spine', '3b · Script', '4 · Build', '5 · Ship', 'Published'] as const;
+
+const stageName = (option: string) => option.replace(/^\d+[ab]?\s*·\s*/i, '');
+
+/** The Creation stage meant by `input`: "4 Build", "4 · Build" and "build" all mean "4 · Build". */
+export function creationStageFor(input: unknown): (typeof CREATION_STAGES)[number] | undefined {
+  if (typeof input !== 'string') return undefined;
+  return (matchOption(CREATION_STAGES, input) ?? CREATION_STAGES.find(o => matchOption([stageName(o)], input))) as (typeof CREATION_STAGES)[number] | undefined;
+}
 
 const DAY_MS = 86_400_000;
 const MAX_DAYS = 3660;
@@ -16,6 +28,25 @@ export function workingDaysInclusive(from: unknown, to: unknown, cal: Pick<WorkC
   let n = 0;
   for (let d = a, i = 0; d <= b && i < MAX_DAYS; d = new Date(d.getTime() + DAY_MS), i++) if (isWorkDay(d, cal)) n++;
   return n;
+}
+
+/**
+ * The tracker's Days taken with half days (SME, 5 Nov 2026): working days from picked up to submitted, both counted, where the
+ * pick-up day counts 0.5 if picked up in its second half and the submit day 0.5 if submitted in its first half. Null like
+ * `workingDaysInclusive`. A same-day journey is never less than half a day.
+ */
+export function daysTaken(
+  pickedUp: unknown,
+  submitted: unknown,
+  halves: { pickedUp?: unknown; submitted?: unknown },
+  cal: Pick<WorkCalendar, 'workDays' | 'holidays'>,
+): number | null {
+  const full = workingDaysInclusive(pickedUp, submitted, cal);
+  if (full == null || full === 0) return full;
+  let days = full;
+  if (halves.pickedUp === 'Second half' && isWorkDay(parseDay(pickedUp)!, cal)) days -= 0.5;
+  if (halves.submitted === 'First half' && isWorkDay(parseDay(submitted)!, cal)) days -= 0.5;
+  return Math.max(days, 0.5);
 }
 
 /** The date `days` working days after `from` (the tracker's "Closure due" = Review date + 1). */

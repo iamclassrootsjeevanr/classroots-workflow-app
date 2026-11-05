@@ -2,7 +2,9 @@ import { Prisma, type EventSource, type WorkItem, type WorkType } from '@prisma/
 import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
-import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
+import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
+import { landingStage, nextActiveAfter } from '@/lib/stages';
+import { matchOption } from '@/lib/text';
 import { allowedTransitions, canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
@@ -29,7 +31,7 @@ async function loadItem(tx: Tx, itemId: string): Promise<ItemWithType> {
 }
 
 function guardActive(item: ItemWithType, actor: ChangeActor) {
-  if (actor.source === 'APP' && item.workType.state !== 'ACTIVE') throw new PausedError(item.workType.name);
+  if ((actor.source === 'APP' || actor.source === 'RELAY') && item.workType.state !== 'ACTIVE') throw new PausedError(item.workType.name);
 }
 
 async function saveItem(tx: Tx, item: WorkItem, data: Prisma.WorkItemUncheckedUpdateInput, expectedVersion?: number) {
@@ -102,23 +104,30 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   if (actor.ctx && move?.requires === 'feedback' && !opts.withFeedback) {
     throw new Error(`Write the feedback first: “${move.label ?? statusDef(mod, to).label}” is in the Feedback card.`);
   }
-  const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, to, now) };
-  if (move?.stamp?.length || mod.compute) {
-    const data = { ...((item.data ?? {}) as Record<string, unknown>) };
-    const today = dayKey(now, cal.tz);
-    for (const f of move?.stamp ?? []) if (!data[f]) data[f] = today;
+  const data = { ...((item.data ?? {}) as Record<string, unknown>) };
+  const today = dayKey(now, cal.tz);
+  for (const f of move?.stamp ?? []) {
+    if (data[f]) continue;
+    data[f] = today;
+    for (const half of mod.fields.filter(x => x.halfOf === f)) if (!data[half.key]) data[half.key] = halfOfDay(now, cal);
+  }
+  for (const [f, v] of Object.entries(move?.set ?? {})) if (!data[f]) data[f] = v;
+  const landing = landingStage(mod.statuses, to, data);
+  const note = landing === to ? opts.note : [opts.note, `${statusDef(mod, to).label} not needed`].filter(Boolean).join(' · ');
+  const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, landing, now) };
+  if (move?.stamp?.length || move?.set || mod.compute) {
     const c = computed(mod, item.externalKey, data, cal);
     update.data = mod.dataSchema.parse(c.data) as Prisma.InputJsonValue;
     if (c.dueAt !== undefined) update.dueAt = c.dueAt;
   }
   await saveItem(tx, item, update, opts.expectedVersion);
   await tx.workItemEvent.create({
-    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: to, source: actor.source, note: opts.note, at: now },
+    data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: landing, source: actor.source, note, at: now },
   });
-  await rollInterval(tx, item.id, to, item.assigneeId, now, cal);
+  await rollInterval(tx, item.id, landing, item.assigneeId, now, cal);
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
-  await notifyStage(tx, item, mod, actor, to);
+  await notifyStage(tx, item, mod, actor, landing);
 }
 
 /** Inbox messages a work type asks for: submitted → the owner (reviewer), approved → the assignee. */
@@ -239,6 +248,11 @@ function coerce(field: FieldDef, value: FieldValue): string | number | null {
     if (!/^https?:\/\//i.test(s)) throw new Error(`${field.label} must start with http:// or https://`);
     return s;
   }
+  if (field.type === 'select') {
+    const option = matchOption(field.options ?? [], String(value));
+    if (!option) throw new Error(`${field.label} must be one of: ${(field.options ?? []).join(', ')}`);
+    return option;
+  }
   return String(value).trim();
 }
 
@@ -285,14 +299,21 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   await saveItem(tx, item, { ...update, data: calc.data as Prisma.InputJsonValue });
   await tx.workItemEvent.createMany({ data: events });
   await enqueue(tx, item.id, item.workType, mod, actor, columns);
+
+  for (const m of mod.fieldMoves ?? []) {
+    if (item.status !== m.from || patch[m.field] == null || patch[m.field] === '') continue;
+    const to = mod.statuses.find(s => s.key === m.to)?.state === 'skipped' ? nextActiveAfter(mod.statuses, m.to) : m.to;
+    if (to) await changeStatusTx(tx, await loadItem(tx, item.id), { ...actor, ctx: null }, to, now, cal);
+    break;
+  }
 }
 
-export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>) {
+export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date } = {}) {
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await updateFieldsTx(tx, item, actor, patch, new Date(), cal);
+    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal);
   });
 }
 
@@ -359,8 +380,9 @@ export async function addFeedback(
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    if (actor.ctx && !hasCap(actor.ctx, 'review')) throw new ForbiddenError('Only reviewers can give feedback. Use a comment instead.');
     const mod = requireModule(item.workType.key);
+    const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
+    if (actor.ctx && !hasCap(actor.ctx, 'review') && !sendsBack) throw new ForbiddenError('Only reviewers can give feedback. Use a comment instead.');
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });

@@ -4,13 +4,15 @@
  *   npm run import:journey -- "/path/to/tracker-export.csv"            # dry run: prints what it would do and every mismatch
  *   npm run import:journey -- "/path/to/tracker-export.csv" --replace  # deletes all Journey items, then imports
  *
- * Also: creates the chapters, the Journey team (docs/JOURNEY-BRIEF.md answers, A5) with their roles, and removes the
- * Journey roles of the old demo flow (Developer, SME / Reviewer, Viewer). Columns:
+ * Also: creates the chapters (with their names), the Journey team (docs/JOURNEY-BRIEF.md answers, A5; follow-up answers 5)
+ * with their roles and chapters, and removes the Journey roles of the old demo flow. The SME's corrections and current review
+ * states (docs/JOURNEY-FOLLOW-UP.md answers, 5 Nov 2026) are applied over the tracker. Columns:
  * Journey, Chapter, SME creator, Picked up, Creation stage, Submitted for review, Days taken, SME reviewer, Review state,
- * Review date, Closure due, Final status.
+ * Review date, Closure due, Final status. Creation stage and Review state are read separately: a journey can be submitted
+ * for review before it reaches 5 · Ship.
  */
 import fs from 'node:fs';
-import { parseJourneyKey, splitJourneyCell, workingDaysInclusive } from '../src/lib/journey';
+import { creationStageFor, daysTaken, parseJourneyKey, splitJourneyCell } from '../src/lib/journey';
 import { normalizeDate, withWorkDays, zonedToUtc } from '../src/lib/time';
 import { requireModule } from '../src/modules/registry';
 import { db } from '../src/server/db';
@@ -21,12 +23,15 @@ import { enableModule, ensureAdmins } from '../src/server/services/work-types';
 
 const KEY = 'journey-applet';
 
-/** The Journey team from the SME's answers. Roles: creator, reviewer, coordinator, program manager. */
-const TEAM: { name: string; email: string; roles: string[] }[] = [
-  { name: 'Arjun Singh', email: 'arjun@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'] },
-  { name: 'Aswin', email: 'aswin@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'] },
-  { name: 'Devjyoti Mondal', email: 'devjyoti@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'] },
-  { name: 'Vinay M R', email: 'vinay@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'] },
+/**
+ * The Journey team from the SME's answers. Roles: creator, reviewer, coordinator, program manager. `chapters` = the chapters a
+ * coordinator steers (their assign / add / edit rights apply there only). Aswin is admin for all three chapters.
+ */
+const TEAM: { name: string; email: string; roles: string[]; chapters?: string[]; admin?: boolean }[] = [
+  { name: 'Arjun Singh', email: 'arjun@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'], chapters: ['G04C05'] },
+  { name: 'Aswin', email: 'aswin@classrootsedu.com', roles: ['sme-reviewer', 'sme-creator'], admin: true },
+  { name: 'Devjyoti Mondal', email: 'devjyoti@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'], chapters: ['G05C02'] },
+  { name: 'Vinay M R', email: 'vinay@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'], chapters: ['G06C07'] },
   { name: 'Kapil Sankhwar', email: 'kapil@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Animesh Mittal', email: 'animesh@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Krishna Rander', email: 'krishna.rander@classrootsedu.com', roles: ['sme-creator'] },
@@ -35,13 +40,31 @@ const TEAM: { name: string; email: string; roles: string[] }[] = [
   { name: 'Vaishali Rathore', email: 'vaishali@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Supriya Manjrekar', email: 'supriya@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Divyanshu Medatwal', email: 'divyanshu@classrootsedu.com', roles: ['sme-creator'] },
-  { name: 'Jeevan', email: 'jeevan@classrootsedu.com', roles: ['program-manager'] },
-  { name: 'Kishor', email: 'kishor@classrootsedu.com', roles: ['program-manager'] },
+  { name: 'Jeevan', email: 'jeevan@classrootsedu.com', roles: ['program-manager'], admin: true },
+  { name: 'Kishor', email: 'kishor@classrootsedu.com', roles: ['program-manager'], admin: true },
 ];
 
-const CREATION: Record<string, string> = { 'not started': 'allocated', '3a · spine': 'spine', '3b · script': 'script', '4 · build': 'build', '5 · ship': 'ship', published: 'ship' };
-const REVIEW: Record<string, string> = { 'ready for review': 'ready_for_review', 'in progress': 'review_in_progress', 'changes asked': 'changes_asked', 'correction verification': 'correction_verification', closed: 'closed' };
-const CREATION_ORDER = ['allocated', 'spine', 'script', 'build', 'ship'];
+const CHAPTERS: Record<string, { title: string; book: string }> = {
+  G04C05: { title: 'Sharing and Measuring', book: 'CBSE Grade 4' },
+  G05C02: { title: 'Fractions', book: 'CBSE Grade 5' },
+  G06C07: { title: 'Fractions', book: 'CBSE Grade 6' },
+};
+
+const REVIEW: Record<string, string> = { 'ready for review': 'ready_for_review', 'in progress': 'review_in_progress', 'review in progress': 'review_in_progress', 'changes asked': 'changes_asked', 'correction verification': 'correction_verification', closed: 'closed' };
+
+/** The SME's answers (docs/JOURNEY-FOLLOW-UP.md, 5 Nov 2026) over the 4 Nov tracker export: corrections and current review states. */
+const ANSWERS: Record<string, { creationStage?: string; status?: string; reviewDate?: string; reviewStarted?: string; pickedUpHalf?: string; daysTypo?: boolean }> = {
+  G04C05ST1J1: { creationStage: '5 · Ship', status: 'ready_for_review', pickedUpHalf: 'Second half' },
+  G04C05ST2J1: { status: 'changes_asked', reviewDate: '2026-11-04', pickedUpHalf: 'Second half' },
+  G04C05ST3J1: { status: 'ready_for_review', pickedUpHalf: 'Second half' },
+  G04C05ST4J1: { status: 'ready_for_review', pickedUpHalf: 'Second half' },
+  G04C05ST5J1: { status: 'changes_asked', reviewDate: '2026-11-03', pickedUpHalf: 'Second half' },
+  G05C02ST2J1: { status: 'review_in_progress', reviewStarted: '2026-11-02' },
+  G05C02ST3J1: { status: 'ready_for_review' },
+  G05C02ST4J1: { status: 'ready_for_review' },
+  G05C02ST4J2: { status: 'ready_for_review' },
+  G05C02ST5J1: { daysTypo: true },
+};
 
 /** RFC 4180 CSV → rows keyed by header. */
 function parseCsv(text: string): Record<string, string>[] {
@@ -84,7 +107,7 @@ async function main() {
   const issues: string[] = [];
   const warn = (key: string, msg: string) => issues.push(`${key}: ${msg}`);
 
-  type Planned = { key: string; name: string; chapter: string; creator: string; reviewer: string; status: string; data: Record<string, string>; enteredAt: string };
+  type Planned = { key: string; name: string; chapter: string; creator: string; reviewer: string; status: string; data: Record<string, string>; enteredAt: string; reviewStarted?: string };
   const planned: Planned[] = [];
   for (const r of rows) {
     const { key, name } = splitJourneyCell(r['Journey'] ?? '');
@@ -95,32 +118,37 @@ async function main() {
     }
     const chapter = r['Chapter'] || parsed.chapter;
     if (chapter !== parsed.chapter) warn(key, `Chapter column says ${chapter}, the key says ${parsed.chapter}`);
+    const answer = ANSWERS[key] ?? {};
     const pickedUp = normalizeDate(r['Picked up']);
     const submitted = normalizeDate(r['Submitted for review']);
-    const reviewDate = normalizeDate(r['Review date']);
-    const creation = CREATION[norm(r['Creation stage'] ?? '')];
-    const review = REVIEW[norm(r['Review state'] ?? '')];
-    if (r['Creation stage'] && !creation) warn(key, `unknown Creation stage “${r['Creation stage']}”`);
-    if (r['Review state'] && !review) warn(key, `unknown Review state “${r['Review state']}”`);
+    const reviewDate = answer.reviewDate ?? normalizeDate(r['Review date']);
+    const notStarted = !r['Creation stage'] || norm(r['Creation stage']) === 'not started';
+    const creation = answer.creationStage ?? (notStarted ? undefined : creationStageFor(r['Creation stage']));
+    const review = answer.status ?? REVIEW[norm(r['Review state'] ?? '')];
+    if (!notStarted && !creation) warn(key, `unknown Creation stage “${r['Creation stage']}”`);
+    if (r['Review state'] && !REVIEW[norm(r['Review state'])]) warn(key, `unknown Review state “${r['Review state']}”`);
 
-    let status = review ?? (submitted ? 'ready_for_review' : (creation ?? 'allocated'));
+    let status = review ?? (submitted ? 'ready_for_review' : creation ? 'creating' : 'allocated');
     if (!review && norm(r['Final status'] ?? '') === 'closed') status = 'closed';
-    if (submitted && creation && CREATION_ORDER.indexOf(creation) < CREATION_ORDER.indexOf('ship') && norm(r['Creation stage']) !== 'published') {
-      warn(key, `has Submitted for review ${submitted} but Creation stage is still “${r['Creation stage']}” → imported as Ready for review`);
-    }
-    if (norm(r['Creation stage'] ?? '') === 'published' && !submitted && !review) warn(key, 'Creation stage is Published but there is no Submitted for review date → imported as 5 · Ship');
-    if (review && review !== 'ready_for_review' && !reviewDate) warn(key, `Review state is “${r['Review state']}” but there is no Review date`);
-    const days = workingDaysInclusive(pickedUp, submitted, cal);
-    if (r['Days taken'] && !submitted) warn(key, `Days taken ${r['Days taken']} but no Submitted for review date (dropped)`);
-    else if (r['Days taken'] && days != null && Number(r['Days taken']) !== days) warn(key, `Days taken ${r['Days taken']} in the tracker, ${days} working days (Mon–Fri, both days counted) from ${pickedUp} to ${submitted}`);
+    if (['changes_asked', 'correction_verification', 'closed'].includes(status) && !reviewDate) warn(key, `Review state is “${status}” but there is no Review date`);
+    const days = daysTaken(pickedUp, submitted, { pickedUp: answer.pickedUpHalf }, cal);
+    if (r['Days taken'] && !submitted && !answer.daysTypo) warn(key, `Days taken ${r['Days taken']} but no Submitted for review date (dropped)`);
+    else if (r['Days taken'] && days != null && Number(r['Days taken']) !== days) warn(key, `Days taken ${r['Days taken']} in the tracker, ${days} in the app (Mon–Fri, half days) from ${pickedUp} to ${submitted}`);
     if (r['SME reviewer'] && !submitted && !review) warn(key, `has SME reviewer ${r['SME reviewer']} before it was submitted`);
 
     const data: Record<string, string> = {};
+    if (creation) data.creationStage = creation;
     if (pickedUp) data.pickedUpAt = pickedUp;
+    if (answer.pickedUpHalf) data.pickedUpHalf = answer.pickedUpHalf;
     if (submitted) data.submittedAt = submitted;
     if (reviewDate) data.reviewDate = reviewDate;
-    const enteredAt = (['review_in_progress', 'changes_asked', 'correction_verification', 'closed'].includes(status) ? reviewDate : '') || (status === 'ready_for_review' ? submitted : '') || pickedUp || normalizeDate(new Date());
-    planned.push({ key, name, chapter: parsed.chapter, creator: r['SME creator'] ?? '', reviewer: r['SME reviewer'] ?? '', status, data, enteredAt });
+    const enteredAt =
+      (status === 'review_in_progress' ? answer.reviewStarted : '') ||
+      (['review_in_progress', 'changes_asked', 'correction_verification', 'closed'].includes(status) ? reviewDate : '') ||
+      (status === 'ready_for_review' || status === 'review_in_progress' ? submitted : '') ||
+      pickedUp ||
+      normalizeDate(new Date());
+    planned.push({ key, name, chapter: parsed.chapter, creator: r['SME creator'] ?? '', reviewer: r['SME reviewer'] ?? '', status, data, enteredAt, reviewStarted: answer.reviewStarted });
   }
 
   const teamNames = new Map(TEAM.map(t => [norm(t.name), t]));
@@ -150,7 +178,12 @@ async function main() {
   // Chapters
   for (const code of [...new Set(planned.map(p => p.chapter))]) {
     const k = parseJourneyKey(`${code}ST1J1`)!;
-    await db.chapter.upsert({ where: { code }, create: { code, title: code, grade: k.grade, chapterNo: Number(code.slice(4)) }, update: {} });
+    const named = CHAPTERS[code];
+    await db.chapter.upsert({
+      where: { code },
+      create: { code, title: named?.title ?? code, book: named?.book, grade: k.grade, chapterNo: Number(code.slice(4)) },
+      update: named ? { title: named.title, book: named.book } : {},
+    });
   }
   const chapterIds = new Map((await db.chapter.findMany({ select: { id: true, code: true } })).map(c => [c.code, c.id]));
 
@@ -159,10 +192,14 @@ async function main() {
   for (const t of TEAM) {
     let user = await db.user.findUnique({ where: { email: t.email } });
     user ??= await db.user.findFirst({ where: { email: null, name: { equals: t.name, mode: 'insensitive' } } });
-    user = user ? await db.user.update({ where: { id: user.id }, data: { email: t.email, active: true } }) : await db.user.create({ data: { name: t.name, email: t.email, capacity: 3, active: true } });
+    const admin = t.admin ? { isAdmin: true } : {};
+    user = user
+      ? await db.user.update({ where: { id: user.id }, data: { email: t.email, active: true, ...admin } })
+      : await db.user.create({ data: { name: t.name, email: t.email, capacity: 3, active: true, ...admin } });
     userIds.set(norm(t.name), user.id);
     const roles = t.roles.map(k => roleIds.get(k)).filter((x): x is string => Boolean(x));
-    await db.workTypeMember.upsert({ where: { workTypeId_userId: { workTypeId: wt.id, userId: user.id } }, create: { workTypeId: wt.id, userId: user.id }, update: {} });
+    const groupKeys = t.chapters ?? [];
+    await db.workTypeMember.upsert({ where: { workTypeId_userId: { workTypeId: wt.id, userId: user.id } }, create: { workTypeId: wt.id, userId: user.id, groupKeys }, update: { groupKeys } });
     await db.workTypeMemberRole.deleteMany({ where: { workTypeId: wt.id, userId: user.id } });
     await db.workTypeMemberRole.createMany({ data: roles.map(roleId => ({ workTypeId: wt.id, userId: user!.id, roleId })) });
   }
@@ -202,7 +239,8 @@ async function main() {
           firstStartedAt: started ? (day(p.data.pickedUpAt) ?? entered) : null,
           lastSubmittedAt: day(p.data.submittedAt),
           reviewRounds: p.data.submittedAt ? 1 : 0,
-          firstReviewAt: day(p.data.reviewDate),
+          firstReviewAt: day(p.reviewStarted) ?? day(p.data.reviewDate),
+          lastFeedbackAt: def.category === 'feedback' ? day(p.data.reviewDate) : null,
           approvedAt: p.status === 'closed' ? (day(p.data.reviewDate) ?? entered) : null,
         },
       });

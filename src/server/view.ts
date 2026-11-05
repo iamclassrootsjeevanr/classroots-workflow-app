@@ -1,7 +1,7 @@
 import 'server-only';
 import { workloadByUser, type ItemLite } from '@/lib/analytics-core';
 import { instantToDateKey } from '@/lib/time';
-import { allowedTransitions, canDeleteItem, canEditField, type ActorContext } from '@/lib/workflow';
+import { allowedTransitions, canDeleteItem, canEditField, hasCap, type ActorContext } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
@@ -69,9 +69,16 @@ export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: s
     label: f.label,
     type: f.type,
     linkLabel: f.linkLabel,
+    options: f.options,
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
     editable: !f.computed && canEditField(f, ctx),
   }));
+}
+
+/** Ids of the items the viewer may assign (a coordinator only in their own chapters). */
+export async function assignableItemsFor(user: CurrentUser, items: ItemRow[]): Promise<Set<string>> {
+  const access = await getAccess(user);
+  return new Set(items.filter(it => hasCap(actorContextFor(access, it.workTypeKey, it), 'assign')).map(it => it.id));
 }
 
 /** Ids of the items the viewer may delete. */

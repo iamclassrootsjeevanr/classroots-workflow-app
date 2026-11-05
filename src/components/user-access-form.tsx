@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { saveUserAction, type ActionResult, type UserInput } from '@/app/actions';
-import { CAPABILITY_LABELS, PAGE_LABELS, combineRoles, type Capability, type DataScope, type PageKey, type RoleLite } from '@/lib/access-core';
+import { CAPABILITY_LABELS, GROUP_CAPABILITIES, PAGE_LABELS, combineRoles, type Capability, type DataScope, type PageKey, type RoleLite } from '@/lib/access-core';
+import { lowerLabel } from '@/lib/text';
 import { generatePassword, isOfficeEmail, loginDetailsText } from '@/lib/invite';
 import { ActionMessage } from './controls';
 import { Checkbox, GroupLabel, OptionList, Switch } from './form';
 
-export type WorkTypeOption = { id: string; name: string; state: string };
+/** `groups`: what a membership can be limited to (Journey: chapters), with the work type's name for them. */
+export type WorkTypeOption = { id: string; name: string; state: string; groups?: { key: string; label: string }[]; groupLabel?: string };
 export type RoleOption = { id: string; workTypeId: string; name: string; description: string | null; color: string; capabilities: Capability[]; dataScope: DataScope; canEdit: boolean; pages: PageKey[] };
 export type PersonChoice = { id: string; name: string; note?: string; access?: UserInput['access'] };
 type AccessRow = UserInput['access'][number];
@@ -294,6 +296,29 @@ export function UserAccessForm({
                         </Link>
                         .
                       </p>
+                      {wt.groups?.length && rolesOf(a).some(r => r.capabilities.some(c => GROUP_CAPABILITIES.includes(c))) ? (
+                        <div className="mt-4">
+                          <GroupLabel note={a.groupKeys?.length ? `${a.groupKeys.length} picked` : `every ${lowerLabel(wt.groupLabel ?? 'group')}`}>
+                            {`${wt.groupLabel ?? 'Group'}s they steer`}
+                          </GroupLabel>
+                          <OptionList>
+                            {wt.groups.map(g => {
+                              const on = Boolean(a.groupKeys?.includes(g.key));
+                              return (
+                                <Checkbox
+                                  key={g.key}
+                                  checked={on}
+                                  onChange={checked => setAccess(wt.id, { groupKeys: checked ? [...(a.groupKeys ?? []), g.key] : (a.groupKeys ?? []).filter(k => k !== g.key) })}
+                                  label={g.label}
+                                />
+                              );
+                            })}
+                          </OptionList>
+                          <p className="mt-2 text-xs text-muted">
+                            Assigning, adding and editing details apply only here. None ticked = every {lowerLabel(wt.groupLabel ?? 'group')}. Their own work and reviews are not limited.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="h-fit rounded-xl border border-line bg-surface p-3 text-sm">
                       <GroupLabel>Adds up to</GroupLabel>
@@ -319,6 +344,7 @@ export function UserAccessForm({
               .map(a => (
                 <li key={a.workTypeId} className="rounded-lg bg-surface-2 px-3 py-2">
                   <span className="font-semibold">{workTypes.find(w => w.id === a.workTypeId)?.name}:</span> <CombinedSummary roles={rolesOf(a)} />
+                  {a.groupKeys?.length ? <span className="block text-xs text-muted">Steers only {a.groupKeys.join(', ')}</span> : null}
                 </li>
               ))}
           </ul>

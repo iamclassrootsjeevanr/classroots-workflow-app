@@ -61,6 +61,14 @@ export function zonedParts(date: Date, tz = DEFAULT_TZ) {
   };
 }
 
+export const HALF_DAYS = ['First half', 'Second half'] as const;
+
+/** Which half of the working day `date` falls in: before the middle of the business hours is the first half. */
+export function halfOfDay(date: Date, cal: Pick<WorkCalendar, 'tz' | 'startHour' | 'endHour'>): (typeof HALF_DAYS)[number] {
+  const p = zonedParts(date, cal.tz);
+  return p.hour * 60 + p.minute < ((cal.startHour + cal.endHour) / 2) * 60 ? HALF_DAYS[0] : HALF_DAYS[1];
+}
+
 /** Offset of `tz` from UTC at `date`, in minutes (IST = +330). */
 export function tzOffsetMinutes(date: Date, tz = DEFAULT_TZ): number {
   const p = zonedParts(date, tz);

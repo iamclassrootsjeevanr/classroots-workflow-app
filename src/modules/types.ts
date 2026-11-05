@@ -20,7 +20,14 @@ export type StageMark = 'assigned' | 'started' | 'submitted' | 'review' | 'feedb
 export type StageState = 'active' | 'paused' | 'skipped';
 
 /** The button that moves an item from a stage on to the next active stage of the main line. */
-export type NextMove = { label: string; by: Actor[]; /** Date fields set to today when pressed (if empty). */ stamp?: string[] };
+export type NextMove = {
+  label: string;
+  by: Actor[];
+  /** Date fields set to today when pressed (if empty). */
+  stamp?: string[];
+  /** Fields set to these values when pressed (if empty). */
+  set?: Record<string, string>;
+};
 
 export type StatusDef = {
   key: string;
@@ -46,6 +53,8 @@ export type StatusDef = {
   baseCategory?: StatusCategory;
   /** Set by applyStageConfig: added by an admin, not in the module code. */
   custom?: boolean;
+  /** Items whose field has this value pass straight on to the next stage (e.g. no videos to replace). */
+  skipWhen?: { field: string; equals: string };
 };
 
 /**
@@ -63,11 +72,13 @@ export type Transition = {
   label?: string;
   /** Date fields set to today when pressed (if empty). */
   stamp?: string[];
+  /** Fields set to these values when pressed (if empty). */
+  set?: Record<string, string>;
   /** Can only be done together with feedback (the Feedback card's send-back button). */
   requires?: 'feedback';
 };
 
-export type FieldType = 'text' | 'longtext' | 'url' | 'date' | 'number';
+export type FieldType = 'text' | 'longtext' | 'url' | 'date' | 'number' | 'select';
 
 export type FieldDef = {
   key: string;
@@ -80,6 +91,10 @@ export type FieldDef = {
   linkLabel?: string;
   /** Worked out by the module's `compute` (shown, not typed). */
   computed?: boolean;
+  /** `select`: the values to choose from (stored as written here). */
+  options?: readonly string[];
+  /** A First half / Second half field for this date field: filled from the clock when the date is stamped by a move. */
+  halfOf?: string;
 };
 
 /** How one sheet column maps to the app. */
@@ -215,6 +230,10 @@ export type WorkTypeDefinition = {
   dueEndsAt?: 'approved';
   /** Inbox messages on stage marks: `submitted` → the owner, `approved` → the assignee. */
   notifyOn?: { submitted?: boolean; approved?: boolean };
+  /** Choice fields shown beside the status on the item page, saved as soon as they change. */
+  headerFields?: string[];
+  /** Setting `field` while the item is in stage `from` moves it to `to` (e.g. a creation stage given to an Allocated journey). */
+  fieldMoves?: { field: string; from: string; to: string }[];
   /** Calculated fields: called after every change with the item's data; may also set the due date ('YYYY-MM-DD' or null). */
   compute?: (input: { externalKey: string; data: Record<string, unknown> }, cal: WorkCalendar) => { data: Record<string, unknown>; dueAt?: string | null };
   /** Read-only values worked out from the stage, shown as list columns (merged into the row's data on read). */

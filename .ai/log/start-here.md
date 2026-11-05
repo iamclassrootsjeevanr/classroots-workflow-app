@@ -11,3 +11,4 @@
 - 2026-11-04T12:28Z | cursor | start.command: no second copy, prisma generate, fresh .next (fixes 500 ENOENT after double-click)
 - 2026-11-04T13:08Z | cursor | Handoff: Journey rebuilt + configurable stages (PR #13 green); next merge, send follow-up to Arjun, deploy
 - 2026-11-05T05:21Z | cursor | Sheet sync direction: app → sheet (default) mirrors the app into the sheet; two-way kept as option
+- 2026-11-05T05:46Z | cursor | Journey built to Arjun's answers: Creation stage field, half days, after-step rules, coordinators per chapter, Claude relay API

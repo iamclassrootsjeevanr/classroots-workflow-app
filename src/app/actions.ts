@@ -21,6 +21,7 @@ import { editFieldsForItem } from '@/server/view';
 import { appTz } from '@/server/settings';
 import { snapshotWorkload } from '@/server/jobs';
 import { dueDateToInstant } from '@/lib/time';
+import { capabilitiesIn } from '@/lib/access-core';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
 import { isOfficeEmail, missingPasswordProblem } from '@/lib/invite';
 import { env } from '@/server/env';
@@ -157,7 +158,10 @@ export async function createItemAction(workTypeId: string, input: { externalKey:
     if (!wt) throw new ForbiddenError('You don’t have access to this work type.');
     if (!input.externalKey.trim() || !input.title.trim()) throw new Error('Key and title are required');
     const chapter = input.groupKey ? await db.chapter.findUnique({ where: { code: input.groupKey.trim() } }) : null;
-    const ctx = { isAdmin: access.isAdmin, capabilities: wt.capabilities, isAssignee: false, canEdit: wt.canEdit };
+    if (!access.isAdmin && wt.groupKeys && !wt.groupKeys.has(input.groupKey?.trim() ?? '')) {
+      throw new ForbiddenError(`You can add items only in ${[...wt.groupKeys].join(', ')}.`);
+    }
+    const ctx = { isAdmin: access.isAdmin, capabilities: capabilitiesIn(wt, input.groupKey?.trim()), isAssignee: false, canEdit: wt.canEdit };
     await createItem({ userId: user.id, ctx, source: 'APP' }, workTypeId, {
       externalKey: input.externalKey.trim(),
       title: input.title.trim(),
@@ -255,6 +259,8 @@ const accessInput = z.object({
   enabled: z.boolean(),
   /** Roles held in this work type; data scope, edit right and pages come from the roles. */
   roleIds: z.array(z.string()),
+  /** Groups (Journey: chapters) where their assign / add / edit-details rights apply; empty = every group. */
+  groupKeys: z.array(z.string().trim().min(1)).optional(),
 });
 
 const userInput = z.object({
@@ -319,7 +325,8 @@ export async function saveUserAction(raw: UserInput) {
           await tx.workTypeMember.deleteMany({ where: { workTypeId: a.workTypeId, userId: user.id } });
           continue;
         }
-        await tx.workTypeMember.upsert({ where: key, create: { workTypeId: a.workTypeId, userId: user.id }, update: {} });
+        const groupKeys = [...new Set(a.groupKeys ?? [])];
+        await tx.workTypeMember.upsert({ where: key, create: { workTypeId: a.workTypeId, userId: user.id, groupKeys }, update: { groupKeys } });
         await tx.workTypeMemberRole.deleteMany({ where: { workTypeId: a.workTypeId, userId: user.id } });
         await tx.workTypeMemberRole.createMany({ data: [...new Set(a.roleIds)].map(roleId => ({ workTypeId: a.workTypeId, userId: user.id, roleId })) });
       }

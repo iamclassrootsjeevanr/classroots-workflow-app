@@ -18,6 +18,8 @@ type Props = {
   /** Ids of items the viewer may delete; those rows get a Delete button. */
   deletable?: ReadonlySet<string>;
   people?: PersonOption[];
+  /** Ids of items the viewer may assign (default: all, when `people` is given). */
+  assignable?: ReadonlySet<string>;
   showWorkType?: boolean;
   showAssignee?: boolean;
   groupByChapter?: boolean;
@@ -34,7 +36,7 @@ type Props = {
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
@@ -72,7 +74,11 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
       <StatusBadge label={it.statusLabel} color={it.statusColor} />
     );
   const assignee = (it: ItemRow, compact: boolean) =>
-    people ? <AssignSelect compact={compact} itemId={it.id} assigneeId={it.assigneeId} people={people} /> : (it.assigneeName ?? <span className="text-muted">Unassigned</span>);
+    people && (!assignable || assignable.has(it.id)) ? (
+      <AssignSelect compact={compact} itemId={it.id} assigneeId={it.assigneeId} people={people} />
+    ) : (
+      (it.assigneeName ?? <span className="text-muted">Unassigned</span>)
+    );
   const title = (it: ItemRow, className: string) =>
     canOpen(it) ? (
       <Link href={`/w/${it.workTypeKey}/${it.id}`} className={`${className} hover:text-brand`}>

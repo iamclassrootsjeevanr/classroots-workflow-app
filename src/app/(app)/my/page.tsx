@@ -125,7 +125,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
                   </Link>{' '}
                   <span className="text-muted">
                     {e.type === 'STATUS_CHANGED' ? 'status changed' : e.type === 'FEEDBACK' ? 'feedback' : e.type === 'ASSIGNED' ? 'assigned' : 'comment'}
-                    {e.actor?.name ? ` by ${e.actor.name}` : e.source === 'SHEET' ? ' from sheet' : ''} · {formatDateTime(e.at, tz)}
+                    {e.actor?.name ? ` by ${e.actor.name}` : e.source === 'SHEET' ? ' from sheet' : e.source === 'RELAY' ? ' by Claude' : ''} · {formatDateTime(e.at, tz)}
                   </span>
                 </li>
               ))}

@@ -8,7 +8,7 @@ Two work types ship today:
 
 | Work type | What one item is | Flow |
 | --- | --- | --- |
-| **Journey** | One SME journey that a developer turns into an applet | Received → Assigned → WIP → Review ↺ Corrections → Reviewed → Done |
+| **Journey** | One SME journey built with Claude, reviewed by an SME, then taken to prod | Allocated → In creation (3a Spine … Published) → Review ↺ Changes asked → Closed → after-steps → Done |
 | **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
@@ -173,6 +173,7 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `APPS_SCRIPT_URL` | for sync | `/exec` URL of the deployed `apps-script/Code.gs`. |
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
 | `CRON_SECRET` | for jobs | Protects `/api/cron/run`. The scheduler and Vercel Cron send it as a Bearer token. |
+| `RELAY_KEY` | for the relay | Bearer key of the journey relay (Claude) for `/api/relay`: read journeys, set Creation stage, nothing else. Empty = off. |
 | `DEMO_PASSWORD` | local only | Password for `npm run demo:users` accounts. |
 
 ---
@@ -205,7 +206,7 @@ prisma/
   seed.ts                          Base data: system roles, admins, work calendar, work types
 scripts/
   local-db.mjs                     Local embedded Postgres (`npm run db:start`)
-  import-xlsx.ts                   Import the Journey tracker workbook
+  import-journey-csv.ts            Import the Journey tracker (Slack list CSV) with the SME's corrections
   import-apk-xlsx.ts               Import the APK Testing tracker workbook
   demo-users.ts                    Demo sign-ins
   set-password.ts                  Set a password from the terminal
@@ -309,17 +310,30 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 ### Journey (`src/modules/journey-applet/definition.ts`)
 
-One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`).
+One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`, `docs/JOURNEY-FOLLOW-UP.md`).
 
-`Allocated → 3a Spine → 3b Script → 4 Build → 5 Ship → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
+`Allocated → In creation → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
 
-- **SME creator** (the journey's assignee) moves it through creation, submits it and makes the corrections. Submit stamps *Submitted for review*.
-- **SME reviewer** (the journey's owner; actor `OWNER`) starts the review (stamps *Review date*), asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. Other reviewers can't act on it.
-- **Coordinator** adds journeys, picks creator and reviewer, edits details and moves the after-steps. **Program manager**: dashboards and reports, view only.
-- **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted); **Closure due** = Review date + 1 working day, stored as the due date. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
-- Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day.
+**Creation stage is a field, not a stage of the line** (`3a · Spine → 3b · Script → 4 · Build → 5 · Ship → Published`, published = in UAT). A creator can submit for review at any creation stage and keeps building during the review, so the two are never worked out from each other. It sits beside Status on the journey page (`headerFields`), is changed by the creator, a coordinator or Claude (relay API below), and every change is in the history with its time. **Start** sets it to 3a · Spine; setting it on an Allocated journey moves that journey to In creation (`fieldMoves`).
+
+- **SME creator** (the journey's assignee) sets the creation stage, submits, makes the corrections and does the last look after design (½ day; can send it back to Design standardization). Submit stamps *Submitted for review* and *Submitted in* (first / second half, from the clock: before 14:30 = first half).
+- **SME reviewer** (the journey's owner; actor `OWNER`) starts the review, asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. *Review date* is stamped when the review is done: feedback sent or review closed. Other reviewers can't act on it.
+- **Coordinator** adds journeys, picks creator and reviewer, edits details, marks *Needs video replacement* (No = the journey skips Video replacement, `skipWhen`), moves the after-steps, and sends a journey back from User testing and QA to Changes asked (with feedback). A coordinator can be limited to their own chapters (People & access → Chapters they steer); Arjun G04C05, Devjyoti G05C02, Vinay G06C07; Aswin is admin. **Program manager**: dashboards and reports, view only.
+- **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted), where the pick-up day counts ½ if picked up in its second half and the submit day ½ if submitted in its first half (*Picked up in* / *Submitted in*). **Closure due** = Review date + 1 working day, stored as the due date. Holidays are not counted; the coordinator corrects a date by hand. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
+- Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day, last look ½ day.
 - Inbox: assigned, submitted (to the reviewer), feedback, review closed (to the creator), overdue past Closure due (reviewer + coordinators, from the cron job).
-- The list shows the Slack tracker's columns (Creation stage, Review state, Final status are worked out from the stage). No Google Sheet sync.
+- The list shows the Slack tracker's columns (Review state and Final status are worked out from the stage). No Google Sheet sync.
+
+**Journey relay API (Claude).** The relay ([buildjourneyrelay](https://buildjourneyrelay.classrootsedu.in), driven from Claude Desktop) keeps the creation stage in step. It sends `Authorization: Bearer <RELAY_KEY>`; the key can only read journeys and set their Creation stage, and its changes show as **Claude** in the history (event source `RELAY`). No key set = the API is off.
+
+```bash
+curl -H "Authorization: Bearer $RELAY_KEY" "$APP_URL/api/relay/journeys?chapter=G04C05"     # every journey with its creation stage
+curl -H "Authorization: Bearer $RELAY_KEY" "$APP_URL/api/relay/journeys/G04C05ST1J1"         # one journey
+curl -X POST -H "Authorization: Bearer $RELAY_KEY" -H "Content-Type: application/json" \
+  -d '{"stage": "4 Build", "at": "2026-11-05T10:30:00+05:30"}' "$APP_URL/api/relay/journeys/G04C05ST1J1/creation-stage"
+```
+
+`stage` accepts `3a Spine`, `4 · Build`, `build`, `Published` and the like; `at` (optional) is when it changed on the relay: not in the future, at most 31 days back, and never before the journey's last recorded change. Answers are JSON: the journey, its `creationStage`, `stage` (the line) and `changed`; errors are `{"error": …}` with 400 (bad input), 401 (key), 404 (no such journey) or 409 (Journey paused).
 
 ### Configurable stages (Admin → Work types → Stages)
 

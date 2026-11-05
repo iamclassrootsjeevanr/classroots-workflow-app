@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAccess, canSeeItem, hasCapabilityAnywhere, workTypesWith, type MembershipLite, type RoleLite, type WorkTypeLite } from '@/lib/access-core';
+import { buildAccess, canSeeItem, capabilitiesIn, hasCapabilityAnywhere, workTypesWith, type MembershipLite, type RoleLite, type WorkTypeLite } from '@/lib/access-core';
 
 const role = (name: string, over: Partial<RoleLite> = {}): RoleLite => ({
   id: name,
@@ -110,5 +110,24 @@ describe('own vs all data', () => {
   it('all scope sees everything; no access sees nothing', () => {
     expect(canSeeItem(access, 'content', others)).toBe(true);
     expect(canSeeItem(access, 'paused', { ...others, assigneeId: 'me' })).toBe(false);
+  });
+});
+
+describe('coordinators limited to their own chapters', () => {
+  const coordinator = role('Coordinator', { capAssign: true, capCreate: true, capManageFields: true, capReview: true, capWork: true, dataScope: 'ALL' });
+
+  it('keeps assign, add and edit rights inside their chapters only; work and review follow the item', () => {
+    const a = buildAccess('u', false, all, new Map([['wt1', { roles: [coordinator], groupKeys: ['G04C05'] }]])).byKey.get('journey-applet')!;
+    expect([...capabilitiesIn(a, 'G04C05')].sort()).toEqual(['assign', 'create', 'manageFields', 'review', 'work']);
+    expect([...capabilitiesIn(a, 'G05C02')].sort()).toEqual(['review', 'work']);
+    expect([...capabilitiesIn(a, null)].sort()).toEqual(['review', 'work']);
+  });
+
+  it('no chapters ticked, or an admin, means every chapter', () => {
+    const open = buildAccess('u', false, all, new Map([['wt1', { roles: [coordinator], groupKeys: [] }]])).byKey.get('journey-applet')!;
+    expect(open.groupKeys).toBeNull();
+    expect(capabilitiesIn(open, 'G05C02').has('assign')).toBe(true);
+    const admin = buildAccess('u', true, all, new Map()).byKey.get('journey-applet')!;
+    expect(capabilitiesIn(admin, 'G05C02').has('assign')).toBe(true);
   });
 });

@@ -40,6 +40,8 @@ enum EventSource {
   SHEET
   IMPORT
   SYSTEM
+  /// Claude via the journey relay (POST /api/relay/...), shown as "Claude".
+  RELAY
 }
 
 enum OutboxStatus {
@@ -221,6 +223,8 @@ model WorkTypeMember {
   workType      WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   roles         WorkTypeMemberRole[]
+  /// Groups (Journey: chapter codes) where their assign / add / edit-details rights apply. Empty = every group.
+  groupKeys     String[]  @default([])
 
   @@id([workTypeId, userId])
   @@index([userId])

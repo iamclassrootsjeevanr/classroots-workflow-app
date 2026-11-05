@@ -29,7 +29,7 @@ About 1.5 hours the first time. Keep this page open and tick each step.
    DATABASE_URL=${{Postgres.DATABASE_URL}}?connection_limit=10&pool_timeout=20
    AUTH_SECRET=<output of step 5>
    AUTH_URL=<production address from step 4>
-   ADMIN_EMAILS=jeevan@classrootsedu.com,kishor@classrootsedu.com
+   ADMIN_EMAILS=jeevan@classrootsedu.com,kishor@classrootsedu.com,aswin@classrootsedu.com
    OFFICE_DOMAINS=classrootsedu.com
    APP_TIMEZONE=Asia/Kolkata
    ```
@@ -55,7 +55,8 @@ Variables at a glance:
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}?connection_limit=10&pool_timeout=20` in every environment (resolves to that environment's database) | | |
 | `ADMIN_EMAILS`, `OFFICE_DOMAINS`, `APP_TIMEZONE`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | same in all three | | |
 | `EMAIL_SERVER`, `EMAIL_FROM` | set (step 5) | set, from name `Classroots Work (staging)` | leave empty: mails go to the server log |
-| `APPS_SCRIPT_URL`, `SYNC_TOKEN` | not yet (sheet sync stays off until app → sheet sync is built) | | |
+| `APPS_SCRIPT_URL`, `SYNC_TOKEN` | set to turn on APK sheet sync (direction App → sheet) | | |
+| `RELAY_KEY` | own value (`openssl rand -base64 32`), given to the journey relay | own value, for testing the relay | leave empty: relay API off |
 
 ## Step 3 — Copy this Mac's data to each server (5 min each)
 

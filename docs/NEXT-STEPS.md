@@ -209,19 +209,19 @@ Office staff use Google, so they never reset a password here.
 
 ## 8. Build further (next sessions)
 
-1. **Journey work type — built (4 Nov 2026)** from Arjun's `journey-answers.md` and the 35-row tracker (README "Work types → Journey", "Configurable stages"). Open questions sent to Arjun: `docs/JOURNEY-FOLLOW-UP.md`. Where each of his answers goes (numbers match that file):
+1. **Journey work type — built (4 Nov 2026), Arjun's follow-up answers built (5 Nov 2026)** (`docs/JOURNEY-FOLLOW-UP.md`, README "Work types → Journey"):
 
-   | Answer | Change | Needs code? |
-   |---|---|---|
-   | 1. Row corrections | Fix the row in the app, or correct the tracker and re-run `npm run import:journey -- <csv> --replace` (before go-live only, because it replaces all journeys) | No |
-   | 4. After-step owners, limits, paused / not needed | Admin → Work types → Journey → Stages | No |
-   | 6. Holidays | Add rows to the `Holiday` table (`npm run db:studio`); there is no admin screen yet | No |
-   | 6. Chapter names | Edit the `Chapter` rows' title (`npm run db:studio`) | No |
-   | 2. Half days / typed Days taken | `compute` in `src/modules/journey-applet/definition.ts`, `src/lib/journey.ts` | Yes |
-   | 3. Closure due rule | Same place | Yes (one line) |
-   | 4. Send-back moves in after-steps | `transitions` in the Journey module | Yes |
-   | 5. Coordinator per chapter | Data scope by chapter (access rules) | Yes |
-   | 8. Claude stage updates | API route with a per-relay key | Yes |
+   | Answer | Built as |
+   |---|---|
+   | 1. Row corrections; Creation stage and Review state are separate | Creation stage is its own field; the corrections and current review states are in the importer (`ANSWERS` in `scripts/import-journey-csv.ts`) |
+   | 2. Half days | *Picked up in* / *Submitted in* (first / second half); Days taken counts the halves |
+   | 3. Closure due | Unchanged: Review date + 1 working day. Review date = the day the review is done |
+   | 4. After-steps | Last look ½ day and can send back to design; Video replacement skipped when *Needs video replacement* = No; QA sends back to Changes asked; Design standardization stays paused (Hitheshwar's design document) |
+   | 5. Coordinators | Limited to their chapter (People & access → Chapters they steer); Aswin admin (`ADMIN_EMAILS`) |
+   | 6. Holidays, chapter names | No holiday list (corrected by hand); chapter names set by the importer |
+   | 8. Claude | `/api/relay` with `RELAY_KEY` (README "Journey relay API"); give the key to the relay team |
+
+   Still open: after a QA fix the journey goes Changes asked → Correction verification → Closed → the after-steps again from Design standardization. Ask Arjun whether it should go straight back to User testing and QA.
 
 2. **New work types:** write a module (statuses, transitions, fields, `roles`, optional `sheet.linked`), register it, enable it in Admin → Work types. Its roles appear on their own. Every tile and chart must link to the filtered item list (`itemsUrl`); a test enforces `seriesStatuses`.
 3. **Scale:** Overview and APK versions still read every run of a work type. Move them to SQL counts when a work type passes about 50,000 runs.
