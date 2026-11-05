@@ -230,6 +230,9 @@ export type WorkTypeDefinition = {
   dueEndsAt?: 'approved';
   /** Inbox messages on stage marks: `submitted` → the owner, `approved` → the assignee. */
   notifyOn?: { submitted?: boolean; approved?: boolean };
+  /** New items: an example key for the form, and the group read from a key (null = not a valid key for this work type). */
+  keyExample?: string;
+  groupFromKey?: (key: string) => string | null;
   /** Choice fields shown beside the status on the item page, saved as soon as they change. */
   headerFields?: string[];
   /** Setting `field` while the item is in stage `from` moves it to `to` (e.g. a creation stage given to an Allocated journey). */

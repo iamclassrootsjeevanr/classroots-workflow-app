@@ -9,7 +9,7 @@ import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
 import { eventWho, lowerLabel } from '@/lib/text';
-import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
+import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
 import { correctionsMove } from '@/server/services/work-items';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '@/server/apk/store';
@@ -83,7 +83,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
     editable: editable && !f.computed && canEditField(f, ctx),
   }));
-  const isReviewer = hasCap(ctx, 'review');
+  const isReviewer = canGiveFeedback(mod, ctx);
   const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
   const canReply = editable && (ctx.isAdmin || (ctx.isAssignee && hasCap(ctx, 'work')));
   const replyAuthors = new Map(

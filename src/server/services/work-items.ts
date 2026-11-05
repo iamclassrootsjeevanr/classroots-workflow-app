@@ -4,13 +4,13 @@ import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
 import { landingStage, nextActiveAfter } from '@/lib/stages';
-import { matchOption } from '@/lib/text';
-import { allowedTransitions, canDeleteItem, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
+import { lowerLabel, matchOption } from '@/lib/text';
+import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
-import { notify } from './notifications';
+import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 
 type Tx = Prisma.TransactionClient;
@@ -130,7 +130,10 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   await notifyStage(tx, item, mod, actor, landing);
 }
 
-/** Inbox messages a work type asks for: submitted → the owner (reviewer), approved → the assignee. */
+/**
+ * Inbox messages a work type asks for: submitted → the owner (reviewer), or the group's coordinators when nobody owns it yet
+ * (they pick the reviewer); approved → the assignee.
+ */
 async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, actor: ChangeActor, to: string) {
   if (actor.source !== 'APP' || !mod.notifyOn) return;
   const marks = statusDef(mod, to).marks ?? [];
@@ -138,6 +141,13 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   const label = statusDef(mod, to).label;
   if (mod.notifyOn.submitted && marks.includes('submitted') && item.ownerId && item.ownerId !== actor.userId) {
     await notify(tx, item.ownerId, { kind: 'item.submitted', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  if (mod.notifyOn.submitted && marks.includes('submitted') && !item.ownerId) {
+    const ownerLabel = lowerLabel(mod.labels?.owner ?? 'reviewer');
+    for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
+      if (userId === actor.userId) continue;
+      await notify(tx, userId, { kind: 'item.needs-owner', title: `${label}, no ${ownerLabel}: ${shortKey(item.externalKey)}`, body: `${item.title} · pick the ${ownerLabel}`, href });
+    }
   }
   if (mod.notifyOn.approved && marks.includes('approved') && item.assigneeId && item.assigneeId !== actor.userId) {
     await notify(tx, item.assigneeId, { kind: 'item.approved', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
@@ -382,7 +392,7 @@ export async function addFeedback(
     guardActive(item, actor);
     const mod = requireModule(item.workType.key);
     const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
-    if (actor.ctx && !hasCap(actor.ctx, 'review') && !sendsBack) throw new ForbiddenError('Only reviewers can give feedback. Use a comment instead.');
+    if (actor.ctx && !canGiveFeedback(mod, actor.ctx) && !sendsBack) throw new ForbiddenError(`Only the ${lowerLabel(mod.labels?.owner ?? 'reviewer')} of this ${mod.itemNoun} can give feedback. Use a comment instead.`);
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
@@ -409,8 +419,9 @@ export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: Acto
 }
 
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: true } });
-  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !hasCap(actor.ctx, 'review')) throw new ForbiddenError();
+  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { include: { workType: { select: { key: true } } } } } });
+  const mod = requireModule(fb.item.workType.key);
+  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
   await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
 }
 

@@ -19,7 +19,7 @@ import { db } from '../src/server/db';
 import { workCalendar } from '../src/server/settings';
 import { refreshStages } from '../src/server/stages';
 import { createItemTx } from '../src/server/services/work-items';
-import { enableModule, ensureAdmins } from '../src/server/services/work-types';
+import { enableModule, ensureAdmins, resetSystemRole } from '../src/server/services/work-types';
 
 const KEY = 'journey-applet';
 
@@ -166,6 +166,8 @@ async function main() {
   const wt = await enableModule(KEY);
   const roleIds = new Map((await db.accessRole.findMany({ where: { workTypeId: wt.id } })).map(r => [r.key, r.id]));
   const keep = new Set((mod.roles ?? []).map(r => r.key));
+  // The SME's role table (brief A4) is the source: built-in roles go back to the module's defaults.
+  for (const [k, id] of roleIds) if (keep.has(k)) await resetSystemRole(id);
 
   // Old demo flow: its items and roles go.
   const removed = await db.workItem.deleteMany({ where: { workTypeId: wt.id } });

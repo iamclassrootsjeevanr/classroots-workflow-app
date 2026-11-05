@@ -1,8 +1,8 @@
 'use client';
 
-import { ArrowRight, Eye, MessageSquare, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowRight, Eye, MessageSquare, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useMemo, useState, useTransition } from 'react';
-import { deleteRoleAction, saveRoleAction, type ActionResult, type RoleInput } from '@/app/actions';
+import { deleteRoleAction, resetRoleAction, saveRoleAction, type ActionResult, type RoleInput } from '@/app/actions';
 import { CAPABILITIES, CAPABILITY_LABELS, PAGE_LABELS, type Capability, type PageKey } from '@/lib/access-core';
 import { rolePreview, type FlowLite } from '@/lib/role-preview';
 import { ActionMessage } from './controls';
@@ -44,7 +44,23 @@ const blank: Omit<RoleInput, 'workTypeId'> = {
 const capsOf = (v: RoleInput) => CAPABILITIES.filter(c => Boolean(v[CAP_FIELD[c]]));
 
 /** Add or edit one role. Left: plain choices. Right: what those choices unlock in each work type's flow. */
-export function RoleForm({ initial, members, isSystem, flows, workTypeId }: { initial?: RoleInput; members?: number; isSystem?: boolean; flows: FlowLite[]; /** The work type this role belongs to. */ workTypeId: string }) {
+export function RoleForm({
+  initial,
+  members,
+  isSystem,
+  drift,
+  flows,
+  workTypeId,
+}: {
+  initial?: RoleInput;
+  members?: number;
+  isSystem?: boolean;
+  /** Built-in role: the rights that differ from the flow's default (empty = matches). */
+  drift?: string[];
+  flows: FlowLite[];
+  /** The work type this role belongs to. */
+  workTypeId: string;
+}) {
   const isNew = !initial?.id;
   const [v, setV] = useState<RoleInput>(initial ?? { ...blank, workTypeId });
   const [open, setOpen] = useState(!isNew);
@@ -173,11 +189,26 @@ export function RoleForm({ initial, members, isSystem, flows, workTypeId }: { in
             Remove role
           </button>
         )}
+        {!isNew && isSystem && (
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm(`Put “${v.name}” back to the flow’s default? Your changes to this role are replaced.`)) return;
+              start(async () => setResult(await resetRoleAction(v.id!)));
+            }}
+          >
+            <RotateCcw size={15} aria-hidden="true" />
+            Reset to default
+          </button>
+        )}
         {!isNew && (
           <span className="text-xs text-muted">
             {members ?? 0} {members === 1 ? 'person has' : 'people have'} this role{isSystem ? ' · built-in (can’t be removed)' : ''}
           </span>
         )}
+        {drift && drift.length > 0 && <span className="text-xs text-warn">Differs from the flow’s default: {drift.join(', ')}</span>}
         <ActionMessage result={result} />
       </div>
     </form>

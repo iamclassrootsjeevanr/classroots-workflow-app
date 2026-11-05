@@ -125,6 +125,8 @@ export const journeyApplet: WorkTypeDefinition = {
 
   fieldMoves: [{ field: 'creationStage', from: 'allocated', to: 'creating' }],
   headerFields: ['creationStage'],
+  keyExample: 'G04C05ST1J1',
+  groupFromKey: key => parseJourneyKey(key)?.chapter ?? null,
 
   fields: [
     { key: 'creationStage', label: 'Creation stage', type: 'select', options: CREATION_STAGES, source: 'data', editableBy: ['ASSIGNEE', 'manageFields'] },

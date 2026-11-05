@@ -25,7 +25,7 @@ const natural = (a: string, b: string) => a.localeCompare(b, undefined, { numeri
 export default async function ItemsPage({ params, searchParams }: { params: Promise<{ workType: string }>; searchParams: Promise<Search> }) {
   const { workType: key } = await params;
   const sp = await searchParams;
-  const { user, access, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
+  const { user, access, wtAccess, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
 
   const shown = await queryItemsPage(mod, scope, sp, user.id, Number(sp.page));
   const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows] = await Promise.all([
@@ -61,7 +61,16 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
           {mod.versions ? (
             <AddTestCaseButton workTypeId={wt.id} versions={versions} assigneeId={canTest ? user.id : undefined} />
           ) : (
-            <NewItemForm workTypeId={wt.id} noun={mod.itemNoun} smes={smeOptions.map(u => ({ id: u.id, name: u.name! }))} developers={people ?? []} />
+            <NewItemForm
+              workTypeId={wt.id}
+              noun={mod.itemNoun}
+              smes={smeOptions.map(u => ({ id: u.id, name: u.name! }))}
+              developers={people ?? []}
+              labels={mod.labels}
+              groups={mod.groupFromKey ? (wtAccess.groupKeys && !access.isAdmin ? [...wtAccess.groupKeys].sort() : groupNames) : undefined}
+              keyExample={mod.keyExample}
+              showDue={!mod.fields.some(f => f.key === 'dueAt' && f.computed)}
+            />
           )}
         </div>
       )}

@@ -37,6 +37,47 @@ export function flowCapabilities(mod: Pick<WorkTypeDefinition, 'transitions' | '
   return used;
 }
 
+/** A role template as AccessRole columns (what a built-in role is reset to). */
+export function templateColumns(t: RoleTemplate) {
+  return {
+    name: t.name,
+    description: t.description,
+    color: t.color,
+    capWork: t.capabilities.includes('work'),
+    capReview: t.capabilities.includes('review'),
+    capAssign: t.capabilities.includes('assign'),
+    capCreate: t.capabilities.includes('create'),
+    capManageFields: t.capabilities.includes('manageFields'),
+    dataScope: t.dataScope,
+    canEdit: t.canEdit,
+    pageDashboard: t.pages.includes('dashboard'),
+    pageItems: t.pages.includes('items'),
+    pageReports: t.pages.includes('reports'),
+    pageExport: t.pages.includes('export'),
+  };
+}
+
+type RightKey = 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'dataScope' | 'canEdit' | 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport';
+const RIGHTS: { key: RightKey; label: string }[] = [
+  { key: 'capWork', label: 'work' },
+  { key: 'capReview', label: 'review' },
+  { key: 'capAssign', label: 'assign' },
+  { key: 'capCreate', label: 'add items' },
+  { key: 'capManageFields', label: 'edit details' },
+  { key: 'dataScope', label: 'which items they see' },
+  { key: 'canEdit', label: 'can make changes' },
+  { key: 'pageDashboard', label: 'Dashboard page' },
+  { key: 'pageItems', label: 'Items page' },
+  { key: 'pageReports', label: 'Reports page' },
+  { key: 'pageExport', label: 'Export' },
+];
+
+/** Where a saved role's rights differ from the flow's default (names and colours don't count). */
+export function rightsDrift(saved: Pick<ReturnType<typeof templateColumns>, RightKey>, t: RoleTemplate): string[] {
+  const want = templateColumns(t);
+  return RIGHTS.filter(r => saved[r.key] !== want[r.key]).map(r => r.label);
+}
+
 /** The roles of a work type: its own list, or derived from the flow when it declares none. Always ends with a Viewer. */
 export function rolesForModule(mod: WorkTypeDefinition): RoleTemplate[] {
   if (mod.roles?.length) return mod.roles;

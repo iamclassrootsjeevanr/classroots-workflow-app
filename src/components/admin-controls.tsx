@@ -26,10 +26,31 @@ function useAction() {
   return { pending, result, exec };
 }
 
-export function NewItemForm({ workTypeId, noun, smes, developers }: { workTypeId: string; noun: string; smes: PersonOption[]; developers: PersonOption[] }) {
+export function NewItemForm({
+  workTypeId,
+  noun,
+  smes,
+  developers,
+  labels,
+  groups,
+  keyExample = 'G07C04J05',
+  showDue = true,
+}: {
+  workTypeId: string;
+  noun: string;
+  smes: PersonOption[];
+  developers: PersonOption[];
+  labels?: { assignee?: string; owner?: string; group?: string; due?: string };
+  /** Groups the person may add to (a coordinator: their chapters). Absent = free text. */
+  groups?: string[];
+  keyExample?: string;
+  /** False when the module works the due date out itself (Journey: Closure due). */
+  showDue?: boolean;
+}) {
   const { pending, result, exec } = useAction();
   const [open, setOpen] = useState(false);
   const [v, setV] = useState({ externalKey: '', title: '', groupKey: '', ownerId: '', assigneeId: '', dueAt: '' });
+  const groupLabel = labels?.group ?? 'Group (chapter code / version)';
   if (!open) {
     return (
       <button className="btn-primary" onClick={() => setOpen(true)}>
@@ -48,7 +69,7 @@ export function NewItemForm({ workTypeId, noun, smes, developers }: { workTypeId
     >
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <label>
-          <span className="label">Key (e.g. G07C04J05)</span>
+          <span className="label">Key (e.g. {keyExample})</span>
           <input className="input font-mono" required {...field('externalKey')} />
         </label>
         <label className="sm:col-span-2">
@@ -56,11 +77,23 @@ export function NewItemForm({ workTypeId, noun, smes, developers }: { workTypeId
           <input className="input" required {...field('title')} />
         </label>
         <label>
-          <span className="label">Group (chapter code / version)</span>
-          <input className="input font-mono" placeholder="G07C04" {...field('groupKey')} />
+          <span className="label">{groupLabel}</span>
+          {groups ? (
+            <select className="input font-mono" {...field('groupKey')}>
+              <option value="">{groups.length === 1 ? groups[0] : 'From the key'}</option>
+              {groups.length > 1 &&
+                groups.map(g => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+            </select>
+          ) : (
+            <input className="input font-mono" placeholder="G07C04" {...field('groupKey')} />
+          )}
         </label>
         <label>
-          <span className="label">SME</span>
+          <span className="label">{labels?.owner ?? 'SME'}</span>
           <select className="input" {...field('ownerId')}>
             <option value="">—</option>
             {smes.map(p => (
@@ -71,7 +104,7 @@ export function NewItemForm({ workTypeId, noun, smes, developers }: { workTypeId
           </select>
         </label>
         <label>
-          <span className="label">Developer</span>
+          <span className="label">{labels?.assignee ?? 'Developer'}</span>
           <select className="input" {...field('assigneeId')}>
             <option value="">Unassigned</option>
             {developers.map(p => (
@@ -82,10 +115,12 @@ export function NewItemForm({ workTypeId, noun, smes, developers }: { workTypeId
             ))}
           </select>
         </label>
-        <label>
-          <span className="label">Expected completion</span>
-          <input className="input" type="date" {...field('dueAt')} />
-        </label>
+        {showDue && (
+          <label>
+            <span className="label">{labels?.due ?? 'Expected completion'}</span>
+            <input className="input" type="date" {...field('dueAt')} />
+          </label>
+        )}
       </div>
       <div className="mt-3 flex items-center gap-2">
         <button className="btn-primary" disabled={pending}>
