@@ -312,6 +312,8 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`, `docs/JOURNEY-FOLLOW-UP.md`).
 
+New team members: read the [Journey workflow guide](docs/JOURNEY-WORKFLOW.md) for role responsibilities and the end-to-end process.
+
 `Allocated → In creation → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
 
 **Creation stage is a field, not a stage of the line** (`3a · Spine → 3b · Script → 4 · Build → 5 · Ship → Published`, published = in UAT). A creator can submit for review at any creation stage and keeps building during the review, so the two are never worked out from each other. It sits beside Status on the journey page (`headerFields`), is changed by the creator, a coordinator or Claude (relay API below), and every change is in the history with its time. **Start** sets it to 3a · Spine; setting it on an Allocated journey moves that journey to In creation (`fieldMoves`).
