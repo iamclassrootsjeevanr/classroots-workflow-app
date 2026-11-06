@@ -3,9 +3,9 @@
  * Build those links here so new work types and new charts stay consistent.
  *
  * Filters understood by /w/[workType]/items: status (key or comma list), cat (category or comma list), dev (user id or "none"),
- * group, scope (mine | review | overdue), q, grade.
+ * group, scope (mine | team | review | overdue), q, grade, sme (owner id), team (team id).
  */
-export type ItemsFilter = Partial<Record<'status' | 'cat' | 'dev' | 'group' | 'scope' | 'q', string | string[]>>;
+export type ItemsFilter = Partial<Record<'status' | 'cat' | 'dev' | 'sme' | 'group' | 'scope' | 'q' | 'team', string | string[]>>;
 
 export function itemsUrl(workTypeKey: string, filter: ItemsFilter = {}): string {
   const q = new URLSearchParams();

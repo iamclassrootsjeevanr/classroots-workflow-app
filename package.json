@@ -23,7 +23,8 @@
     "user:password": "tsx --env-file=.env scripts/set-password.ts",
     "demo:users": "tsx --env-file=.env scripts/demo-users.ts",
     "import:apk": "tsx --env-file=.env scripts/import-apk-xlsx.ts",
-    "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts"
+    "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts",
+    "journey:teams": "tsx --conditions=react-server --env-file=.env scripts/journey-teams.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",

@@ -19,6 +19,8 @@ import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/ac
 import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
 import { assignablePeople, reviewPeople, statusOptions } from '@/server/view';
+import { reviewDefaults } from '@/lib/teams';
+import { loadStewards, loadTeams } from '@/server/teams';
 
 const EVENT_TEXT: Record<string, string> = {
   CREATED: 'created',
@@ -51,6 +53,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       ...APK_INCLUDE,
       assignee: { select: { id: true, name: true } },
       owner: { select: { name: true } },
+      peerReviewer: { select: { name: true } },
       chapter: true,
       intervals: { orderBy: { enteredAt: 'asc' }, include: { assignee: { select: { name: true } } } },
       events: { orderBy: { at: 'desc' }, take: 200, include: { actor: { select: { name: true, email: true } } } },
@@ -73,6 +76,12 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
     canAssign && showOwner ? reviewPeople(key) : null,
   ]);
+  // Teams: the coordinator of the creator's team owns the item (else the chapter's steward), and the creator's buddy peer-reviews it.
+  const [teams, stewards] = mod.teams ? await Promise.all([loadTeams(db, [item.workTypeId]), loadStewards(db, [item.workTypeId])]) : [[], new Map<string, { userId: string; name: string }[]>()];
+  const team = reviewDefaults(teams, item.assigneeId).team;
+  const teamRow = team && teams.find(t => t.id === team.id);
+  const accountable = teamRow ? `${teamRow.coordinatorName} (${teamRow.name})` : stewards.get(`${item.workTypeId}:${item.groupKey}`)?.map(s => `${s.name} (steward)`).join(', ');
+  const peers = mod.teams && people ? people.filter(p => p.id !== item.assigneeId).map(p => ({ id: p.id, name: p.name })) : null;
   const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   const fields: EditableField[] = mod.fields.map(f => ({
     key: f.key,
@@ -181,6 +190,18 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <div className="min-w-52">
               <span className="label">{mod.labels?.owner ?? 'Owner'}</span>
               <AssignSelect owner itemId={item.id} assigneeId={item.ownerId} people={owners} label={`Choose ${lowerLabel(mod.labels?.owner ?? 'owner')}`} />
+            </div>
+          )}
+          {mod.teams && (
+            <div className="min-w-52">
+              <span className="label">{mod.labels?.peer ?? 'Peer reviewer'}</span>
+              {peers ? <AssignSelect peer none="None" itemId={item.id} assigneeId={item.peerReviewerId} people={peers} label={`Choose ${lowerLabel(mod.labels?.peer ?? 'peer reviewer')}`} /> : <div className="py-1.5 text-sm">{item.peerReviewer?.name ?? '—'}</div>}
+            </div>
+          )}
+          {mod.teams && (
+            <div>
+              <span className="label">{mod.labels?.accountable ?? 'Owner'}</span>
+              <div className="py-1.5 text-sm">{accountable || '—'}</div>
             </div>
           )}
           {editable && canDeleteItem(ctx) && (

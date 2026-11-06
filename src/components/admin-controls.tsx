@@ -35,7 +35,10 @@ export function NewItemForm({
   groups,
   keyExample = 'G07C04J05',
   showDue = true,
+  ownerDefault,
 }: {
+  /** Teams: what an empty owner means (the creator's team sets it). */
+  ownerDefault?: string;
   workTypeId: string;
   noun: string;
   smes: PersonOption[];
@@ -95,7 +98,7 @@ export function NewItemForm({
         <label>
           <span className="label">{labels?.owner ?? 'SME'}</span>
           <select className="input" {...field('ownerId')}>
-            <option value="">—</option>
+            <option value="">{ownerDefault ?? '—'}</option>
             {smes.map(p => (
               <option key={p.id} value={p.id}>
                 {p.name}

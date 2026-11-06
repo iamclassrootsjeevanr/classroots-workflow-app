@@ -25,6 +25,8 @@ import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '../apk/store';
 import { db } from '../db';
 import { workCalendar } from '../settings';
+import { reviewDefaults } from '@/lib/teams';
+import { loadStewards, loadTeams } from '../teams';
 
 export type Filters = {
   workTypeKeys?: string[];
@@ -58,6 +60,10 @@ export type ItemRow = ItemLite & {
   statusColor: string;
   assigneeName: string | null;
   ownerName: string | null;
+  peerReviewerId: string | null;
+  peerReviewerName: string | null;
+  /** Teams: the coordinator who owns the item's completion (the creator's team; else the group's steward). */
+  teamOwnerName: string | null;
   groupKey: string | null;
   chapterTitle: string | null;
   grade: number | null;
@@ -124,6 +130,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       workType: { select: { key: true, name: true } },
       assignee: { select: { name: true } },
       owner: { select: { name: true } },
+      peerReviewer: { select: { name: true } },
       chapter: { select: { title: true, grade: true } },
       ...APK_INCLUDE,
     },
@@ -132,6 +139,15 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
     ...(filters.take ? { take: filters.take } : {}),
   });
   const now = new Date();
+  // Teams (Journey): who owns each item = the coordinator of its creator's team, else the steward of its chapter.
+  const teamTypes = [...new Set(rows.filter(r => getModule(r.workType.key)?.teams).map(r => r.workTypeId))];
+  const [teams, stewards] = await Promise.all([loadTeams(db, teamTypes), loadStewards(db, teamTypes)]);
+  const teamOwnerOf = (r: (typeof rows)[number]) => {
+    if (!teamTypes.includes(r.workTypeId)) return null;
+    const team = reviewDefaults(teams.filter(t => t.workTypeId === r.workTypeId), r.assigneeId).team;
+    if (team) return teams.find(t => t.id === team.id)!.coordinatorName;
+    return stewards.get(`${r.workTypeId}:${r.groupKey}`)?.map(s => s.name).join(', ') || null;
+  };
   return rows.map(r => {
     const mod = getModule(r.workType.key);
     const def = mod ? statusDef(mod, r.status) : { label: r.status, color: '#9e9e9e', category: 'queue' as StatusCategory };
@@ -157,7 +173,12 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       weight: mod?.workloadWeight ?? 1,
       handedOff: handedOff(mod, r.approvedAt),
     };
-    const data = hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest);
+    const teamOwnerName = teamOwnerOf(r);
+    const data = {
+      ...hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest),
+      // Shown as list columns (the work type's `table.extra`).
+      ...(mod?.teams ? { peerReviewer: r.peerReviewer?.name ?? '', teamOwner: teamOwnerName ?? '' } : {}),
+    };
     return {
       ...base,
       workTypeName: r.workType.name,
@@ -165,6 +186,9 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       statusColor: def.color,
       assigneeName: r.assignee?.name ?? null,
       ownerName: r.owner?.name ?? null,
+      peerReviewerId: r.peerReviewerId,
+      peerReviewerName: r.peerReviewer?.name ?? null,
+      teamOwnerName,
       groupKey: r.groupKey,
       chapterTitle: r.chapter?.title ?? ((r.data as Record<string, unknown>)?.chapterTitle as string | undefined) ?? null,
       grade: r.chapter?.grade ?? null,

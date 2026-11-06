@@ -10,11 +10,13 @@ import { requireUser, type CurrentUser } from './rbac';
 
 /** The signed-in person's access, loaded once per request. */
 export const getAccess = cache(async (user: CurrentUser): Promise<Access> => {
-  const [workTypes, memberships] = await Promise.all([
+  const [workTypes, memberships, teams] = await Promise.all([
     db.workType.findMany({ select: { id: true, key: true, name: true, state: true }, orderBy: { name: 'asc' } }),
     db.workTypeMember.findMany({ where: { userId: user.id }, include: { roles: { include: { role: true } } } }),
+    db.team.findMany({ where: { coordinatorId: user.id }, select: { workTypeId: true, members: { select: { userId: true } } } }),
   ]);
-  const byType = new Map<string, MembershipLite>(memberships.map(m => [m.workTypeId, { roles: m.roles.map(r => r.role), groupKeys: m.groupKeys }]));
+  const teamUsers = (workTypeId: string) => teams.filter(t => t.workTypeId === workTypeId).flatMap(t => t.members.map(m => m.userId));
+  const byType = new Map<string, MembershipLite>(memberships.map(m => [m.workTypeId, { roles: m.roles.map(r => r.role), groupKeys: m.groupKeys, teamUserIds: teamUsers(m.workTypeId) }]));
   return buildAccess(user.id, user.isAdmin, workTypes, byType);
 });
 
@@ -52,12 +54,15 @@ export function scopeWhere(access: Access, types: WorkTypeAccess[]): Prisma.Work
   };
 }
 
-/** What the person may do on this item. `groupKey` is required: steward rights stop at the groups a membership is limited to. */
+/**
+ * What the person may do on this item. `groupKey` is required: steward rights stop at the groups a membership is limited to,
+ * except on items assigned to someone in a team they coordinate.
+ */
 export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null; groupKey: string | null }): ActorContext {
   const a = access.byKey.get(workTypeKey);
   return {
     isAdmin: access.isAdmin,
-    capabilities: a ? capabilitiesIn(a, item.groupKey) : new Set(),
+    capabilities: a ? capabilitiesIn(a, item.groupKey, item.assigneeId) : new Set(),
     isAssignee: item.assigneeId === access.userId,
     isOwner: Boolean(item.ownerId) && item.ownerId === access.userId,
     canEdit: Boolean(a?.canEdit),

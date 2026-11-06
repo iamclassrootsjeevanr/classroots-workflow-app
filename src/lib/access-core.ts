@@ -44,9 +44,12 @@ export type RoleLite = {
 };
 
 /** A person's membership of one work type: the roles they hold there, and the groups their steward rights are limited to. */
-export type MembershipLite = { roles: RoleLite[]; groupKeys?: string[] };
+export type MembershipLite = { roles: RoleLite[]; groupKeys?: string[]; /** People whose items they own as team coordinator. */ teamUserIds?: string[] };
 
-/** Rights that a membership's groups limit (Journey: a coordinator steers only their own chapters). Work and review follow the item. */
+/**
+ * Rights that a membership's groups limit (Journey: a coordinator steers their own chapters, and the journeys of their team's
+ * creators in any chapter). Work and review follow the item.
+ */
 export const GROUP_CAPABILITIES: readonly Capability[] = ['assign', 'create', 'manageFields'];
 
 export type WorkTypeLite = { id: string; key: string; name: string; state: 'ACTIVE' | 'PAUSED' | 'ARCHIVED' };
@@ -63,6 +66,8 @@ export type WorkTypeAccess = {
   pages: ReadonlySet<PageKey>;
   /** Groups where GROUP_CAPABILITIES apply; null = every group. */
   groupKeys: ReadonlySet<string> | null;
+  /** Team coordinator: GROUP_CAPABILITIES also apply to items assigned to these people, in any group. */
+  teamUserIds?: ReadonlySet<string>;
 };
 
 export type Access = {
@@ -151,14 +156,19 @@ export function buildAccess(
       canEdit: c.canEdit,
       pages: c.pages,
       groupKeys: m.groupKeys?.length ? new Set(m.groupKeys) : null,
+      teamUserIds: new Set(m.teamUserIds ?? []),
     });
   }
   return { userId, isAdmin, byKey };
 }
 
-/** The person's capabilities on an item of this group: outside their groups they keep work and review only. */
-export function capabilitiesIn(a: Pick<WorkTypeAccess, 'capabilities' | 'groupKeys'>, groupKey: string | null | undefined): ReadonlySet<Capability> {
+/**
+ * The person's capabilities on an item of this group assigned to this person: outside their groups and their team they keep
+ * work and review only.
+ */
+export function capabilitiesIn(a: Pick<WorkTypeAccess, 'capabilities' | 'groupKeys' | 'teamUserIds'>, groupKey: string | null | undefined, assigneeId?: string | null): ReadonlySet<Capability> {
   if (!a.groupKeys || (groupKey && a.groupKeys.has(groupKey))) return a.capabilities;
+  if (assigneeId && a.teamUserIds?.has(assigneeId)) return a.capabilities;
   return new Set([...a.capabilities].filter(c => !GROUP_CAPABILITIES.includes(c)));
 }
 

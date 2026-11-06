@@ -12,6 +12,8 @@ import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
+import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
+import { loadTeams } from '../teams';
 
 type Tx = Prisma.TransactionClient;
 
@@ -192,7 +194,12 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
     await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
 
-  const fresh = await loadItem(tx, item.id);
+  let fresh = await loadItem(tx, item.id);
+  // Teams: the new creator's coordinator reviews it by default and their buddy peer-reviews it.
+  if (mod.teams && assigneeId) {
+    const teams = await loadTeams(tx, [item.workTypeId]);
+    if (await applyReviewDefaultsTx(tx, fresh, actor, teams, reviewDefaults(teams, item.assigneeId), now)) fresh = await loadItem(tx, item.id);
+  }
   // First assignment moves a queued item to the module's "assigned" status.
   if (assigneeId && fresh.status === mod.initialStatus && mod.assignedStatus !== mod.initialStatus) {
     await changeStatusTx(tx, fresh, { ...actor, ctx: null }, mod.assignedStatus, now, cal);
@@ -212,29 +219,107 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
   });
 }
 
+type PersonSlot = 'owner' | 'peer';
+
+const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : (mod.labels?.peer ?? 'Peer reviewer'));
+
+/** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
+async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
+  const mod = requireModule(item.workType.key);
+  if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
+  const current = slot === 'owner' ? item.ownerId : item.peerReviewerId;
+  if (current === userId) return false;
+  const [from, to] = await Promise.all([
+    current ? tx.user.findUnique({ where: { id: current }, select: { name: true } }) : null,
+    userId ? tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null,
+  ]);
+  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : { peerReviewerId: userId });
+  const label = slotLabel(mod, slot);
+  await tx.workItemEvent.create({
+    data: { itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: label, fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
+  });
+  if (slot === 'owner') {
+    const col = columnFor(mod, 'owner');
+    if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  }
+  if (!quiet && userId && userId !== actor.userId && actor.source === 'APP') {
+    await notify(tx, userId, { kind: 'item.owner', title: `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+  }
+  return true;
+}
+
 /** Set the item's owner (Journey: its SME reviewer). Same permission as assigning. */
 export async function setOwner(actor: ChangeActor, itemId: string, ownerId: string | null) {
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    const mod = requireModule(item.workType.key);
-    if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
-    if (item.ownerId === ownerId) return;
-    const now = new Date();
-    const [from, to] = await Promise.all([
-      item.ownerId ? tx.user.findUnique({ where: { id: item.ownerId }, select: { name: true } }) : null,
-      ownerId ? tx.user.findUnique({ where: { id: ownerId }, select: { name: true } }) : null,
-    ]);
-    await saveItem(tx, item, { ownerId });
-    await tx.workItemEvent.create({
-      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: mod.labels?.owner ?? 'owner', fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
-    });
-    const col = columnFor(mod, 'owner');
-    if (col) await enqueue(tx, itemId, item.workType, mod, actor, [col]);
-    if (ownerId && ownerId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, ownerId, { kind: 'item.owner', title: `${mod.labels?.owner ?? 'Owner'} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
-    }
+    await setPersonTx(tx, item, actor, 'owner', ownerId, new Date());
   });
+}
+
+/** Set the item's peer reviewer (Journey: the creator's buddy by default). Same permission as assigning. */
+export async function setPeerReviewer(actor: ChangeActor, itemId: string, userId: string | null) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (userId && userId === item.assigneeId) throw new Error('The peer reviewer is someone other than the creator.');
+    await setPersonTx(tx, item, actor, 'peer', userId, new Date());
+  });
+}
+
+/**
+ * Give an item its creator's team defaults: the SME reviewer and the peer reviewer, where the slot is empty or still holds
+ * the default it had before (`was`). A reviewer picked by hand stays. Returns true when something changed.
+ */
+async function applyReviewDefaultsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, teams: TeamLite[], was: { reviewerId: string | null; peerReviewerId: string | null }, now: Date, quiet = false) {
+  const next = reviewDefaults(teams, item.assigneeId);
+  const system = { ...actor, ctx: null };
+  let changed = false;
+  const owner = nextDefault(item.ownerId, was.reviewerId, next.reviewerId);
+  if (owner !== undefined && (await setPersonTx(tx, item, system, 'owner', owner, now, quiet))) changed = true;
+  const fresh = changed ? await loadItem(tx, item.id) : item;
+  const peer = nextDefault(fresh.peerReviewerId, was.peerReviewerId, next.peerReviewerId);
+  if (peer !== undefined && (await setPersonTx(tx, fresh, system, 'peer', peer, now, quiet))) changed = true;
+  return changed;
+}
+
+/**
+ * A team setting changed (or "fill missing" was pressed): bring the team's journeys whose review is still open in line.
+ * `was` = each creator's defaults before the change; omit to fill only the empty slots. Each newly named reviewer gets one
+ * inbox message for all of them. Returns how many items changed.
+ */
+export async function refillReviewDefaults(actor: ChangeActor, workTypeId: string, opts: { creatorIds?: string[]; was?: Map<string, { reviewerId: string | null; peerReviewerId: string | null }> } = {}) {
+  return db.$transaction(
+    async tx => {
+      const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
+      const mod = requireModule(wt.key);
+      if (!mod.teams) return 0;
+      const teams = await loadTeams(tx, [workTypeId]);
+      const creators = opts.creatorIds ?? [...new Set(teams.flatMap(teamPeople))];
+      const doneKeys = mod.statuses.filter(s => s.category === 'done').map(s => s.key);
+      const items = await tx.workItem.findMany({
+        where: { workTypeId, archivedAt: null, approvedAt: null, assigneeId: { in: creators }, status: { notIn: doneKeys } },
+        include: { workType: true },
+      });
+      const now = new Date();
+      const gained = new Map<string, number>();
+      let count = 0;
+      for (const item of items) {
+        const was = opts.was?.get(item.assigneeId!) ?? { reviewerId: null, peerReviewerId: null };
+        if (!(await applyReviewDefaultsTx(tx, item, actor, teams, was, now, true))) continue;
+        count++;
+        const after = await loadItem(tx, item.id);
+        for (const id of new Set([after.ownerId !== item.ownerId ? after.ownerId : null, after.peerReviewerId !== item.peerReviewerId ? after.peerReviewerId : null])) {
+          if (id && id !== actor.userId) gained.set(id, (gained.get(id) ?? 0) + 1);
+        }
+      }
+      for (const [userId, n] of gained) {
+        await notify(tx, userId, { kind: 'item.owner', title: `You now review ${n} more ${mod.itemNoun}${n === 1 ? '' : 's'}`, body: 'Team review defaults changed.', href: `/w/${wt.key}/items?scope=mine` });
+      }
+      return count;
+    },
+    { timeout: 30_000 },
+  );
 }
 
 // ─── Fields ─────────────────────────────────────────────────────
@@ -472,6 +557,8 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
+  // Teams: a new item starts with its creator's default SME reviewer and peer reviewer unless one was picked.
+  const defaults = mod.teams && input.assigneeId ? reviewDefaults(await loadTeams(tx, [workType.id]), input.assigneeId) : null;
   const item = await tx.workItem.create({
     data: {
       workTypeId: workType.id,
@@ -479,7 +566,8 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       title: input.title,
       status,
       assigneeId: input.assigneeId ?? null,
-      ownerId: input.ownerId ?? null,
+      ownerId: input.ownerId ?? defaults?.reviewerId ?? null,
+      peerReviewerId: defaults?.peerReviewerId ?? null,
       createdById: actor.source === 'APP' ? actor.userId : null,
       chapterId: input.chapterId ?? null,
       groupKey: input.groupKey ?? null,
@@ -533,4 +621,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue };
+export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

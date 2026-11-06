@@ -5,10 +5,12 @@ import { PAGE_SIZE } from '@/lib/paging';
 import type { WorkTypeDefinition } from '@/modules/types';
 import { db } from '../db';
 import { loadItems } from './analytics';
+import { loadTeams } from '../teams';
 
 /** One page of the Items list, filtered and counted by the database. */
 export async function queryItemsPage(mod: WorkTypeDefinition, scope: Prisma.WorkItemWhereInput, f: ItemsFilters, userId: string, page: number, size = PAGE_SIZE) {
-  const where: Prisma.WorkItemWhereInput = { AND: [scope, itemsWhere(mod, f, userId)] };
+  const teams = mod.teams && (f.team || f.scope === 'team') ? await loadTeams(db, (await db.workType.findMany({ where: { key: mod.key }, select: { id: true } })).map(w => w.id)) : [];
+  const where: Prisma.WorkItemWhereInput = { AND: [scope, itemsWhere(mod, f, userId, new Date(), teams)] };
   const base = { workType: { key: mod.key }, archivedAt: null, ...where };
   const total = await db.workItem.count({ where: base });
   const pages = Math.max(1, Math.ceil(total / size));
