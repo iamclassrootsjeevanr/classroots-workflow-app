@@ -4,7 +4,7 @@ import { inList } from './items-url';
 import { teamOf, teamPeople, type TeamLite } from './teams';
 
 /** Filters of the Items page (all optional). `status` and `cat` accept comma lists. */
-export type ItemsFilters = { status?: string; cat?: string; dev?: string; sme?: string; group?: string; grade?: string; q?: string; scope?: string; /** A team id: items assigned to its people. */ team?: string };
+export type ItemsFilters = { status?: string; cat?: string; dev?: string; sme?: string; group?: string; grade?: string; q?: string; scope?: string; /** A team id: items assigned to its people. */ team?: string; /** APK Testing: `tests` = list the test results, not the APK versions. */ view?: string };
 
 const keysOf = (mod: WorkTypeDefinition, test: (cat: StatusCategory) => boolean) => mod.statuses.filter(s => test(s.category)).map(s => s.key);
 

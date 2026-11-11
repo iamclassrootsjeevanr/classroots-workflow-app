@@ -65,7 +65,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   ]);
   const qs = new URLSearchParams(Object.entries(sp).filter(([, v]) => v) as [string, string][]).toString();
   const groupMods = selected.map(t => getModule(t.workTypeKey)).filter(m => m?.groupSummary);
-  const scopedItems = groupMods.length ? await loadItems({ workTypeKeys: filters.workTypeKeys, where: filters.where, assigneeId: filters.assigneeId }) : [];
+  const scopedItems = groupMods.length ? await loadItems({ workTypeKeys: filters.workTypeKeys, where: filters.where, assigneeId: filters.assigneeId, level: 'groups' }) : [];
 
   return (
     <>

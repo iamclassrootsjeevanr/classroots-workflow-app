@@ -9,7 +9,7 @@ Two work types ship today:
 | Work type | What one item is | Flow |
 | --- | --- | --- |
 | **Journey** | One SME journey built with Claude, reviewed by an SME, then taken to prod | Allocated → In creation (3a Spine … Published) → Review ↺ Changes asked → Closed → after-steps → Done |
-| **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
+| **APK Testing** | One APK build (its test cases are results inside it) | Not Tested → In Process → Fail → Pending Retest → Pass, following its test results |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
 
@@ -116,6 +116,7 @@ npm run demo:users          # optional: one sign-in per role (see "Demo accounts
 npm run import:journey -- "$HOME/Downloads/journey-tracker.csv"            # Journey: dry run, lists rows to check
 npm run import:journey -- "$HOME/Downloads/journey-tracker.csv" --replace  # Journey: replaces all journeys
 npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"         # APK Testing
+npm run apk:versions -- --apply                                         # APK Testing: make a version item per APK version (after an import into an older database)
 ```
 
 The APK import is safe to re-run (existing items are skipped). The Journey import reads the SME's Slack "Journey tracker" list exported as CSV; with `--replace` it deletes every journey first, then creates the chapters, the Journey team with their roles and every row (`scripts/import-journey-csv.ts`).
@@ -345,13 +346,15 @@ The module code holds the default stages; an admin can rename them, change colou
 
 ### APK Testing (`src/modules/apk-testing/definition.ts`)
 
-One item per **APK version × test case**, grouped by APK version.
+One work item per **APK version**. Its test cases are **test results** under it (child items, `WorkItem.parentId`): they carry the tester, bug, remarks, log date and time log, and they are what the Google Sheet's Test Execution tab lists. Results are not work: they stay out of the APK versions list, the KPI tiles and the analytics (`level: 'work'` in `loadItems`); the version page lists them, and **All tests** on the APK versions page (or a chart segment) lists them across versions (`?view=tests`).
 
-`Not Tested → In Process → Pass / Fail / Not Reported`. A failure goes `Fail → Fixed (app developer) → Pending Retest → Pass`.
+A version's status is never set by hand. It follows its results (`versionStatus` in `src/lib/apk-rollup.ts`): Not Tested until a result moves, **Fail** while any result fails, Pending Retest once failures are fixed, In Process while some are untested, **Pass** when all passed (or were not reported). Every result change rolls the version up (`rollupVersionTx`), so cycle time, stuck and done on versions follow the testing. The tester of a version is the tester of its results; assigning the version assigns the results nobody else took. Deleting or restoring a version takes its results with it. The version items are app-only (not in the sheet).
+
+A result's own flow: `Not Tested → In Process → Pass / Fail / Not Reported`. A failure goes `Fail → Fixed (app developer) → Pending Retest → Pass`.
 
 - **Testers** run cases, pass or fail them, retest, and fill in comments, bug and log date.
 - **App developers** mark failures fixed and add developer remarks.
-- Each APK version gets a summary row: total, pass, fail, pending retest, not tested and pass %. The result is **All passed**, **Stable** (≥ 90 %), **Good** (≥ 80 %), **Has failures** or **In progress**.
+- Per-version chart and table (Results by version) count the **results**, not the versions: each version has a summary row: total, pass, fail, pending retest, not tested and pass %. The result is **All passed**, **Stable** (≥ 90 %), **Good** (≥ 80 %), **Has failures** or **In progress**.
 
 ---
 

@@ -47,7 +47,7 @@ describe('compareWithTeam', () => {
 describe('workTypeTabs', () => {
   it('gives APK Testing its four pages with their own icons', () => {
     const tabs = workTypeTabs(apkTesting);
-    expect(tabs.map(t => t.label)).toEqual(['Overview', 'APK versions', 'Test execution', 'Test cases']);
+    expect(tabs.map(t => t.label)).toEqual(['Overview', 'Results by version', 'APK versions', 'Test cases']);
     expect(new Set(tabs.map(t => t.icon)).size).toBe(4);
   });
   it('gives Journey Overview, Chapters and Journeys', () => {

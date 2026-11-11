@@ -6,12 +6,18 @@ import { getModule, statusDef } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
 import { loadLabel } from '@/components/ui';
-import { hydrateApkData } from '@/lib/apk-data';
+import { hydrateApkData, hydrateVersion } from '@/lib/apk-data';
 import { APK_INCLUDE } from './apk/store';
 import { actorContextFor, getAccess } from './access';
 import { db } from './db';
 import type { CurrentUser } from './rbac';
 import { workPeopleWhere, type ItemRow } from './services/analytics';
+
+/** APK Testing: the work is the APK version; its test results are its children. */
+export const isApkVersion = (mod: WorkTypeDefinition, item: { parentId: string | null }) => mod.storage === 'apk' && !item.parentId;
+
+/** The fields an item has: an APK version only has its version facts (release date, APK file, notes), a test result has the rest. */
+export const fieldsOf = (mod: WorkTypeDefinition, item: { parentId: string | null }) => (isApkVersion(mod, item) ? mod.fields.filter(f => f.source === 'version') : mod.fields.filter(f => f.source !== 'version'));
 
 /** Status moves the viewer may make, per item (capabilities + edit tick of each work type). */
 export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Promise<Map<string, StatusOption[]>> {
@@ -21,7 +27,8 @@ export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Pro
     const mod = getModule(it.workTypeKey);
     if (!mod) continue;
     const ctx = actorContextFor(access, it.workTypeKey, it);
-    out.set(it.id, statusOptions(mod, it.status, ctx));
+    // An APK version follows its test results; it is never moved by hand.
+    out.set(it.id, isApkVersion(mod, it) ? [] : statusOptions(mod, it.status, ctx));
   }
   return out;
 }
@@ -51,7 +58,7 @@ export async function editableItemsFor(user: CurrentUser, items: ItemRow[]): Pro
     const mod = getModule(it.workTypeKey);
     if (!mod) continue;
     const ctx = actorContextFor(access, it.workTypeKey, it);
-    if (mod.fields.some(f => !f.computed && canEditField(f, ctx))) out.add(it.id);
+    if (fieldsOf(mod, it).some(f => !f.computed && canEditField(f, ctx))) out.add(it.id);
   }
   return out;
 }
@@ -64,7 +71,11 @@ export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: s
   if (!mod) return [];
   const ctx = actorContextFor(access, item.workType.key, item);
   const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
-  return mod.fields.map(f => ({
+  if (isApkVersion(mod, item)) {
+    const facts = await db.apkVersion.findUnique({ where: { workTypeId_key: { workTypeId: item.workTypeId, key: item.externalKey } } });
+    if (facts) Object.assign(data, hydrateVersion(facts));
+  }
+  return fieldsOf(mod, item).map(f => ({
     key: f.key,
     label: f.label,
     type: f.type,

@@ -34,6 +34,11 @@ export function hydrateApkData(data: Record<string, unknown>, apk: ApkLink): Rec
   return out;
 }
 
+/** A version's own facts as flat field values (the version item has no test case). */
+export function hydrateVersion(v: { releaseDate: Date | null; link: string | null; notes: string | null }): Record<string, unknown> {
+  return { ...(v.releaseDate ? { releaseDate: normalizeDate(v.releaseDate) } : {}), ...(v.link ? { apkUrl: v.link } : {}), ...(v.notes ? { releaseNotes: v.notes } : {}) };
+}
+
 export type SplitApkData = {
   /** What stays on the run. */
   execution: Record<string, unknown>;

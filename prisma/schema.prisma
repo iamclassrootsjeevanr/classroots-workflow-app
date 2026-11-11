@@ -318,6 +318,8 @@ model WorkItem {
   ownerId     String?
   /// Journey: the creator's peer review buddy (default from their team, changed per item by a coordinator).
   peerReviewerId String?
+  /// APK Testing: a test result points at the APK version it belongs to. The version is the work; results are hidden from lists and analytics.
+  parentId    String?
   chapterId   String?
   /// Grouping key for lists (e.g. G07C04).
   groupKey    String?
@@ -354,6 +356,8 @@ model WorkItem {
   createdBy User?                   @relation("creator", fields: [createdById], references: [id], onDelete: SetNull)
   peerReviewer User?                @relation("peerReviewer", fields: [peerReviewerId], references: [id], onDelete: SetNull)
   chapter   Chapter?                @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  parent    WorkItem?               @relation("runs", fields: [parentId], references: [id], onDelete: Cascade)
+  runs      WorkItem[]              @relation("runs")
   events    WorkItemEvent[]
   intervals WorkItemStageInterval[]
   feedback  Feedback[]
@@ -368,6 +372,7 @@ model WorkItem {
   @@index([assigneeId, status])
   @@index([ownerId])
   @@index([peerReviewerId])
+  @@index([parentId])
   @@index([dueAt])
   @@index([completedAt])
 }

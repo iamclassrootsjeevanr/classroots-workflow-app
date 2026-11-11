@@ -33,7 +33,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
   const { view } = await searchParams;
   const { user, access, wtAccess, mod, wt, items: lite, scope, can, tz, editable } = await loadWorkTypePage(key);
   if (!mod.groupSummary) notFound();
-  const [all, versions] = await Promise.all([loadItems({ workTypeKeys: [key], where: scope }), mod.versions ? loadVersionOptions(wt.id) : Promise.resolve([])]);
+  const [all, versions] = await Promise.all([loadItems({ workTypeKeys: [key], where: scope, level: 'groups' }), mod.versions ? loadVersionOptions(wt.id) : Promise.resolve([])]);
   const people = can('assign') && editable ? await assignablePeople(lite, [key]) : undefined;
 
   const chapters = mod.teams ? await chapterList(wt.id, all, user.id, wtAccess.groupKeys) : null;
@@ -41,6 +41,8 @@ export default async function VersionsPage({ params, searchParams }: { params: P
   const items = mine ? all.filter(i => i.groupKey && chapters!.mine.has(i.groupKey)) : all;
   const rows = chapters ? chapters.rows.filter(r => !mine || chapters.mine.has(r.code)) : [];
   const groupLabel = mod.groupSummary.label;
+  // APK Testing: a version is a work item, so its name opens the version page.
+  const versionId = new Map(mod.storage === 'apk' ? lite.map(i => [i.externalKey, i.id]) : []);
   const canAdd = editable && (access.isAdmin || (can('assign') && can('create')));
   const tab = (href: string, label: string, on: boolean) => (
     <Link href={href} aria-current={on ? 'page' : undefined} className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${on ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'}`}>
@@ -116,7 +118,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
           items={items}
           tz={tz}
           versionEdit={mod.versions && editable && (can('create') || can('manageFields')) ? { workTypeId: wt.id, canDelete: can('manageFields') } : undefined}
-          groupHref={g => itemsUrl(key, { group: g })}
+          groupHref={g => (versionId.get(g) ? `/w/${key}/${versionId.get(g)}` : itemsUrl(key, { group: g }))}
           itemsHref={itemsUrl(key)}
         />
       ) : (

@@ -14,6 +14,7 @@ import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
+import { versionStatus } from '@/lib/apk-rollup';
 
 type Tx = Prisma.TransactionClient;
 
@@ -57,6 +58,27 @@ async function rollInterval(tx: Tx, itemId: string, status: string, assigneeId: 
   await tx.workItemStageInterval.create({ data: { itemId, status, assigneeId, enteredAt: now, round } });
 }
 
+/** True for an APK Testing version item (the work); its test results are its children. */
+const isApkVersion = (item: { parentId: string | null; workType: { key: string } }) => item.workType.key === 'apk-testing' && !item.parentId;
+
+/**
+ * APK Testing: bring a version's status in line with its test results. The version is never moved by hand: this writes the stage,
+ * its timestamps, the event and the stage interval directly, so version analytics (cycle time, stuck, done) follow the testing.
+ */
+async function rollupVersionTx(tx: Tx, parentId: string, actor: ChangeActor, now: Date, calendar: WorkCalendar) {
+  const parent = await loadItem(tx, parentId);
+  if (parent.archivedAt) return;
+  const mod = requireModule(parent.workType.key);
+  const results = await tx.workItem.findMany({ where: { parentId, archivedAt: null }, select: { status: true } });
+  const to = versionStatus(results.map(r => r.status));
+  if (to === parent.status) return;
+  await saveItem(tx, parent, stagePatch(mod, parent, to, now));
+  await tx.workItemEvent.create({
+    data: { itemId: parent.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: parent.status, toValue: to, source: actor.source, note: 'Follows its test results', at: now },
+  });
+  await rollInterval(tx, parent.id, to, parent.assigneeId, now, withWorkDays(calendar, mod.workDays));
+}
+
 /** Queue sheet writes for changed columns (latest value wins). Skipped for changes that came from the sheet. */
 async function enqueue(tx: Tx, itemId: string, wt: WorkType, mod: WorkTypeDefinition, actor: ChangeActor, columns: string[]) {
   if (actor.source === 'SHEET' || !mod.sheet || !workTypeConfig(wt).sync?.enabled || !columns.length) return;
@@ -64,6 +86,8 @@ async function enqueue(tx: Tx, itemId: string, wt: WorkType, mod: WorkTypeDefini
     where: { id: itemId },
     include: { assignee: { select: { name: true } }, owner: { select: { name: true } } },
   });
+  // APK Testing: the sheet lists test results; the version item (the work) is app-only.
+  if (mod.storage === 'apk' && !item.parentId) return;
   const values = itemSheetValues(mod, {
     title: item.title,
     status: item.status,
@@ -99,6 +123,7 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   const mod = requireModule(item.workType.key);
   const cal = withWorkDays(calendar, mod.workDays);
   if (item.status === to) return;
+  if (actor.ctx && isApkVersion(item)) throw new ForbiddenError('An APK version follows its test results. Change the status of a test instead.');
   if (actor.ctx && !canTransition(mod, item.status, to, actor.ctx)) {
     throw new ForbiddenError(`You can't move this ${mod.itemNoun} from ${statusDef(mod, item.status).label} to ${statusDef(mod, to).label}.`);
   }
@@ -130,6 +155,7 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   await notifyStage(tx, item, mod, actor, landing);
+  if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, cal);
 }
 
 /**
@@ -190,7 +216,7 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   });
   const col = columnFor(mod, 'assignee');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
-  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP') {
+  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP' && !item.parentId) {
     await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
 
@@ -206,6 +232,11 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   } else {
     // Same stage, new owner: split the interval so workload is attributed correctly.
     await rollInterval(tx, item.id, fresh.status, assigneeId, now, withWorkDays(cal, mod.workDays), true);
+  }
+  // APK Testing: the tester of a version also tests its results, except those somebody else already took.
+  if (isApkVersion(item)) {
+    const runs = await tx.workItem.findMany({ where: { parentId: item.id, archivedAt: null, OR: [{ assigneeId: null }, { assigneeId: item.assigneeId }] }, select: { id: true } });
+    for (const r of runs) await assignTx(tx, await loadItem(tx, r.id), { ...actor, ctx: null }, assigneeId, now, cal);
   }
   return fresh;
 }
@@ -428,6 +459,17 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
     });
+    // APK Testing: deleting a version takes its test results with it (and brings them back on undo).
+    if (isApkVersion(item)) {
+      const runs = await tx.workItem.findMany({ where: { parentId: itemId, archivedAt: null }, select: { id: true } });
+      const ids = runs.map(r => r.id);
+      await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: now, version: { increment: 1 } } });
+      await tx.apkVersion.updateMany({ where: { workTypeId: item.workTypeId, key: item.externalKey }, data: { archivedAt: now } });
+      await tx.syncOutbox.deleteMany({ where: { itemId: { in: ids }, status: 'PENDING' } });
+      await tx.workItemEvent.createMany({
+        data: ids.map(id => ({ itemId: id, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: `Deleted with APK version ${item.externalKey}`, at: now })),
+      });
+    }
     // The person who deleted it gets an inbox message with Undo for the next 30 minutes.
     if (actor.userId && actor.source === 'APP') {
       await notify(tx, actor.userId, {
@@ -438,6 +480,7 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
         data: { itemId, itemKey: item.externalKey, workTypeKey: item.workType.key, undoUntil: undoDeadline(now).toISOString() },
       });
     }
+    if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, await workCalendar());
   });
 }
 
@@ -454,11 +497,21 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt.toISOString(), toValue: null, source: actor.source, note: 'Restored', at: now },
     });
+    if (isApkVersion(item)) {
+      const runs = await tx.workItem.findMany({ where: { parentId: itemId, archivedAt: item.archivedAt }, select: { id: true } });
+      const ids = runs.map(r => r.id);
+      await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null, version: { increment: 1 } } });
+      await tx.apkVersion.updateMany({ where: { workTypeId: item.workTypeId, key: item.externalKey }, data: { archivedAt: null } });
+      await tx.workItemEvent.createMany({
+        data: ids.map(id => ({ itemId: id, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: item.archivedAt!.toISOString(), toValue: null, source: actor.source, note: `Restored with APK version ${item.externalKey}`, at: now })),
+      });
+    }
     // The delete notice becomes a "Restored" notice (no more Undo button).
     await tx.notification.updateMany({
       where: { kind: 'item.deleted', data: { path: ['itemId'], equals: itemId } },
       data: { kind: 'item.restored', title: `Restored ${shortKey(item.externalKey)}`, readAt: now },
     });
+    if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, await workCalendar());
   });
 }
 
@@ -544,13 +597,16 @@ export type NewItem = {
 };
 
 /** Create an item with its first event and stage interval. Used by the admin UI, importer and sheet sync. */
-export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date(), cal: WorkCalendar = DEFAULT_CALENDAR) {
+export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date(), cal: WorkCalendar = DEFAULT_CALENDAR): Promise<WorkItem> {
   const mod = requireModule(workType.key);
   const status = input.status ?? (input.assigneeId ? mod.assignedStatus : mod.initialStatus);
   const def = statusDef(mod, status);
   const marks = new Set(def.marks ?? []);
   // APK Testing: version and test case facts go to their own tables; the run keeps only its own data.
   const apk = mod.storage === 'apk' ? await prepareApkCreate(tx, workType, input) : null;
+  // ...and a test result belongs to its APK version item (created here when it is the first result of that version).
+  const versionKey = (input.groupKey ?? '').trim();
+  const parentId = apk && String(input.data?.testCaseId ?? '').trim() && versionKey ? await ensureVersionItemTx(tx, workType, actor, versionKey, now, cal) : null;
   const calc = computed(mod, input.externalKey, (apk?.data ?? input.data ?? {}) as Record<string, unknown>, cal);
   const data = mod.dataSchema.parse(calc.data) as Prisma.InputJsonValue;
   const dueAt = input.dueAt ?? calc.dueAt ?? null;
@@ -568,6 +624,7 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       assigneeId: input.assigneeId ?? null,
       ownerId: input.ownerId ?? defaults?.reviewerId ?? null,
       peerReviewerId: defaults?.peerReviewerId ?? null,
+      parentId,
       createdById: actor.source === 'APP' ? actor.userId : null,
       chapterId: input.chapterId ?? null,
       groupKey: input.groupKey ?? null,
@@ -601,7 +658,19 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
     },
   });
   await tx.workItemStageInterval.create({ data: { itemId: item.id, status, assigneeId: item.assigneeId, enteredAt: now, round: 1 } });
+  if (parentId) await rollupVersionTx(tx, parentId, actor, now, cal);
   return item;
+}
+
+/** The work item of an APK version (key = the version name). Created, or brought back, when its first result arrives. */
+async function ensureVersionItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, versionKey: string, now: Date, cal: WorkCalendar): Promise<string> {
+  const found = await tx.workItem.findUnique({ where: { workTypeId_externalKey: { workTypeId: workType.id, externalKey: versionKey } } });
+  if (found) {
+    if (found.archivedAt) await tx.workItem.update({ where: { id: found.id }, data: { archivedAt: null, version: { increment: 1 } } });
+    return found.id;
+  }
+  const created = await createItemTx(tx, workType, { ...actor, ctx: null }, { externalKey: versionKey, title: versionKey, groupKey: versionKey }, now, cal);
+  return created.id;
 }
 
 export async function createItem(actor: ChangeActor, workTypeId: string, input: NewItem) {
@@ -621,4 +690,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };
+export const internals = { ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

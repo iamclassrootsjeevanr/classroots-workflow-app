@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planVersionTests, type SourceTest } from '@/lib/apk-versions';
+import { versionStatus } from '@/lib/apk-rollup';
 import { apkTesting } from '@/modules/apk-testing/definition';
 
 const source: SourceTest[] = [
@@ -35,8 +36,39 @@ describe('planVersionTests', () => {
     for (const o of out) apkTesting.dataSchema.parse(o.data);
     expect(apkTesting.sortOrder?.(out[1].data)).toBe(2);
   });
-  it('leaves owner, expected and delay out of the APK list', () => {
+  it('leaves owner, expected and delay out of the version list and of its test results', () => {
     expect(apkTesting.table?.hide).toEqual(['owner', 'expected', 'delay']);
-    expect(apkTesting.table?.extra?.map(e => e.field)).toContain('developerRemarks');
+    expect(apkTesting.runTable?.hide).toEqual(['owner', 'expected', 'delay']);
+    expect(apkTesting.runTable?.extra?.map(e => e.field)).toContain('developerRemarks');
+  });
+  it('lists an APK version with its results rolled up', () => {
+    expect(apkTesting.table?.extra?.map(e => e.field)).toEqual(expect.arrayContaining(['testsTotal', 'testsPass', 'testsFail', 'passRate']));
+  });
+});
+
+describe('versionStatus', () => {
+  it('is Not Tested until a result moves', () => {
+    expect(versionStatus([])).toBe('not_tested');
+    expect(versionStatus(['not_tested', 'not_tested'])).toBe('not_tested');
+  });
+  it('is In Process while some are untested or running and none failed', () => {
+    expect(versionStatus(['pass', 'not_tested'])).toBe('in_process');
+    expect(versionStatus(['in_process', 'not_tested'])).toBe('in_process');
+  });
+  it('has failures as long as one result fails, whatever else is going on', () => {
+    expect(versionStatus(['pass', 'fail', 'not_tested', 'pending_retest'])).toBe('fail');
+  });
+  it('waits for retest once every failure is fixed', () => {
+    expect(versionStatus(['pass', 'fixed', 'pass'])).toBe('pending_retest');
+    expect(versionStatus(['pass', 'pending_retest'])).toBe('pending_retest');
+  });
+  it('passes when every result passed or was not reported', () => {
+    expect(versionStatus(['pass', 'pass'])).toBe('pass');
+    expect(versionStatus(['pass', 'not_reported'])).toBe('pass');
+    expect(versionStatus(['not_reported'])).toBe('not_reported');
+  });
+  it('only uses statuses the module has', () => {
+    const keys = new Set(apkTesting.statuses.map(s => s.key));
+    for (const set of [[], ['pass'], ['fail'], ['fixed'], ['in_process'], ['not_reported']]) expect(keys.has(versionStatus(set))).toBe(true);
   });
 });

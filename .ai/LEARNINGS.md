@@ -29,3 +29,4 @@
 - Agents can't sign in to the local app: auto mode blocks reading `DEMO_PASSWORD` and setting temporary passwords. Ask Jeevan to sign in in the Browser pane, or verify with unit tests plus a rolled-back script.
 - `.claude/launch.json` has `app` (= `start.command` without opening a browser: DB + migrate + `next dev`) besides `web` (`npm run dev`, needs the DB already up).
 
+- APK Testing: any new query over WorkItem must choose its level. `loadItems` / `loadLiteItems` / `queryItemsPage` default to work (version items, `parentId: null`); pass `level: 'runs'` for test results or `'groups'` for group summaries. Sheet sync only touches results (`syncedItems`). Version items are app-only: `enqueue` skips them.

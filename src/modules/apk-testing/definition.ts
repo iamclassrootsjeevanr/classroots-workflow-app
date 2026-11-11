@@ -3,9 +3,10 @@ import { VIEWER } from '../roles';
 import type { GroupSummaryRow, WorkTypeDefinition } from '../types';
 
 /**
- * APK Testing – every APK build is run through the test-case list. One item per build × test case,
- * grouped by APK version. Testers run the cases; the app developer marks failures as fixed; testers retest.
- * Mirrors the "Test Execution" tab of the APK Testing Tracker sheet.
+ * APK Testing – every APK build is run through the test-case list. One work item per APK version: its status follows its
+ * test results (never moved by hand). Each test case run on the build is a result under the version (a child item): testers
+ * run the cases, the app developer marks failures as fixed, testers retest. The results mirror the "Test Execution" tab of
+ * the APK Testing Tracker sheet; the version items are app-only.
  */
 
 /** Result rules from the tracker's Version Summary tab. */
@@ -25,12 +26,26 @@ export function apkVersionResult(r: { total: number; pass: number; fail: number;
 export const apkTesting: WorkTypeDefinition = {
   key: 'apk-testing',
   name: 'APK Testing',
-  description: 'Each APK build run through the test-case list: tested, failures fixed, retested, passed.',
+  description: 'Each APK build is one piece of work: its test cases are run, failures fixed, retested, until it passes.',
   icon: 'smartphone',
   storage: 'apk',
-  itemNoun: 'test',
+  itemNoun: 'APK version',
   labels: { assignee: 'Tested by', owner: 'Owner', group: 'APK version' },
+  // The work: one row per APK version, with its test results rolled up (see loadItems).
   table: {
+    hide: ['owner', 'expected', 'delay'],
+    extra: [
+      { field: 'releaseDate', label: 'Release date' },
+      { field: 'testsTotal', label: 'Tests' },
+      { field: 'testsPass', label: 'Pass' },
+      { field: 'testsFail', label: 'Fail' },
+      { field: 'testsPending', label: 'Retest' },
+      { field: 'testsOpen', label: 'Not tested' },
+      { field: 'passRate', label: 'Pass %' },
+    ],
+  },
+  // A version's test results.
+  runTable: {
     hide: ['owner', 'expected', 'delay'],
     extra: [
       { field: 'priority', label: 'Priority' },
@@ -38,7 +53,7 @@ export const apkTesting: WorkTypeDefinition = {
       { field: 'developerRemarks', label: 'Developer remarks' },
     ],
   },
-  pages: { groups: 'APK versions', items: 'Test execution', cases: 'Test cases' },
+  pages: { groups: 'Results by version', items: 'APK versions', cases: 'Test cases' },
   versions: true,
   timeLog: true,
   importRoles: { assignee: 'tester', owner: 'app-developer' },
@@ -132,6 +147,7 @@ export const apkTesting: WorkTypeDefinition = {
 
   groupSummary: {
     label: 'APK version',
+    unit: 'test',
     columns: [
       { key: 'releaseDate', label: 'Release date' },
       { key: 'total', label: 'Total tests' },

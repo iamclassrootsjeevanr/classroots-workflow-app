@@ -53,8 +53,9 @@ export default async function OverviewPage({ params, searchParams }: { params: P
   const series = open.map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
   const doneCount = count('done');
   const people = ownOnly ? d.byDeveloper.filter(r => r.__dev === user.id) : d.byDeveloper;
-  const recent = mod.groupSummary ? groupRollup(mod, d.items).slice(-4).reverse() : [];
+  const recent = mod.groupSummary ? groupRollup(mod, d.groupItems).slice(-4).reverse() : [];
   const seriesColors = mod.groupSummary?.seriesColors ?? {};
+  const versionId = new Map(mod.storage === 'apk' ? d.items.map(i => [i.externalKey, i.id]) : []);
 
   return (
     <>
@@ -85,7 +86,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
               return (
                 <Link
                   key={r.group}
-                  href={itemsUrl(key, { group: r.group })}
+                  href={versionId.get(r.group) ? `/w/${key}/${versionId.get(r.group)}` : itemsUrl(key, { group: r.group })}
                   className="group/v rounded-xl border border-line bg-surface-2/40 p-3.5 transition hover:-translate-y-px hover:border-brand/40 hover:bg-surface-2/70"
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -97,7 +98,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
                   <div className="mt-2 flex items-baseline gap-2">
                     <span className="text-2xl font-semibold tracking-tight tabular-nums text-ink">{r.cells[mod.groupSummary!.headline ?? 'passRate']}</span>
                     <span className="text-xs text-muted">
-                      {r.count} {mod.itemNoun}s
+                      {r.count} {mod.groupSummary!.unit ?? mod.itemNoun}s
                     </span>
                   </div>
                   <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={parts.map(([k, n]) => `${k} ${n}`).join(', ')}>
@@ -158,7 +159,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
         </Card>
       )}
 
-      {mod.groupSummary && d.items.length > 0 && <GroupSummaryCard mod={mod} items={d.items} tz={tz} only="chart" itemsHref={itemsHref} />}
+      {mod.groupSummary && d.groupItems.length > 0 && <GroupSummaryCard mod={mod} items={d.groupItems} tz={tz} only="chart" itemsHref={itemsHref} />}
     </>
   );
 }

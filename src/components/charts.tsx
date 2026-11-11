@@ -37,7 +37,7 @@ export type Slice = { label: string; color: string; count: number; /** Status ke
 const CLICKABLE = '[&_.recharts-bar-rectangle]:cursor-pointer [&_.recharts-pie-sector]:cursor-pointer';
 const withQuery = (base: string, params: Record<string, string | undefined>) => {
   const q = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => Boolean(e[1])));
-  return q.size ? `${base}?${q}` : base;
+  return q.size ? `${base}${base.includes('?') ? '&' : '?'}${q}` : base;
 };
 
 export function StatusPie({ slices, height = 260, itemsHref, note }: { slices: Slice[]; height?: number; /** Item list these slices open (e.g. /w/apk-testing/items). */ itemsHref?: string; note?: React.ReactNode }) {

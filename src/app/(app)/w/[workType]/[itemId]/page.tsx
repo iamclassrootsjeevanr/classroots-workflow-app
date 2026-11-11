@@ -4,6 +4,8 @@ import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FeedbackRepl
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
+import { ItemsTable } from '@/components/items-table';
+import { AddTestCaseButton } from '@/components/new-apk-version';
 import { Card, Delay, StatusBadge } from '@/components/ui';
 import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
@@ -11,14 +13,15 @@ import { canSeeItem } from '@/lib/access-core';
 import { eventWho, lowerLabel } from '@/lib/text';
 import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
 import { correctionsMove } from '@/server/services/work-items';
-import { hydrateApkData } from '@/lib/apk-data';
+import { hydrateApkData, hydrateVersion } from '@/lib/apk-data';
+import { loadVersionOptions } from '@/server/apk/queries';
 import { APK_INCLUDE } from '@/server/apk/store';
 import { getModule, statusDef } from '@/modules/registry';
 import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
 import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
-import { assignablePeople, reviewPeople, statusOptions } from '@/server/view';
+import { assignableItemsFor, assignablePeople, deletableItemsFor, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
 import { reviewDefaults } from '@/lib/teams';
 import { loadStewards, loadTeams } from '@/server/teams';
 
@@ -44,7 +47,7 @@ export async function generateMetadata({ params }: { params: Promise<{ workType:
 
 export default async function ItemPage({ params }: { params: Promise<{ workType: string; itemId: string }> }) {
   const { workType: key, itemId } = await params;
-  const { access } = await requireWorkTypePage(key, 'items');
+  const { user, access } = await requireWorkTypePage(key, 'items');
   const mod = getModule(key);
   const item = await db.workItem.findUnique({
     where: { id: itemId },
@@ -55,6 +58,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       owner: { select: { name: true } },
       peerReviewer: { select: { name: true } },
       chapter: true,
+      parent: { select: { id: true, externalKey: true } },
       intervals: { orderBy: { enteredAt: 'asc' }, include: { assignee: { select: { name: true } } } },
       events: { orderBy: { at: 'desc' }, take: 200, include: { actor: { select: { name: true, email: true } } } },
       feedback: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
@@ -69,7 +73,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const ctx = actorContextFor(access, key, item);
   const editable = item.workType.state === 'ACTIVE';
   const def = statusDef(mod, item.status);
-  const transitions = editable ? statusOptions(mod, item.status, ctx) : [];
+  const isVersion = isApkVersion(mod, item);
+  const transitions = editable && !isVersion ? statusOptions(mod, item.status, ctx) : [];
   const canAssign = hasCap(ctx, 'assign') && editable;
   const showOwner = !mod.table?.hide?.includes('owner');
   const [people, owners] = await Promise.all([
@@ -83,7 +88,22 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const accountable = teamRow ? `${teamRow.coordinatorName} (${teamRow.name})` : stewards.get(`${item.workTypeId}:${item.groupKey}`)?.map(s => `${s.name} (steward)`).join(', ');
   const peers = mod.teams && people ? people.filter(p => p.id !== item.assigneeId).map(p => ({ id: p.id, name: p.name })) : null;
   const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
-  const fields: EditableField[] = mod.fields.map(f => ({
+  // APK Testing: a version is the work. Its facts and its test results (listed below) come with it.
+  if (isVersion) {
+    const facts = await db.apkVersion.findUnique({ where: { workTypeId_key: { workTypeId: item.workTypeId, key: item.externalKey } } });
+    if (facts) Object.assign(data, hydrateVersion(facts));
+  }
+  const runs = isVersion ? await loadItems({ workTypeKeys: [key], level: 'runs', where: { parentId: item.id } }) : [];
+  const [runOptions, runEdits, runDeletable, runAssignable, versionOptions] = isVersion
+    ? await Promise.all([
+        editable ? statusOptionsFor(user, runs) : undefined,
+        editable ? editableItemsFor(user, runs) : undefined,
+        editable ? deletableItemsFor(user, runs) : undefined,
+        editable ? assignableItemsFor(user, runs) : undefined,
+        loadVersionOptions(item.workTypeId),
+      ])
+    : [undefined, undefined, undefined, undefined, []];
+  const fields: EditableField[] = fieldsOf(mod, item).map(f => ({
     key: f.key,
     label: f.label,
     type: f.type,
@@ -156,7 +176,16 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
         <Link href={`/w/${key}/items`} className="link">
           {mod.pages?.items ?? 'Items'}
         </Link>{' '}
-        / <span className="font-mono">{item.externalKey}</span>
+        /{' '}
+        {item.parent && (
+          <>
+            <Link href={`/w/${key}/${item.parent.id}`} className="link font-mono">
+              {item.parent.externalKey}
+            </Link>{' '}
+            /{' '}
+          </>
+        )}
+        <span className="font-mono">{item.parent ? item.externalKey.slice(item.parent.externalKey.length + 3) || item.externalKey : item.externalKey}</span>
       </nav>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -223,6 +252,16 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
 
       <div className="grid gap-5 xl:grid-cols-3">
         <div className="min-w-0 space-y-5 xl:col-span-2">
+          {isVersion && (
+            <Card
+              title={`Test results (${runs.length})`}
+              description="One row per test case run on this build. The version's status follows these results."
+              actions={editable && hasCap(ctx, 'create') ? <AddTestCaseButton workTypeId={item.workTypeId} versions={versionOptions.filter(v => v.name === item.externalKey)} assigneeId={item.assigneeId ?? undefined} /> : undefined}
+            >
+              <ItemsTable items={runs} statusOptions={runOptions} fieldEdits={runEdits} deletable={runDeletable} people={people ?? undefined} assignable={runAssignable} tz={tz} labels={mod.labels} table={mod.runTable} groupByChapter={false} empty="No test cases in this version yet." />
+            </Card>
+          )}
+
           <Card title="Stage timeline" actions={<span className="text-xs text-muted">business hours: {cal.startHour}:00–{cal.endHour}:00</span>}>
             <StageTimeline intervals={intervals} now={now} tz={tz} assigneeLabel={mod.labels?.assignee} />
           </Card>

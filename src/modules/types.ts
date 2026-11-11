@@ -144,6 +144,8 @@ export type GroupSummaryRow = {
 /** A per-group rollup shown above item lists and in reports, e.g. "per APK version" with pass %. */
 export type GroupSummary = {
   label: string;
+  /** What a group counts when it is not the work item itself (APK Testing counts tests; the work is the version). */
+  unit?: string;
   columns: TableColumn[];
   compute: (items: GroupSummaryItem[]) => GroupSummaryRow;
   seriesColors?: Record<string, string>;
@@ -210,6 +212,8 @@ export type WorkTypeDefinition = {
   groupSummary?: GroupSummary;
   /** Item list columns: hide default ones, add data fields. */
   table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
+  /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
+  runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
   pages?: { groups?: string; items?: string; cases?: string; teams?: string };
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */

@@ -4,6 +4,7 @@ import { canDeleteItem, canUndoDelete, hasCap, UNDO_DELETE_MINUTES } from '@/lib
 import { undoDeadline } from '@/lib/notifications-core';
 import { db } from '../db';
 import { ForbiddenError, PausedError } from '../errors';
+import { workCalendar } from '../settings';
 import { createItemTx, internals, type ChangeActor } from './work-items';
 import { notify } from './notifications';
 
@@ -51,6 +52,9 @@ export async function createApkVersion(actor: ChangeActor, workTypeId: string, i
       });
       await internals.enqueue(tx, item.id, wt, mod, actor, (mod.sheet?.columns ?? []).filter(c => c.kind !== 'key').map(c => c.column));
     }
+    // The version is one work item; its tester is the one assigned here.
+    const versionItem = await tx.workItem.findUnique({ where: { workTypeId_externalKey: { workTypeId, externalKey: version } }, select: { id: true } });
+    if (versionItem && input.assigneeId) await internals.assignTx(tx, await internals.loadItem(tx, versionItem.id), { ...actor, ctx: null }, input.assigneeId, new Date(), await workCalendar());
     return { version, count: planned.length };
   }, { timeout: 60_000, maxWait: 10_000 });
 }
@@ -99,7 +103,7 @@ export async function deleteApkVersion(actor: ChangeActor, workTypeId: string, v
     const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (wt.key !== MODULE) throw new Error('Versions are only for APK Testing.');
     if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
-    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: null }, select: { id: true } });
+    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: null }, select: { id: true, parentId: true } });
     if (!rows.length) throw new Error(`APK version ${version} has no tests to delete.`);
     const ids = rows.map(r => r.id);
     const now = new Date();
@@ -113,12 +117,12 @@ export async function deleteApkVersion(actor: ChangeActor, workTypeId: string, v
       await notify(tx, actor.userId, {
         kind: 'version.deleted',
         title: `Deleted APK version ${version}`,
-        body: `${ids.length} tests removed`,
+        body: `${rows.filter(r => r.parentId).length} tests removed`,
         href: `/w/${wt.key}/versions`,
         data: { workTypeId, version, deletedAt: now.toISOString(), undoUntil: undoDeadline(now).toISOString() },
       });
     }
-    return { count: ids.length, deletedAt: now.toISOString() };
+    return { count: rows.filter(r => r.parentId).length, deletedAt: now.toISOString() };
   });
 }
 
@@ -131,7 +135,7 @@ export async function restoreApkVersion(actor: ChangeActor, workTypeId: string, 
   return db.$transaction(async tx => {
     const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
     if (actor.source === 'APP' && wt.state !== 'ACTIVE') throw new PausedError(wt.name);
-    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: deletedAt }, select: { id: true } });
+    const rows = await tx.workItem.findMany({ where: { workTypeId, groupKey: version, archivedAt: deletedAt }, select: { id: true, parentId: true } });
     const ids = rows.map(r => r.id);
     const now = new Date();
     await tx.apkVersion.updateMany({ where: { workTypeId, key: version }, data: { archivedAt: null } });
@@ -145,6 +149,6 @@ export async function restoreApkVersion(actor: ChangeActor, workTypeId: string, 
       where: { kind: 'version.deleted', data: { path: ['deletedAt'], equals: deletedAtIso } },
       data: { kind: 'version.restored', title: `Restored APK version ${version}`, readAt: now },
     });
-    return { count: ids.length };
+    return { count: rows.filter(r => r.parentId).length };
   });
 }
