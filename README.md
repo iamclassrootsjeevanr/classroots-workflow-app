@@ -9,7 +9,7 @@ Two work types ship today:
 | Work type | What one item is | Flow |
 | --- | --- | --- |
 | **Journey** | One SME journey built with Claude, reviewed by an SME, then taken to prod | Allocated → In creation (3a Spine … Published) → Review ↺ Changes asked → Closed → after-steps → Done |
-| **APK Testing** | One test case run on one APK build | Not Tested → In Process → Pass / Fail → Fixed → Retest → Pass |
+| **APK Testing** | One APK build (its test cases are results inside it) | Not Tested → In Process → Fail → Pending Retest → Pass, following its test results |
 
 New work types are added as **modules** (one definition file each). No database migration is needed for a new work type.
 
@@ -116,6 +116,7 @@ npm run demo:users          # optional: one sign-in per role (see "Demo accounts
 npm run import:journey -- "$HOME/Downloads/journey-tracker.csv"            # Journey: dry run, lists rows to check
 npm run import:journey -- "$HOME/Downloads/journey-tracker.csv" --replace  # Journey: replaces all journeys
 npm run import:apk  -- "$HOME/Downloads/APK Testing Tracker.xlsx"         # APK Testing
+npm run apk:versions -- --apply                                         # APK Testing: make a version item per APK version (after an import into an older database)
 ```
 
 The APK import is safe to re-run (existing items are skipped). The Journey import reads the SME's Slack "Journey tracker" list exported as CSV; with `--replace` it deletes every journey first, then creates the chapters, the Journey team with their roles and every row (`scripts/import-journey-csv.ts`).
@@ -312,17 +313,20 @@ Business hours default to **Mon–Sat, 10:00–19:00** in `APP_TIMEZONE`. They a
 
 One row per journey (`GxxCxxSTnJn`: grade, chapter, subtopic, journey), grouped by chapter. Built from the SME / coordinator's answers (`docs/JOURNEY-BRIEF.md`, `docs/JOURNEY-FOLLOW-UP.md`).
 
+New team members: read the [Journey workflow guide](docs/JOURNEY-WORKFLOW.md) for role responsibilities and the end-to-end process.
+
 `Allocated → In creation → Ready for review → In progress → Closed`, with the loop `In progress → Changes asked → Correction verification → Closed` (or back to Changes asked), then the after-steps `Design standardization (starts paused) → Last look after design → Video replacement → UAT → prod migration → Published on prod → User testing and QA → Done`.
 
 **Creation stage is a field, not a stage of the line** (`3a · Spine → 3b · Script → 4 · Build → 5 · Ship → Published`, published = in UAT). A creator can submit for review at any creation stage and keeps building during the review, so the two are never worked out from each other. It sits beside Status on the journey page (`headerFields`), is changed by the creator, a coordinator or Claude (relay API below), and every change is in the history with its time. **Start** sets it to 3a · Spine; setting it on an Allocated journey moves that journey to In creation (`fieldMoves`).
 
-- **SME creator** (the journey's assignee) sets the creation stage, submits, makes the corrections and does the last look after design (½ day; can send it back to Design standardization). Submit stamps *Submitted for review* and *Submitted in* (first / second half, from the clock: before 14:30 = first half).
+- **SME creator** (the journey's assignee) sets the creation stage, submits, makes the corrections and does the last look after design (½ day; can send it back to Design standardization). Submit stamps *Submitted for review* and *Submitted in* (first / second half, from the clock: before 14:30 = first half). The creator does not type dates: *Picked up* / *Picked up in* belong to the coordinator (Start stamps them when still empty), and *Submitted* is the stamp only (an admin can correct it).
 - **SME reviewer** (the journey's owner; actor `OWNER`) starts the review, asks for changes (only with feedback, from the Feedback card), verifies corrections and closes the review. *Review date* is stamped when the review is done: feedback sent or review closed. Other reviewers can't act on it or give it feedback (`canGiveFeedback`). A journey submitted with no SME reviewer sends its chapter's coordinators an Inbox message to pick one.
-- **Coordinator** adds journeys, picks creator and reviewer, edits details, marks *Needs video replacement* (No = the journey skips Video replacement, `skipWhen`), moves the after-steps, and sends a journey back from User testing and QA to Changes asked (with feedback). A coordinator can be limited to their own chapters (People & access → Chapters they steer); Arjun G04C05, Devjyoti G05C02, Vinay G06C07; Aswin is admin. **Program manager**: dashboards and reports, view only.
+- **Coordinator** adds journeys, picks creator and reviewer, edits details, marks *Needs video replacement* (No = the journey skips Video replacement, `skipWhen`), moves the after-steps, and sends a journey back from User testing and QA to Changes asked (with feedback). A coordinator can be limited to their own chapters (People & access → Chapters they steer); Arjun G04C05, Devjyoti G05C02, Vinay G06C07; Aswin is admin. A coordinator also acts on every journey of their team's creators, in any chapter (see Teams below). **Program manager**: dashboards and reports, view only.
+- **Teams and ownership** (`teams: true`, `src/lib/teams.ts`, 6 Nov 2026). Ownership has two levels. *Chapter*: its **steward** is the coordinator who steers it (People & access → Chapters they steer); the **Chapters** tab lists every chapter with its steward, has an **All chapters / My chapters** switch, and lets a coordinator add a chapter (they become its steward; an admin picks the steward) or remove an empty one. *Journey*: it belongs to the coordinator of its **creator's team**, whoever allocated it and in whichever chapter, shown as **Owner** in the list and on the journey. That coordinator is its default **SME reviewer**; the creator's buddy is its **Peer reviewer** (shown, and changed per journey by a coordinator; it is not a stage of the flow). The **Teams** tab holds the settings: a team's coordinator adds and removes members (from the SME creators not yet in a team), changes the team's *Default SME reviewer* (e.g. while they are away) and each member's *Peer reviewer*; an admin adds teams and changes their coordinator. When a default changes, or a journey gets a new creator, open journeys (review not closed) follow only where the slot is empty or still holds the old default; a reviewer picked by hand stays (`nextDefault`). **Fill missing reviewers** fills empty slots. The Journeys list filters by **Team** and **Show → My team**. First setup: `npm run journey:teams -- --apply` (Team Arjun, Team Devjyoti and their buddies).
 - **Days taken** = working days Picked up → Submitted (Mon–Fri, both counted), where the pick-up day counts ½ if picked up in its second half and the submit day ½ if submitted in its first half (*Picked up in* / *Submitted in*). **Closure due** = Review date + 1 working day, stored as the due date. Holidays are not counted; the coordinator corrects a date by hand. Once the review is closed the creator's part is over (`dueEndsAt: 'approved'`): no workload, delay or overdue from then on.
 - Journey works Mon–Fri (`workDays`); stuck limits: creation 2 days from picked up (phase limit), each review stage ½ day, correction verification ¼ day, last look ½ day.
 - Inbox: assigned, submitted (to the reviewer, or to the chapter's coordinators when there is none), feedback, review closed (to the creator), overdue past Closure due (reviewer + the chapter's coordinators, from the cron job).
-- Who sees and does what (brief A4, tested in `tests/journey-roles.test.ts`): everyone sees every journey. **SME creator**: their own journeys' creation stage, dates, halves, links and moves; read and comment elsewhere. **SME reviewer**: their own journeys' review moves, feedback, dates and review date. **Coordinator**: in their chapters, assign creator and reviewer, add (the chapter comes from the key), edit every detail, delete, after-step moves; elsewhere read only. **Program manager**: Dashboard, Journeys (view only), Reports, Export. New journeys: the form offers only the coordinator's chapters and refuses a key from another chapter.
+- Who sees and does what (brief A4, tested in `tests/journey-roles.test.ts`): everyone sees every journey. **SME creator**: their own journeys' creation stage, links (UAT CMS journey, AI Tutor) and moves; read and comment elsewhere. **SME reviewer**: their own journeys' review moves, feedback, review date and links. **Coordinator**: in their chapters and on their team's journeys anywhere, assign creator, reviewer and peer reviewer, set the pick-up date, add (the chapter comes from the key), edit every detail, delete, after-step moves; elsewhere read only. **Program manager**: Dashboard, Journeys (view only), Reports, Export. New journeys: the form offers only the coordinator's chapters and refuses a key from another chapter.
 - The list shows the Slack tracker's columns (Review state and Final status are worked out from the stage). No Google Sheet sync.
 
 **Journey relay API (Claude).** The relay ([buildjourneyrelay](https://buildjourneyrelay.classrootsedu.in), driven from Claude Desktop) keeps the creation stage in step. It sends `Authorization: Bearer <RELAY_KEY>`; the key can only read journeys and set their Creation stage, and its changes show as **Claude** in the history (event source `RELAY`). No key set = the API is off.
@@ -342,13 +346,15 @@ The module code holds the default stages; an admin can rename them, change colou
 
 ### APK Testing (`src/modules/apk-testing/definition.ts`)
 
-One item per **APK version × test case**, grouped by APK version.
+One work item per **APK version**. Its test cases are **test results** under it (child items, `WorkItem.parentId`): they carry the tester, bug, remarks, log date and time log, and they are what the Google Sheet's Test Execution tab lists. Results are not work: they stay out of the APK versions list, the KPI tiles and the analytics (`level: 'work'` in `loadItems`); the version page lists them, and **All tests** on the APK versions page (or a chart segment) lists them across versions (`?view=tests`).
 
-`Not Tested → In Process → Pass / Fail / Not Reported`. A failure goes `Fail → Fixed (app developer) → Pending Retest → Pass`.
+A version's status is never set by hand. It follows its results (`versionStatus` in `src/lib/apk-rollup.ts`): Not Tested until a result moves, **Fail** while any result fails, Pending Retest once failures are fixed, In Process while some are untested, **Pass** when all passed (or were not reported). Every result change rolls the version up (`rollupVersionTx`), so cycle time, stuck and done on versions follow the testing. The tester of a version is the tester of its results; assigning the version assigns the results nobody else took. Deleting or restoring a version takes its results with it. The version items are app-only (not in the sheet).
+
+A result's own flow: `Not Tested → In Process → Pass / Fail / Not Reported`. A failure goes `Fail → Fixed (app developer) → Pending Retest → Pass`.
 
 - **Testers** run cases, pass or fail them, retest, and fill in comments, bug and log date.
 - **App developers** mark failures fixed and add developer remarks.
-- Each APK version gets a summary row: total, pass, fail, pending retest, not tested and pass %. The result is **All passed**, **Stable** (≥ 90 %), **Good** (≥ 80 %), **Has failures** or **In progress**.
+- Per-version chart and table (Results by version) count the **results**, not the versions: each version has a summary row: total, pass, fail, pending retest, not tested and pass %. The result is **All passed**, **Stable** (≥ 90 %), **Good** (≥ 80 %), **Has failures** or **In progress**.
 
 ---
 
@@ -656,6 +662,30 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 
 **Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
+### Render (app + Postgres)
+
+The same `Dockerfile` runs on Render (migrations run on every start).
+
+1. **New → PostgreSQL** in the region you will use for the app.
+2. **New → Web Service** from this repo: runtime **Docker**, same region, health check path `/api/health`. Variables as for Railway: `DATABASE_URL` = the **Internal** Database URL + `?connection_limit=10&pool_timeout=20`, `AUTH_SECRET`, `AUTH_URL` (the `onrender.com` address), `ADMIN_EMAILS`, `OFFICE_DOMAINS`, `APP_TIMEZONE`.
+3. Free plan: the service sleeps after ~15 idle minutes and the free database expires after 30 days. Use paid plans for real use.
+
+### Moving data between this machine and the hosted database
+
+Put the hosted database's **External** URL (Render: Connect → External; Railway: `DATABASE_PUBLIC_URL`) with `?sslmode=require` in `.env` as `REMOTE_DATABASE_URL`. Then:
+
+| Command | What it does |
+| --- | --- |
+| `npm run db:deploy:remote` | Apply this checkout's migrations to the remote database |
+| `npm run db:pull` | Remote → local. **Replaces** all local data |
+| `npm run db:push` | Local → remote, only when the remote is empty |
+| `npm run db:push -- --replace` | Local → remote, **wipes** the remote data first |
+| `npm run db:studio:remote` | Browse the remote data at <http://localhost:5555> (edits are live) |
+
+- A copy is the whole database, never a merge. Keep one side as the source of truth: once people use the hosted app, it is; refresh this machine with `db:pull` and never `db:push --replace` over it.
+- Both sides need the same migrations. Schema change: commit the migration and push; the hosted app applies it on deploy (or run `db:deploy:remote`), and `npm run db:deploy` applies it here.
+- Not copied: sign-in sessions, password links, the sheet-sync queue. Sheet sync is switched off in the copy.
+
 ### Vercel + managed Postgres (Neon, Supabase, …)
 
 - Set the variables from `.env.example`, including `CRON_SECRET` and `AUTH_URL` = your public URL.
@@ -681,6 +711,8 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 | `npm run user:password -- <email>` | Set someone's password from the terminal |
 | `npm run import:journey -- <file.csv> [--replace]` | Journey from the Slack tracker CSV: dry run lists rows to check; `--replace` replaces all journeys |
 | `npm run db:copy -- --to <url> [--replace]` | Copy this machine's database into another one (e.g. Railway); same migrations required, sheet sync switched off in the copy |
+| `npm run db:pull` / `db:push [-- --replace]` | Copy remote → local / local → remote (`REMOTE_DATABASE_URL`); see [Moving data](#moving-data-between-this-machine-and-the-hosted-database) |
+| `npm run db:deploy:remote` / `db:studio:remote` | Migrate / browse the remote database |
 | `npm run import:apk -- <file>` | Import the APK Testing workbook (safe to re-run) |
 | `npm run sync:run` | Run sheet sync and the workload snapshot once |
 | `npm run scheduler` | Call `/api/cron/run` every N minutes (self-hosted) |

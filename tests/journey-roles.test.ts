@@ -12,13 +12,13 @@ const template = (key: string) => rolesForModule(base).find(r => r.key === key)!
 const roleLite = (key: string): RoleLite => ({ id: key, ...templateColumns(template(key)) });
 
 /** What `roleKeys` may do on a journey of `chapter`, as its creator, its reviewer or neither. */
-function ctxFor(roleKeys: string[], rel: { assignee?: boolean; owner?: boolean } = {}, chapter = 'G04C05', groupKeys?: string[]): ActorContext {
-  const a = buildAccess('me', false, [WT], new Map([['wt', { roles: roleKeys.map(roleLite), groupKeys }]])).byKey.get('journey-applet')!;
-  return { isAdmin: false, capabilities: capabilitiesIn(a, chapter), canEdit: a.canEdit, isAssignee: Boolean(rel.assignee), isOwner: Boolean(rel.owner) };
+function ctxFor(roleKeys: string[], rel: { assignee?: boolean; owner?: boolean; creatorId?: string } = {}, chapter = 'G04C05', groupKeys?: string[], teamUserIds?: string[]): ActorContext {
+  const a = buildAccess('me', false, [WT], new Map([['wt', { roles: roleKeys.map(roleLite), groupKeys, teamUserIds }]])).byKey.get('journey-applet')!;
+  return { isAdmin: false, capabilities: capabilitiesIn(a, chapter, rel.creatorId), canEdit: a.canEdit, isAssignee: Boolean(rel.assignee), isOwner: Boolean(rel.owner) };
 }
 const moves = (ctx: ActorContext, from: string) => allowedTransitions(mod, from, ctx).map(t => t.to);
 const editable = (ctx: ActorContext) => mod.fields.filter(f => !f.computed && canEditField(f, ctx)).map(f => f.key);
-const LINKS = ['cmsUrl', 'aiTutorUrl', 'buildUrl'];
+const LINKS = ['cmsUrl', 'aiTutorUrl'];
 
 describe('who sees which journeys', () => {
   it('every Journey role sees every journey (brief A4: "all")', () => {
@@ -46,8 +46,11 @@ describe('SME creator', () => {
     expect(moves(mine, 'last_look').sort()).toEqual(['design_standardization', 'video_replacement']);
     for (const s of ['ready_for_review', 'review_in_progress', 'correction_verification', 'closed', 'video_replacement', 'user_testing_qa']) expect(moves(mine, s), s).toEqual([]);
   });
-  it('edits the creation stage, dates, halves and links of their own journey only', () => {
-    expect(editable(mine).sort()).toEqual(['creationStage', 'pickedUpAt', 'pickedUpHalf', 'submittedAt', 'submittedHalf', ...LINKS].sort());
+  it('edits the creation stage and links of their own journey only; pick-up is the coordinator\'s, submitted is stamped (6 Nov 2026)', () => {
+    expect(editable(mine).sort()).toEqual(['creationStage', ...LINKS].sort());
+    const submit = mod.transitions.find(t => t.from === 'creating' && t.to === 'ready_for_review')!;
+    expect(submit.stamp).toEqual(['submittedAt']);
+    expect(mod.transitions.find(t => t.from === 'allocated' && t.to === 'creating')!.stamp).toEqual(['pickedUpAt']);
     expect(editable(others)).toEqual([]);
     expect(moves(others, 'creating')).toEqual([]);
   });
@@ -72,8 +75,8 @@ describe('SME reviewer', () => {
     expect(canGiveFeedback(mod, others)).toBe(false);
     expect(canGiveFeedback(mod, ctxFor(['sme-creator'], { assignee: true }))).toBe(false);
   });
-  it('edits the dates and review date of their journeys, not the creation stage', () => {
-    expect(editable(mine).sort()).toEqual(['pickedUpAt', 'pickedUpHalf', 'reviewDate', 'submittedAt', 'submittedHalf', ...LINKS].sort());
+  it('edits the review date and links of their journeys, not the creation stage or the creation dates', () => {
+    expect(editable(mine).sort()).toEqual(['reviewDate', ...LINKS].sort());
     expect(editable(others)).toEqual([]);
   });
 });
@@ -84,7 +87,20 @@ describe('Coordinator', () => {
 
   it('in their chapter: assigns, adds, edits every detail, deletes', () => {
     expect([hasCap(inChapter, 'assign'), hasCap(inChapter, 'create'), canDeleteItem(inChapter)]).toEqual([true, true, true]);
-    expect(editable(inChapter).sort()).toEqual(['creationStage', 'needsVideoReplacement', 'pickedUpAt', 'pickedUpHalf', 'reviewDate', 'submittedAt', 'submittedHalf', ...LINKS].sort());
+    expect(editable(inChapter).sort()).toEqual(['creationStage', 'needsVideoReplacement', 'pickedUpAt', 'pickedUpHalf', 'reviewDate', ...LINKS].sort());
+  });
+  it('nobody but an admin types the submitted date, and the Applet build link is gone', () => {
+    const admin: ActorContext = { isAdmin: true, capabilities: new Set(), canEdit: true, isAssignee: false };
+    expect(editable(admin)).toContain('submittedAt');
+    expect(mod.fields.some(f => f.key === 'buildUrl')).toBe(false);
+  });
+  it('owns the journeys of their team in any chapter: assigns, edits, moves the after-steps', () => {
+    const teamJourney = ctxFor(['coordinator'], { creatorId: 'kapil' }, 'G05C02', ['G04C05'], ['kapil']);
+    expect([hasCap(teamJourney, 'assign'), canDeleteItem(teamJourney)]).toEqual([true, true]);
+    expect(editable(teamJourney)).toContain('pickedUpAt');
+    expect(moves(teamJourney, 'closed')).toEqual(['design_standardization']);
+    const notTheirs = ctxFor(['coordinator'], { creatorId: 'vaishali' }, 'G05C02', ['G04C05'], ['kapil']);
+    expect(hasCap(notTheirs, 'assign')).toBe(false);
   });
   it('moves the after-steps (not the last look) and sends a journey back from QA with feedback', () => {
     expect(moves(inChapter, 'closed')).toEqual(['design_standardization']);

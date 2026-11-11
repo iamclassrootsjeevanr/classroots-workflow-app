@@ -9,9 +9,10 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setPeerReviewer, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
+import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { addStage, removeStage, saveStage, type StageInput } from '@/server/stages';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
@@ -62,6 +63,10 @@ export async function assignAction(itemId: string, assigneeId: string | null) {
 
 export async function setOwnerAction(itemId: string, ownerId: string | null) {
   return run(async () => setOwner(await itemActor(itemId), itemId, ownerId));
+}
+
+export async function setPeerReviewerAction(itemId: string, userId: string | null) {
+  return run(async () => setPeerReviewer(await itemActor(itemId), itemId, userId));
 }
 
 export async function updateFieldsAction(itemId: string, patch: Record<string, FieldValue>) {
@@ -171,7 +176,7 @@ export async function createItemAction(workTypeId: string, input: { externalKey:
     if (!access.isAdmin && wt.groupKeys && !wt.groupKeys.has(groupKey ?? '')) {
       throw new ForbiddenError(`You can add items only in ${[...wt.groupKeys].join(', ')}.`);
     }
-    const ctx = { isAdmin: access.isAdmin, capabilities: capabilitiesIn(wt, groupKey), isAssignee: false, canEdit: wt.canEdit };
+    const ctx = { isAdmin: access.isAdmin, capabilities: capabilitiesIn(wt, groupKey, input.assigneeId || null), isAssignee: false, canEdit: wt.canEdit };
     await createItem({ userId: user.id, ctx, source: 'APP' }, workTypeId, {
       externalKey,
       title: input.title.trim(),
@@ -253,6 +258,109 @@ export async function updateApkVersionAction(workTypeId: string, version: string
     const { actor } = await workTypeActor(workTypeId);
     const r = await updateApkVersion(actor, workTypeId, version, meta);
     return `Updated ${version} (${r.count} tests)`;
+  });
+}
+
+// ─── Teams and chapters ─────────────────────────────────────────
+
+const moved = (n: number, noun = 'journey') => (n ? ` · ${n} open ${noun}${n === 1 ? '' : 's'} updated` : '');
+
+/** The signed-in person's rights in a work type that has teams: admins manage everything, coordinators their own team and chapters. */
+async function teamsActor(workTypeId: string) {
+  const user = await requireUser();
+  const access = await getAccess(user);
+  const wt = [...access.byKey.values()].find(a => a.workTypeId === workTypeId);
+  const mod = wt && getModule(wt.workTypeKey);
+  if (!wt || !mod?.teams) throw new ForbiddenError('You don’t have access to this work type.');
+  if (wt.state !== 'ACTIVE') throw new Error(`${wt.workTypeName} is paused.`);
+  const coordinator = wt.canEdit && wt.capabilities.has('assign');
+  return { user, access, wt, mod, isAdmin: access.isAdmin, coordinator };
+}
+
+/** Only the team's coordinator (with the Coordinator role) or an admin changes a team. */
+async function teamActor(teamId: string) {
+  const team = await db.team.findUniqueOrThrow({ where: { id: teamId }, select: { id: true, name: true, workTypeId: true, coordinatorId: true } });
+  const a = await teamsActor(team.workTypeId);
+  if (!a.isAdmin && !(a.coordinator && team.coordinatorId === a.user.id)) throw new ForbiddenError(`Only ${team.name}’s coordinator or an admin can change this team.`);
+  return { ...a, team };
+}
+
+export async function saveTeamAction(workTypeId: string, input: { id?: string; name: string; coordinatorId: string }) {
+  return run(async () => {
+    const a = await teamsActor(workTypeId);
+    if (!a.isAdmin) throw new ForbiddenError('Only an admin adds teams or changes their coordinator.');
+    const id = await saveTeam(workTypeId, input);
+    return { message: input.id ? 'Team saved' : `Added ${input.name.trim()}`, id };
+  });
+}
+
+export async function deleteTeamAction(teamId: string) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    if (!a.isAdmin) throw new ForbiddenError('Only an admin removes a team.');
+    await deleteTeam(teamId);
+    return `Removed ${a.team.name}`;
+  });
+}
+
+export async function setTeamReviewerAction(teamId: string, reviewerId: string | null) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    return `Default ${a.mod.labels?.owner ?? 'reviewer'} saved${moved(await setTeamReviewer(a.user.id, teamId, reviewerId), a.mod.itemNoun)}`;
+  });
+}
+
+export async function addTeamMemberAction(teamId: string, userId: string) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    return `Added to ${a.team.name}${moved(await addTeamMember(a.user.id, teamId, userId), a.mod.itemNoun)}`;
+  });
+}
+
+export async function removeTeamMemberAction(teamId: string, userId: string) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    await removeTeamMember(teamId, userId);
+    return `Removed from ${a.team.name}`;
+  });
+}
+
+export async function setMemberPeerAction(teamId: string, userId: string, peerReviewerId: string | null) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    return `${a.mod.labels?.peer ?? 'Peer reviewer'} saved${moved(await setMemberPeer(a.user.id, teamId, userId, peerReviewerId), a.mod.itemNoun)}`;
+  });
+}
+
+/** Give open journeys with no SME reviewer or peer reviewer their team's default. */
+export async function fillReviewersAction(teamId: string) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    const n = await fillMissingReviewers(a.user.id, a.team.workTypeId, teamId);
+    return n ? `${n} ${a.mod.itemNoun}${n === 1 ? '' : 's'} updated` : 'Nothing was missing';
+  });
+}
+
+/** Add a chapter: a coordinator adds their own, an admin picks the steward. */
+export async function addChapterAction(workTypeId: string, input: { code: string; title: string; stewardId?: string }) {
+  return run(async () => {
+    const a = await teamsActor(workTypeId);
+    if (!a.isAdmin && !(a.coordinator && a.wt.capabilities.has('create'))) throw new ForbiddenError('Only a coordinator or an admin adds chapters.');
+    const code = input.code.trim().toUpperCase();
+    if (a.mod.groupFromKey && a.mod.groupFromKey(`${code}ST1J1`) !== code) throw new Error('A chapter code looks like G04C05.');
+    const stewardId = a.isAdmin ? input.stewardId || '' : a.user.id;
+    if (!stewardId) throw new Error('Pick the steward.');
+    const r = await addChapter(workTypeId, { code, title: input.title, stewardId });
+    return r.everyChapter ? `${r.code} saved. Its steward steers every chapter, so it shows once it has a journey.` : `Added ${r.code} · ${r.title}`;
+  });
+}
+
+export async function removeChapterAction(workTypeId: string, code: string) {
+  return run(async () => {
+    const a = await teamsActor(workTypeId);
+    if (!a.isAdmin && !(a.coordinator && a.wt.groupKeys?.has(code))) throw new ForbiddenError('Only the chapter’s steward or an admin removes it.');
+    await removeChapter(workTypeId, code);
+    return `Removed ${code}`;
   });
 }
 

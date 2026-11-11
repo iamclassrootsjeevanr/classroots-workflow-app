@@ -1,9 +1,11 @@
 /**
- * Copy this machine's database (DATABASE_URL in .env) into another database, e.g. Railway, without pg_dump.
- * The target must already have the same migrations (deploy the app there once first).
+ * Copy one database into another without pg_dump. Both must have the same migrations.
+ * `local` = DATABASE_URL, `remote` = REMOTE_DATABASE_URL (both in .env); a postgresql:// URL also works.
  *
- *   npm run db:copy -- --to "postgresql://…railway…"            target must be empty
- *   npm run db:copy -- --to "postgresql://…railway…" --replace  wipe the target's data first
+ *   npm run db:pull                       remote → local, replaces the local data
+ *   npm run db:push                       local → remote, remote must be empty
+ *   npm run db:push -- --replace          local → remote, wipes the remote data first
+ *   npm run db:copy -- --to "postgresql://…"  local → that database (add --replace to overwrite)
  *
  * Not copied: sign-in sessions, password/verification links and the pending sheet-sync queue.
  * Sheet sync is switched off in the target, so a copy never writes to the Google Sheet by itself.
@@ -54,12 +56,20 @@ async function count(db: PrismaClient, t: string) {
   return r.n;
 }
 
+/** `local` / `remote` / a URL → a URL. */
+function resolve(v: string | undefined, role: string) {
+  const name = v === 'remote' ? 'REMOTE_DATABASE_URL' : v === 'local' ? 'DATABASE_URL' : null;
+  const url = name ? process.env[name] : v;
+  if (!url?.startsWith('postgres')) {
+    throw new Error(name ? `${name} is not set in .env.` : `Give the ${role}: --${role === 'source' ? 'from' : 'to'} local | remote | "postgresql://…"`);
+  }
+  return url;
+}
+
 async function main() {
-  const from = process.env.DATABASE_URL;
-  const to = arg('--to');
+  const from = resolve(arg('--from') ?? 'local', 'source');
+  const to = resolve(arg('--to'), 'target');
   const replace = process.argv.includes('--replace');
-  if (!from) throw new Error('DATABASE_URL (the source) is not set.');
-  if (!to?.startsWith('postgres')) throw new Error('Give the target: npm run db:copy -- --to "postgresql://…"');
   if (where(from) === where(to)) throw new Error('Source and target are the same database.');
 
   const src = new PrismaClient({ datasources: { db: { url: from } } });
@@ -70,8 +80,8 @@ async function main() {
     const [a, b] = await Promise.all([migrations(src), migrations(dst)]);
     const missing = a.filter(m => !b.includes(m));
     const extra = b.filter(m => !a.includes(m));
-    if (missing.length) throw new Error(`The target is missing migrations: ${missing.join(', ')}. Deploy the app there first (it runs migrations on start).`);
-    if (extra.length) throw new Error(`This machine is missing migrations: ${extra.join(', ')}. Run "npm run db:deploy" here first.`);
+    if (missing.length) throw new Error(`The target is missing migrations: ${missing.join(', ')}. Apply them there first (npm run db:deploy for local, npm run db:deploy:remote for remote).`);
+    if (extra.length) throw new Error(`The source is missing migrations: ${extra.join(', ')}. Apply them there first (npm run db:deploy for local, npm run db:deploy:remote for remote).`);
 
     const order = await tablesInOrder(src);
     const filled = [];

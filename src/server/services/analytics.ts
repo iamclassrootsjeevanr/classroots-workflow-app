@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { getModule, statusDef } from '@/modules/registry';
+import { allModules, getModule, statusDef } from '@/modules/registry';
 import type { StatusCategory, WorkTypeDefinition } from '@/modules/types';
 import { stuckRules } from '@/lib/stages';
 import {
@@ -20,11 +20,13 @@ import {
   type ItemLite,
   type Summary,
 } from '@/lib/analytics-core';
-import { addDays, withWorkDays, type WorkCalendar } from '@/lib/time';
+import { addDays, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
 import { hydrateApkData } from '@/lib/apk-data';
 import { APK_INCLUDE } from '../apk/store';
 import { db } from '../db';
 import { workCalendar } from '../settings';
+import { reviewDefaults } from '@/lib/teams';
+import { loadStewards, loadTeams } from '../teams';
 
 export type Filters = {
   workTypeKeys?: string[];
@@ -38,7 +40,20 @@ export type Filters = {
   /** Page of rows (the list pages): skip / take on the database. */
   skip?: number;
   take?: number;
+  /** `work` (default) = the work items; `runs` = APK Testing's test results; `all` = both. Results are not work: they stay out of lists and analytics. */
+  level?: Level;
 };
+
+export type Level = 'work' | 'runs' | 'all' | 'groups';
+/** Where-clause for a level. Only APK Testing has results (children), so `work` is simply "has no parent". */
+export const levelWhere = (level: Level = 'work'): Prisma.WorkItemWhereInput =>
+  level === 'all' ? {} : level === 'runs' ? { parentId: { not: null } } : level === 'groups' ? groupLevelWhere() : { parentId: null };
+
+/** What a group summary counts: APK Testing's test results (a version's pass rate), the work items everywhere else. */
+function groupLevelWhere(): Prisma.WorkItemWhereInput {
+  const apk = allModules().filter(m => m.storage === 'apk').map(m => m.key);
+  return { OR: [{ parentId: { not: null } }, { workType: { key: { notIn: apk } } }] };
+}
 
 /** People who can be given work (a role with the "work" capability) in these work types, or who already hold items. */
 export function workPeopleWhere(workTypeKeys?: string[]): Prisma.UserWhereInput {
@@ -58,6 +73,10 @@ export type ItemRow = ItemLite & {
   statusColor: string;
   assigneeName: string | null;
   ownerName: string | null;
+  peerReviewerId: string | null;
+  peerReviewerName: string | null;
+  /** Teams: the coordinator who owns the item's completion (the creator's team; else the group's steward). */
+  teamOwnerName: string | null;
   groupKey: string | null;
   chapterTitle: string | null;
   grade: number | null;
@@ -68,6 +87,8 @@ export type ItemRow = ItemLite & {
   updatedAt: Date;
   version: number;
   sheetMissing: boolean;
+  /** APK Testing: set on a test result (its APK version item); a version item and every other work type have none. */
+  parentId: string | null;
 };
 
 const categoryOf = (wtKey: string, status: string): StatusCategory => {
@@ -79,10 +100,10 @@ const categoryOf = (wtKey: string, status: string): StatusCategory => {
  * Items without joins, JSON data or display text: just what counts and workload need. Use it where a page only needs numbers
  * (headers, KPI tiles, who is busy), so big work types stay cheap.
  */
-export async function loadLiteItems(workTypeKey: string, where?: Prisma.WorkItemWhereInput): Promise<ItemLite[]> {
+export async function loadLiteItems(workTypeKey: string, where?: Prisma.WorkItemWhereInput, level: Level = 'work'): Promise<ItemLite[]> {
   const mod = getModule(workTypeKey);
   const rows = await db.workItem.findMany({
-    where: { archivedAt: null, workType: { key: workTypeKey }, ...(where ? { AND: [where] } : {}) },
+    where: { archivedAt: null, workType: { key: workTypeKey }, ...levelWhere(level), ...(where ? { AND: [where] } : {}) },
     select: {
       id: true, externalKey: true, title: true, status: true, assigneeId: true, ownerId: true, dueAt: true, receivedAt: true, assignedAt: true,
       firstStartedAt: true, lastSubmittedAt: true, firstReviewAt: true, approvedAt: true, completedAt: true, reviewRounds: true, reopenCount: true,
@@ -109,6 +130,7 @@ export function calendarFor(cal: WorkCalendar, workTypeKeys: (string | undefined
 export async function loadItems(filters: Filters = {}, opts: { includePausedTypes?: boolean } = {}): Promise<ItemRow[]> {
   const where: Prisma.WorkItemWhereInput = {
     archivedAt: null,
+    ...levelWhere(filters.level),
     workType: {
       state: opts.includePausedTypes === false ? 'ACTIVE' : { in: ['ACTIVE', 'PAUSED'] },
       ...(filters.workTypeKeys?.length ? { key: { in: filters.workTypeKeys } } : {}),
@@ -124,6 +146,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       workType: { select: { key: true, name: true } },
       assignee: { select: { name: true } },
       owner: { select: { name: true } },
+      peerReviewer: { select: { name: true } },
       chapter: { select: { title: true, grade: true } },
       ...APK_INCLUDE,
     },
@@ -132,6 +155,16 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
     ...(filters.take ? { take: filters.take } : {}),
   });
   const now = new Date();
+  // Teams (Journey): who owns each item = the coordinator of its creator's team, else the steward of its chapter.
+  const teamTypes = [...new Set(rows.filter(r => getModule(r.workType.key)?.teams).map(r => r.workTypeId))];
+  const [teams, stewards] = await Promise.all([loadTeams(db, teamTypes), loadStewards(db, teamTypes)]);
+  const teamOwnerOf = (r: (typeof rows)[number]) => {
+    if (!teamTypes.includes(r.workTypeId)) return null;
+    const team = reviewDefaults(teams.filter(t => t.workTypeId === r.workTypeId), r.assigneeId).team;
+    if (team) return teams.find(t => t.id === team.id)!.coordinatorName;
+    return stewards.get(`${r.workTypeId}:${r.groupKey}`)?.map(s => s.name).join(', ') || null;
+  };
+  const versionFacts = await apkVersionFacts(rows);
   return rows.map(r => {
     const mod = getModule(r.workType.key);
     const def = mod ? statusDef(mod, r.status) : { label: r.status, color: '#9e9e9e', category: 'queue' as StatusCategory };
@@ -157,7 +190,13 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       weight: mod?.workloadWeight ?? 1,
       handedOff: handedOff(mod, r.approvedAt),
     };
-    const data = hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest);
+    const teamOwnerName = teamOwnerOf(r);
+    const data = {
+      ...hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest),
+      ...(versionFacts.get(r.id) ?? {}),
+      // Shown as list columns (the work type's `table.extra`).
+      ...(mod?.teams ? { peerReviewer: r.peerReviewer?.name ?? '', teamOwner: teamOwnerName ?? '' } : {}),
+    };
     return {
       ...base,
       workTypeName: r.workType.name,
@@ -165,6 +204,9 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       statusColor: def.color,
       assigneeName: r.assignee?.name ?? null,
       ownerName: r.owner?.name ?? null,
+      peerReviewerId: r.peerReviewerId,
+      peerReviewerName: r.peerReviewer?.name ?? null,
+      teamOwnerName,
       groupKey: r.groupKey,
       chapterTitle: r.chapter?.title ?? ((r.data as Record<string, unknown>)?.chapterTitle as string | undefined) ?? null,
       grade: r.chapter?.grade ?? null,
@@ -175,8 +217,41 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       updatedAt: r.updatedAt,
       version: r.version,
       sheetMissing: r.sheetMissing,
+      parentId: r.parentId,
     };
   });
+}
+
+/**
+ * APK Testing: what a version item shows about itself: its release facts and its test results rolled up (list columns, version page).
+ * Test results themselves (children) show their own data, so only version items get these.
+ */
+async function apkVersionFacts(rows: { id: string; workTypeId: string; externalKey: string; parentId: string | null; workType: { key: string } }[]) {
+  const versions = rows.filter(r => !r.parentId && getModule(r.workType.key)?.storage === 'apk');
+  const out = new Map<string, Record<string, unknown>>();
+  if (!versions.length) return out;
+  const [counts, meta] = await Promise.all([
+    db.workItem.groupBy({ by: ['parentId', 'status'], where: { parentId: { in: versions.map(v => v.id) }, archivedAt: null }, _count: true }),
+    db.apkVersion.findMany({ where: { OR: versions.map(v => ({ workTypeId: v.workTypeId, key: v.externalKey })) }, select: { workTypeId: true, key: true, releaseDate: true, link: true, notes: true } }),
+  ]);
+  for (const v of versions) {
+    const by = new Map(counts.filter(c => c.parentId === v.id).map(c => [c.status, c._count]));
+    const n = (...k: string[]) => k.reduce((s, x) => s + (by.get(x) ?? 0), 0);
+    const total = [...by.values()].reduce((s, x) => s + x, 0);
+    const m = meta.find(x => x.workTypeId === v.workTypeId && x.key === v.externalKey);
+    out.set(v.id, {
+      testsTotal: String(total),
+      testsPass: String(n('pass')),
+      testsFail: String(n('fail')),
+      testsPending: String(n('fixed', 'pending_retest')),
+      testsOpen: String(n('not_tested', 'in_process')),
+      passRate: total ? `${Math.round((n('pass') / total) * 1000) / 10}%` : '',
+      ...(m?.releaseDate ? { releaseDate: normalizeDate(m.releaseDate) } : {}),
+      ...(m?.link ? { apkUrl: m.link } : {}),
+      ...(m?.notes ? { releaseNotes: m.notes } : {}),
+    });
+  }
+  return out;
 }
 
 export async function loadIntervals(itemIds: string[], workTypeByItem: Map<string, string>, since?: Date): Promise<IntervalLite[]> {
@@ -238,6 +313,8 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
   const to = filters.to ?? now;
   const from = filters.from ?? addDays(to, -7 * (opts.weeks ?? 12));
   const items = await loadItems(filters);
+  // Group summaries (per APK version, per chapter) count test results for APK Testing, not the version items.
+  const groupItems = items.some(i => getModule(i.workTypeKey)?.groupSummary) ? await loadItems({ ...filters, level: 'groups' }) : [];
   const cal = calendarFor(await workCalendar(), filters.workTypeKeys?.length === 1 ? filters.workTypeKeys : items.map(i => i.workTypeKey));
   const wtByItem = new Map(items.map(i => [i.id, i.workTypeKey]));
   const intervals = await loadIntervals(items.map(i => i.id), wtByItem);
@@ -268,6 +345,7 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
     range: { from, to },
     calendar: { startHour: cal.startHour, endHour: cal.endHour, workDays: cal.workDays, tz: cal.tz },
     items,
+    groupItems,
     kpis: kpis(items, now),
     statusSlices: statusSlices(items),
     flow: flowTimes(completedInRange, cal),

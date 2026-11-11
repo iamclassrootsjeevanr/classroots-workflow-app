@@ -12,6 +12,9 @@ import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
+import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
+import { loadTeams } from '../teams';
+import { versionStatus } from '@/lib/apk-rollup';
 
 type Tx = Prisma.TransactionClient;
 
@@ -55,6 +58,27 @@ async function rollInterval(tx: Tx, itemId: string, status: string, assigneeId: 
   await tx.workItemStageInterval.create({ data: { itemId, status, assigneeId, enteredAt: now, round } });
 }
 
+/** True for an APK Testing version item (the work); its test results are its children. */
+const isApkVersion = (item: { parentId: string | null; workType: { key: string } }) => item.workType.key === 'apk-testing' && !item.parentId;
+
+/**
+ * APK Testing: bring a version's status in line with its test results. The version is never moved by hand: this writes the stage,
+ * its timestamps, the event and the stage interval directly, so version analytics (cycle time, stuck, done) follow the testing.
+ */
+async function rollupVersionTx(tx: Tx, parentId: string, actor: ChangeActor, now: Date, calendar: WorkCalendar) {
+  const parent = await loadItem(tx, parentId);
+  if (parent.archivedAt) return;
+  const mod = requireModule(parent.workType.key);
+  const results = await tx.workItem.findMany({ where: { parentId, archivedAt: null }, select: { status: true } });
+  const to = versionStatus(results.map(r => r.status));
+  if (to === parent.status) return;
+  await saveItem(tx, parent, stagePatch(mod, parent, to, now));
+  await tx.workItemEvent.create({
+    data: { itemId: parent.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: parent.status, toValue: to, source: actor.source, note: 'Follows its test results', at: now },
+  });
+  await rollInterval(tx, parent.id, to, parent.assigneeId, now, withWorkDays(calendar, mod.workDays));
+}
+
 /** Queue sheet writes for changed columns (latest value wins). Skipped for changes that came from the sheet. */
 async function enqueue(tx: Tx, itemId: string, wt: WorkType, mod: WorkTypeDefinition, actor: ChangeActor, columns: string[]) {
   if (actor.source === 'SHEET' || !mod.sheet || !workTypeConfig(wt).sync?.enabled || !columns.length) return;
@@ -62,6 +86,8 @@ async function enqueue(tx: Tx, itemId: string, wt: WorkType, mod: WorkTypeDefini
     where: { id: itemId },
     include: { assignee: { select: { name: true } }, owner: { select: { name: true } } },
   });
+  // APK Testing: the sheet lists test results; the version item (the work) is app-only.
+  if (mod.storage === 'apk' && !item.parentId) return;
   const values = itemSheetValues(mod, {
     title: item.title,
     status: item.status,
@@ -97,6 +123,7 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   const mod = requireModule(item.workType.key);
   const cal = withWorkDays(calendar, mod.workDays);
   if (item.status === to) return;
+  if (actor.ctx && isApkVersion(item)) throw new ForbiddenError('An APK version follows its test results. Change the status of a test instead.');
   if (actor.ctx && !canTransition(mod, item.status, to, actor.ctx)) {
     throw new ForbiddenError(`You can't move this ${mod.itemNoun} from ${statusDef(mod, item.status).label} to ${statusDef(mod, to).label}.`);
   }
@@ -128,6 +155,7 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   await notifyStage(tx, item, mod, actor, landing);
+  if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, cal);
 }
 
 /**
@@ -188,17 +216,27 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   });
   const col = columnFor(mod, 'assignee');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
-  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP') {
+  if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP' && !item.parentId) {
     await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
 
-  const fresh = await loadItem(tx, item.id);
+  let fresh = await loadItem(tx, item.id);
+  // Teams: the new creator's coordinator reviews it by default and their buddy peer-reviews it.
+  if (mod.teams && assigneeId) {
+    const teams = await loadTeams(tx, [item.workTypeId]);
+    if (await applyReviewDefaultsTx(tx, fresh, actor, teams, reviewDefaults(teams, item.assigneeId), now)) fresh = await loadItem(tx, item.id);
+  }
   // First assignment moves a queued item to the module's "assigned" status.
   if (assigneeId && fresh.status === mod.initialStatus && mod.assignedStatus !== mod.initialStatus) {
     await changeStatusTx(tx, fresh, { ...actor, ctx: null }, mod.assignedStatus, now, cal);
   } else {
     // Same stage, new owner: split the interval so workload is attributed correctly.
     await rollInterval(tx, item.id, fresh.status, assigneeId, now, withWorkDays(cal, mod.workDays), true);
+  }
+  // APK Testing: the tester of a version also tests its results, except those somebody else already took.
+  if (isApkVersion(item)) {
+    const runs = await tx.workItem.findMany({ where: { parentId: item.id, archivedAt: null, OR: [{ assigneeId: null }, { assigneeId: item.assigneeId }] }, select: { id: true } });
+    for (const r of runs) await assignTx(tx, await loadItem(tx, r.id), { ...actor, ctx: null }, assigneeId, now, cal);
   }
   return fresh;
 }
@@ -212,29 +250,107 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
   });
 }
 
+type PersonSlot = 'owner' | 'peer';
+
+const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : (mod.labels?.peer ?? 'Peer reviewer'));
+
+/** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
+async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
+  const mod = requireModule(item.workType.key);
+  if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
+  const current = slot === 'owner' ? item.ownerId : item.peerReviewerId;
+  if (current === userId) return false;
+  const [from, to] = await Promise.all([
+    current ? tx.user.findUnique({ where: { id: current }, select: { name: true } }) : null,
+    userId ? tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null,
+  ]);
+  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : { peerReviewerId: userId });
+  const label = slotLabel(mod, slot);
+  await tx.workItemEvent.create({
+    data: { itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: label, fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
+  });
+  if (slot === 'owner') {
+    const col = columnFor(mod, 'owner');
+    if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  }
+  if (!quiet && userId && userId !== actor.userId && actor.source === 'APP') {
+    await notify(tx, userId, { kind: 'item.owner', title: `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+  }
+  return true;
+}
+
 /** Set the item's owner (Journey: its SME reviewer). Same permission as assigning. */
 export async function setOwner(actor: ChangeActor, itemId: string, ownerId: string | null) {
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    const mod = requireModule(item.workType.key);
-    if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
-    if (item.ownerId === ownerId) return;
-    const now = new Date();
-    const [from, to] = await Promise.all([
-      item.ownerId ? tx.user.findUnique({ where: { id: item.ownerId }, select: { name: true } }) : null,
-      ownerId ? tx.user.findUnique({ where: { id: ownerId }, select: { name: true } }) : null,
-    ]);
-    await saveItem(tx, item, { ownerId });
-    await tx.workItemEvent.create({
-      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: mod.labels?.owner ?? 'owner', fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
-    });
-    const col = columnFor(mod, 'owner');
-    if (col) await enqueue(tx, itemId, item.workType, mod, actor, [col]);
-    if (ownerId && ownerId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, ownerId, { kind: 'item.owner', title: `${mod.labels?.owner ?? 'Owner'} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
-    }
+    await setPersonTx(tx, item, actor, 'owner', ownerId, new Date());
   });
+}
+
+/** Set the item's peer reviewer (Journey: the creator's buddy by default). Same permission as assigning. */
+export async function setPeerReviewer(actor: ChangeActor, itemId: string, userId: string | null) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    if (userId && userId === item.assigneeId) throw new Error('The peer reviewer is someone other than the creator.');
+    await setPersonTx(tx, item, actor, 'peer', userId, new Date());
+  });
+}
+
+/**
+ * Give an item its creator's team defaults: the SME reviewer and the peer reviewer, where the slot is empty or still holds
+ * the default it had before (`was`). A reviewer picked by hand stays. Returns true when something changed.
+ */
+async function applyReviewDefaultsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, teams: TeamLite[], was: { reviewerId: string | null; peerReviewerId: string | null }, now: Date, quiet = false) {
+  const next = reviewDefaults(teams, item.assigneeId);
+  const system = { ...actor, ctx: null };
+  let changed = false;
+  const owner = nextDefault(item.ownerId, was.reviewerId, next.reviewerId);
+  if (owner !== undefined && (await setPersonTx(tx, item, system, 'owner', owner, now, quiet))) changed = true;
+  const fresh = changed ? await loadItem(tx, item.id) : item;
+  const peer = nextDefault(fresh.peerReviewerId, was.peerReviewerId, next.peerReviewerId);
+  if (peer !== undefined && (await setPersonTx(tx, fresh, system, 'peer', peer, now, quiet))) changed = true;
+  return changed;
+}
+
+/**
+ * A team setting changed (or "fill missing" was pressed): bring the team's journeys whose review is still open in line.
+ * `was` = each creator's defaults before the change; omit to fill only the empty slots. Each newly named reviewer gets one
+ * inbox message for all of them. Returns how many items changed.
+ */
+export async function refillReviewDefaults(actor: ChangeActor, workTypeId: string, opts: { creatorIds?: string[]; was?: Map<string, { reviewerId: string | null; peerReviewerId: string | null }> } = {}) {
+  return db.$transaction(
+    async tx => {
+      const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
+      const mod = requireModule(wt.key);
+      if (!mod.teams) return 0;
+      const teams = await loadTeams(tx, [workTypeId]);
+      const creators = opts.creatorIds ?? [...new Set(teams.flatMap(teamPeople))];
+      const doneKeys = mod.statuses.filter(s => s.category === 'done').map(s => s.key);
+      const items = await tx.workItem.findMany({
+        where: { workTypeId, archivedAt: null, approvedAt: null, assigneeId: { in: creators }, status: { notIn: doneKeys } },
+        include: { workType: true },
+      });
+      const now = new Date();
+      const gained = new Map<string, number>();
+      let count = 0;
+      for (const item of items) {
+        const was = opts.was?.get(item.assigneeId!) ?? { reviewerId: null, peerReviewerId: null };
+        if (!(await applyReviewDefaultsTx(tx, item, actor, teams, was, now, true))) continue;
+        count++;
+        const after = await loadItem(tx, item.id);
+        for (const id of new Set([after.ownerId !== item.ownerId ? after.ownerId : null, after.peerReviewerId !== item.peerReviewerId ? after.peerReviewerId : null])) {
+          if (id && id !== actor.userId) gained.set(id, (gained.get(id) ?? 0) + 1);
+        }
+      }
+      for (const [userId, n] of gained) {
+        await notify(tx, userId, { kind: 'item.owner', title: `You now review ${n} more ${mod.itemNoun}${n === 1 ? '' : 's'}`, body: 'Team review defaults changed.', href: `/w/${wt.key}/items?scope=mine` });
+      }
+      return count;
+    },
+    { timeout: 30_000 },
+  );
 }
 
 // ─── Fields ─────────────────────────────────────────────────────
@@ -343,6 +459,17 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: 'Deleted', at: now },
     });
+    // APK Testing: deleting a version takes its test results with it (and brings them back on undo).
+    if (isApkVersion(item)) {
+      const runs = await tx.workItem.findMany({ where: { parentId: itemId, archivedAt: null }, select: { id: true } });
+      const ids = runs.map(r => r.id);
+      await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: now, version: { increment: 1 } } });
+      await tx.apkVersion.updateMany({ where: { workTypeId: item.workTypeId, key: item.externalKey }, data: { archivedAt: now } });
+      await tx.syncOutbox.deleteMany({ where: { itemId: { in: ids }, status: 'PENDING' } });
+      await tx.workItemEvent.createMany({
+        data: ids.map(id => ({ itemId: id, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: null, toValue: now.toISOString(), source: actor.source, note: `Deleted with APK version ${item.externalKey}`, at: now })),
+      });
+    }
     // The person who deleted it gets an inbox message with Undo for the next 30 minutes.
     if (actor.userId && actor.source === 'APP') {
       await notify(tx, actor.userId, {
@@ -353,6 +480,7 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
         data: { itemId, itemKey: item.externalKey, workTypeKey: item.workType.key, undoUntil: undoDeadline(now).toISOString() },
       });
     }
+    if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, await workCalendar());
   });
 }
 
@@ -369,11 +497,21 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
     await tx.workItemEvent.create({
       data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt.toISOString(), toValue: null, source: actor.source, note: 'Restored', at: now },
     });
+    if (isApkVersion(item)) {
+      const runs = await tx.workItem.findMany({ where: { parentId: itemId, archivedAt: item.archivedAt }, select: { id: true } });
+      const ids = runs.map(r => r.id);
+      await tx.workItem.updateMany({ where: { id: { in: ids } }, data: { archivedAt: null, version: { increment: 1 } } });
+      await tx.apkVersion.updateMany({ where: { workTypeId: item.workTypeId, key: item.externalKey }, data: { archivedAt: null } });
+      await tx.workItemEvent.createMany({
+        data: ids.map(id => ({ itemId: id, actorId: actor.userId, type: 'FIELD_CHANGED' as const, field: 'archivedAt', fromValue: item.archivedAt!.toISOString(), toValue: null, source: actor.source, note: `Restored with APK version ${item.externalKey}`, at: now })),
+      });
+    }
     // The delete notice becomes a "Restored" notice (no more Undo button).
     await tx.notification.updateMany({
       where: { kind: 'item.deleted', data: { path: ['itemId'], equals: itemId } },
       data: { kind: 'item.restored', title: `Restored ${shortKey(item.externalKey)}`, readAt: now },
     });
+    if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, await workCalendar());
   });
 }
 
@@ -459,19 +597,24 @@ export type NewItem = {
 };
 
 /** Create an item with its first event and stage interval. Used by the admin UI, importer and sheet sync. */
-export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date(), cal: WorkCalendar = DEFAULT_CALENDAR) {
+export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, input: NewItem, now = new Date(), cal: WorkCalendar = DEFAULT_CALENDAR): Promise<WorkItem> {
   const mod = requireModule(workType.key);
   const status = input.status ?? (input.assigneeId ? mod.assignedStatus : mod.initialStatus);
   const def = statusDef(mod, status);
   const marks = new Set(def.marks ?? []);
   // APK Testing: version and test case facts go to their own tables; the run keeps only its own data.
   const apk = mod.storage === 'apk' ? await prepareApkCreate(tx, workType, input) : null;
+  // ...and a test result belongs to its APK version item (created here when it is the first result of that version).
+  const versionKey = (input.groupKey ?? '').trim();
+  const parentId = apk && String(input.data?.testCaseId ?? '').trim() && versionKey ? await ensureVersionItemTx(tx, workType, actor, versionKey, now, cal) : null;
   const calc = computed(mod, input.externalKey, (apk?.data ?? input.data ?? {}) as Record<string, unknown>, cal);
   const data = mod.dataSchema.parse(calc.data) as Prisma.InputJsonValue;
   const dueAt = input.dueAt ?? calc.dueAt ?? null;
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
+  // Teams: a new item starts with its creator's default SME reviewer and peer reviewer unless one was picked.
+  const defaults = mod.teams && input.assigneeId ? reviewDefaults(await loadTeams(tx, [workType.id]), input.assigneeId) : null;
   const item = await tx.workItem.create({
     data: {
       workTypeId: workType.id,
@@ -479,7 +622,9 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       title: input.title,
       status,
       assigneeId: input.assigneeId ?? null,
-      ownerId: input.ownerId ?? null,
+      ownerId: input.ownerId ?? defaults?.reviewerId ?? null,
+      peerReviewerId: defaults?.peerReviewerId ?? null,
+      parentId,
       createdById: actor.source === 'APP' ? actor.userId : null,
       chapterId: input.chapterId ?? null,
       groupKey: input.groupKey ?? null,
@@ -513,7 +658,19 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
     },
   });
   await tx.workItemStageInterval.create({ data: { itemId: item.id, status, assigneeId: item.assigneeId, enteredAt: now, round: 1 } });
+  if (parentId) await rollupVersionTx(tx, parentId, actor, now, cal);
   return item;
+}
+
+/** The work item of an APK version (key = the version name). Created, or brought back, when its first result arrives. */
+async function ensureVersionItemTx(tx: Tx, workType: WorkType, actor: ChangeActor, versionKey: string, now: Date, cal: WorkCalendar): Promise<string> {
+  const found = await tx.workItem.findUnique({ where: { workTypeId_externalKey: { workTypeId: workType.id, externalKey: versionKey } } });
+  if (found) {
+    if (found.archivedAt) await tx.workItem.update({ where: { id: found.id }, data: { archivedAt: null, version: { increment: 1 } } });
+    return found.id;
+  }
+  const created = await createItemTx(tx, workType, { ...actor, ctx: null }, { externalKey: versionKey, title: versionKey, groupKey: versionKey }, now, cal);
+  return created.id;
 }
 
 export async function createItem(actor: ChangeActor, workTypeId: string, input: NewItem) {
@@ -533,4 +690,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue };
+export const internals = { ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

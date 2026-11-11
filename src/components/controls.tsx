@@ -15,6 +15,7 @@ import {
   noteFeedbackAction,
   resolveFeedbackAction,
   setOwnerAction,
+  setPeerReviewerAction,
   updateFieldsAction,
   type ActionResult,
 } from '@/app/actions';
@@ -95,8 +96,8 @@ export function StatusSelect({
 
 export type PersonOption = { id: string; name: string; hint?: string };
 
-/** Who works on the item (default), or with `owner` who owns it (e.g. its SME reviewer). */
-export function AssignSelect({ itemId, assigneeId, people, compact, owner, label = 'Assign developer' }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean; owner?: boolean; label?: string }) {
+/** Who works on the item (default), with `owner` who owns it (e.g. its SME reviewer), or with `peer` who peer-reviews it. */
+export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer, label = 'Assign developer', none = 'Unassigned' }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean; owner?: boolean; peer?: boolean; label?: string; none?: string }) {
   const { pending, result, exec } = useAction();
   const [next, setNext] = useState<string | null>(null);
   useEffect(() => {
@@ -112,10 +113,10 @@ export function AssignSelect({ itemId, assigneeId, people, compact, owner, label
         onChange={e => {
           const id = e.target.value || null;
           setNext(e.target.value);
-          exec(() => (owner ? setOwnerAction(itemId, id) : assignAction(itemId, id)));
+          exec(() => (peer ? setPeerReviewerAction(itemId, id) : owner ? setOwnerAction(itemId, id) : assignAction(itemId, id)));
         }}
       >
-        <option value="">Unassigned</option>
+        <option value="">{none}</option>
         {people.map(p => (
           <option key={p.id} value={p.id}>
             {p.name}

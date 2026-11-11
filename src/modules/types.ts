@@ -144,6 +144,8 @@ export type GroupSummaryRow = {
 /** A per-group rollup shown above item lists and in reports, e.g. "per APK version" with pass %. */
 export type GroupSummary = {
   label: string;
+  /** What a group counts when it is not the work item itself (APK Testing counts tests; the work is the version). */
+  unit?: string;
   columns: TableColumn[];
   compute: (items: GroupSummaryItem[]) => GroupSummaryRow;
   seriesColors?: Record<string, string>;
@@ -182,9 +184,14 @@ export type WorkTypeDefinition = {
   /** Singular noun for one item, e.g. "journey". */
   itemNoun: string;
   /** Column / field names shown in the UI for this work type. */
-  labels?: { assignee?: string; owner?: string; group?: string; due?: string };
+  labels?: { assignee?: string; owner?: string; group?: string; due?: string; /** Teams: the peer reviewer, and the coordinator who owns the item's completion. */ peer?: string; accountable?: string };
   /** What each status category is called in this work type's KPI tiles (defaults are journey words). */
   categoryLabels?: Partial<Record<StatusCategory, string>>;
+  /**
+   * People work in teams (src/lib/teams.ts): the coordinator of the assignee's team owns the item and is its default owner
+   * (reviewer), the assignee's buddy is its peer reviewer, and groups have stewards. Adds the Teams page.
+   */
+  teams?: boolean;
   /** Role keys given to people created from the sheet / import (assignee column, owner column). */
   importRoles?: { assignee: string; owner?: string };
   /** Roles of this work type. Omit to derive them from the flow (who moves statuses, who edits fields). */
@@ -205,8 +212,10 @@ export type WorkTypeDefinition = {
   groupSummary?: GroupSummary;
   /** Item list columns: hide default ones, add data fields. */
   table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
+  /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
+  runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
-  pages?: { groups?: string; items?: string; cases?: string };
+  pages?: { groups?: string; items?: string; cases?: string; teams?: string };
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */
   versions?: boolean;
   /** Item pages show a time log (status changes, bug and remark edits, time per status). */

@@ -61,25 +61,36 @@ export async function prepareApkCreate(tx: Tx, wt: Pick<WorkType, 'id'>, input: 
   };
 }
 
+/** The version (and test case, for a test result) a work item stands for. A version item has no test case. */
+async function resolveApk(tx: Tx, itemId: string): Promise<{ version: { id: string; releaseDate: Date | null; link: string | null; notes: string | null }; testCase: { id: string; scenario: string | null; expected: string | null; steps: string | null; defaultPriority: string | null } | null } | null> {
+  const t = await tx.apkTest.findUnique({ where: { itemId }, include: { version: true, testCase: true } });
+  if (t) return t;
+  const item = await tx.workItem.findUnique({ where: { id: itemId }, select: { workTypeId: true, externalKey: true, parentId: true } });
+  if (!item || item.parentId) return null;
+  const version = await tx.apkVersion.findUnique({ where: { workTypeId_key: { workTypeId: item.workTypeId, key: item.externalKey } } });
+  return version ? { version, testCase: null } : null;
+}
+
 /** Current shared values of a run's version and test case, as flat field values (for "before" in the change log). */
 export async function currentApkFields(tx: Tx, itemId: string): Promise<Record<string, string>> {
-  const t = await tx.apkTest.findUnique({ where: { itemId }, include: { version: true, testCase: true } });
+  const t = await resolveApk(tx, itemId);
   if (!t) return {};
   return {
     releaseDate: t.version.releaseDate ? normalizeDate(t.version.releaseDate) : '',
     apkUrl: t.version.link ?? '',
     releaseNotes: t.version.notes ?? '',
-    scenario: t.testCase.scenario ?? '',
-    expected: t.testCase.expected ?? '',
-    steps: t.testCase.steps ?? '',
-    defaultPriority: t.testCase.defaultPriority ?? '',
+    scenario: t.testCase?.scenario ?? '',
+    expected: t.testCase?.expected ?? '',
+    steps: t.testCase?.steps ?? '',
+    defaultPriority: t.testCase?.defaultPriority ?? '',
   };
 }
 
 /** Write shared fields (version details, test case text) from a run's edit. They apply to the version / test case, not just this run. */
 export async function writeApkFields(tx: Tx, itemId: string, patch: Record<string, string | null>) {
-  const t = await tx.apkTest.findUnique({ where: { itemId }, select: { versionId: true, testCaseId: true } });
-  if (!t) throw new Error('This test is not linked to an APK version and test case yet.');
+  const r = await resolveApk(tx, itemId);
+  if (!r) throw new Error('This test is not linked to an APK version and test case yet.');
+  const t = { versionId: r.version.id, testCaseId: r.testCase?.id ?? null };
   const version: Prisma.ApkVersionUpdateInput = {};
   const testCase: Prisma.ApkTestCaseUpdateInput = {};
   for (const [k, v] of Object.entries(patch)) {
@@ -89,5 +100,5 @@ export async function writeApkFields(tx: Tx, itemId: string, patch: Record<strin
     } else if (isCaseField(k)) testCase[CASE_COLUMNS[k]] = v;
   }
   if (Object.keys(version).length) await tx.apkVersion.update({ where: { id: t.versionId }, data: version });
-  if (Object.keys(testCase).length) await tx.apkTestCase.update({ where: { id: t.testCaseId }, data: testCase });
+  if (Object.keys(testCase).length && t.testCaseId) await tx.apkTestCase.update({ where: { id: t.testCaseId }, data: testCase });
 }

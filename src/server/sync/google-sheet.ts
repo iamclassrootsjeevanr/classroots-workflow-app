@@ -242,6 +242,9 @@ async function applyFromSheet(
   await tx.workItemEvent.createMany({ data: events });
 }
 
+/** APK Testing: the sheet holds test results; the version items (the work) are app-only. */
+const syncedItems = (mod: WorkTypeDefinition): Prisma.WorkItemWhereInput => (mod.storage === 'apk' ? { parentId: { not: null } } : {});
+
 /** App → sheet: queue every cell where the sheet differs from the app, and every cell of items the sheet has no row for. */
 async function queueMirror(wt: WorkType, mod: WorkTypeDefinition, sheet: SheetRead, result: SyncResult) {
   const rows = new Map<string, SheetValues>();
@@ -250,7 +253,7 @@ async function queueMirror(wt: WorkType, mod: WorkTypeDefinition, sheet: SheetRe
     if (key && !rows.has(key)) rows.set(key, sheetRowValues(mod, row));
   }
   const [items, pending] = await Promise.all([
-    db.workItem.findMany({ where: { workTypeId: wt.id }, include: { assignee: { select: { name: true } }, owner: { select: { name: true } } } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id, ...syncedItems(mod) }, include: { assignee: { select: { name: true } }, owner: { select: { name: true } } } }),
     db.syncOutbox.findMany({ where: { status: 'PENDING', item: { workTypeId: wt.id } }, select: { itemId: true, column: true, value: true } }),
   ]);
   // Already queued with the same value: keep it, so its attempts count (and FAILED after 10) is not reset every run.
@@ -318,7 +321,7 @@ export async function syncWorkType(workTypeId: string, opts: { force?: boolean }
     const cal = await workCalendar();
     const people = await new PeopleDirectory(db, wt.id).load();
     const items = await db.workItem.findMany({
-      where: { workTypeId },
+      where: { workTypeId, ...syncedItems(mod) },
       include: { assignee: { select: { name: true } }, owner: { select: { name: true } } },
     });
     const byKey = new Map(items.map(i => [i.externalKey, i]));

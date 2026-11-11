@@ -14,6 +14,8 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref
   if (!summary) return null;
   const rows = groupRollup(mod, items);
   if (!rows.length) return null;
+  // APK Testing: the chart counts test results, so its segments open the list of tests (not the version list).
+  if (mod.storage === 'apk' && itemsHref) itemsHref = `${itemsHref}${itemsHref.includes('?') ? '&' : '?'}view=tests`;
   const trend = groupTrend(mod, rows);
   const hasLinks = rows.some(r => r.links?.length);
   const metaOf = (group: string) => {
@@ -29,7 +31,7 @@ export function GroupSummaryCard({ mod, items, tz, title, versionEdit, groupHref
   const chartTitle = trend.successLabel ? `${trend.successLabel} rate and results by ${summary.label}` : `Results by ${summary.label}`;
   return (
     <div className="mb-5 space-y-5">
-      {only !== 'table' && <Card title={chartTitle} description={`One column per ${summary.label.toLowerCase()}, oldest to newest. The line is the share of ${mod.itemNoun}s marked ${trend.successLabel?.toLowerCase() ?? 'successful'}.`}>
+      {only !== 'table' && <Card title={chartTitle} description={`One column per ${summary.label.toLowerCase()}, oldest to newest. The line is the share of ${summary.unit ?? mod.itemNoun}s marked ${trend.successLabel?.toLowerCase() ?? 'successful'}.`}>
         <GroupTrendChart rows={trend.points} series={trend.series} successLabel={trend.successLabel} rateLines={trend.rateLines} itemsHref={itemsHref} />
       </Card>}
       {only !== 'chart' && <Card title={title ?? `By ${summary.label}`}>

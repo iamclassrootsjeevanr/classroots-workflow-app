@@ -62,7 +62,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
     );
   };
   /** Keys like "<version> | TC_001" show only the test case when the version is already the group heading. */
-  const keyOf = (it: ItemRow) => (groupByChapter && it.groupKey && it.externalKey.startsWith(`${it.groupKey} | `) ? it.externalKey.slice(it.groupKey.length + 3) : it.externalKey);
+  const keyOf = (it: ItemRow) => (it.groupKey && it.externalKey.startsWith(`${it.groupKey} | `) ? it.externalKey.slice(it.groupKey.length + 3) : it.externalKey);
   const groupOf = (it: ItemRow) => (groupByChapter ? [it.groupKey, it.chapterTitle].filter(Boolean).join(' · ') : '');
   const canOpen = (it: ItemRow) => !linkable || linkable.has(it.workTypeKey);
   const linksOf = (it: ItemRow) => Object.entries(LINK_FIELDS).filter(([k]) => typeof it.data[k] === 'string' && it.data[k]);

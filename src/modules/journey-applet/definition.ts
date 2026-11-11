@@ -98,16 +98,17 @@ export const journeyApplet: WorkTypeDefinition = {
   name: 'Journey',
   description: 'Journeys built by SME creators with Claude, reviewed by an SME reviewer, then standardised and taken to prod.',
   icon: 'route',
-  pages: { groups: 'Chapters', items: 'Journeys' },
+  pages: { groups: 'Chapters', items: 'Journeys', teams: 'Teams' },
+  teams: true,
   itemNoun: 'journey',
-  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due' },
+  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', peer: 'Peer reviewer', accountable: 'Owner' },
   categoryLabels: { queue: 'Not started', active: 'Being worked', review: 'In review', feedback: 'Changes asked', approved: 'Review closed', done: 'Done', hold: 'Paused' },
   importRoles: { assignee: 'sme-creator', owner: 'sme-reviewer' },
 
   roles: [
-    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them, makes the corrections, does the last look after design.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design. Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review.', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'coordinator', name: 'Coordinator', description: 'Chapter steward: adds journeys, allocates creators and reviewers, edits details, marks which need video replacement, moves journeys through the after-steps and sends them back from QA for a fix.', color: '#00897b', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    { key: 'coordinator', name: 'Coordinator', description: 'Chapter steward and team owner: adds chapters and journeys, allocates creators, reviewers and peer reviewers, sets pick-up dates, edits details, moves journeys through the after-steps and sends them back from QA for a fix. Acts in their own chapters and on every journey of their team.', color: '#00897b', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
     { key: 'program-manager', name: 'Program manager', description: 'Watches the dashboards and reports; cannot change journeys.', color: '#546e7a', capabilities: [], dataScope: 'ALL', canEdit: false, pages: ['dashboard', 'items', 'reports', 'export'] },
   ],
   statuses,
@@ -130,10 +131,11 @@ export const journeyApplet: WorkTypeDefinition = {
 
   fields: [
     { key: 'creationStage', label: 'Creation stage', type: 'select', options: CREATION_STAGES, source: 'data', editableBy: ['ASSIGNEE', 'manageFields'] },
-    { key: 'pickedUpAt', label: 'Picked up', type: 'date', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'] },
-    { key: 'pickedUpHalf', label: 'Picked up in', type: 'select', options: HALF_DAYS, halfOf: 'pickedUpAt', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'] },
-    { key: 'submittedAt', label: 'Submitted for review', type: 'date', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'] },
-    { key: 'submittedHalf', label: 'Submitted in', type: 'select', options: HALF_DAYS, halfOf: 'submittedAt', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'] },
+    // Pick-up is the coordinator's to set (Start stamps it when it is still empty). Submitted is stamped by "Submit for review"; only an admin corrects it.
+    { key: 'pickedUpAt', label: 'Picked up', type: 'date', source: 'data', editableBy: ['manageFields'] },
+    { key: 'pickedUpHalf', label: 'Picked up in', type: 'select', options: HALF_DAYS, halfOf: 'pickedUpAt', source: 'data', editableBy: ['manageFields'] },
+    { key: 'submittedAt', label: 'Submitted for review', type: 'date', source: 'data', editableBy: [] },
+    { key: 'submittedHalf', label: 'Submitted in', type: 'select', options: HALF_DAYS, halfOf: 'submittedAt', source: 'data', editableBy: [] },
     { key: 'daysTaken', label: 'Days taken', type: 'number', source: 'data', editableBy: [], computed: true },
     { key: 'reviewDate', label: 'Review date', type: 'date', source: 'data', editableBy: ['OWNER', 'manageFields'] },
     { key: 'dueAt', label: 'Closure due', type: 'date', source: 'core', editableBy: [], computed: true },
@@ -141,7 +143,6 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'subtopic', label: 'Subtopic', type: 'text', source: 'data', editableBy: [], computed: true },
     { key: 'cmsUrl', label: 'UAT CMS journey', type: 'url', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'], linkLabel: 'Open CMS' },
     { key: 'aiTutorUrl', label: 'AI Tutor', type: 'url', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'], linkLabel: 'Open AI Tutor' },
-    { key: 'buildUrl', label: 'Applet build', type: 'url', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'], linkLabel: 'Open build' },
   ],
 
   dataSchema: z
@@ -157,7 +158,6 @@ export const journeyApplet: WorkTypeDefinition = {
       subtopic: z.string().optional(),
       cmsUrl: z.string().optional(),
       aiTutorUrl: z.string().optional(),
-      buildUrl: z.string().optional(),
     })
     .passthrough(),
 
@@ -171,6 +171,8 @@ export const journeyApplet: WorkTypeDefinition = {
   ],
   table: {
     extra: [
+      { field: 'peerReviewer', label: 'Peer reviewer' },
+      { field: 'teamOwner', label: 'Owner' },
       { field: 'creationStage', label: 'Creation stage' },
       { field: 'pickedUpAt', label: 'Picked up' },
       { field: 'submittedAt', label: 'Submitted for review' },

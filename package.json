@@ -15,15 +15,21 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
+    "db:deploy:remote": "tsx --env-file=.env scripts/prisma-remote.ts migrate deploy",
     "db:studio": "prisma studio",
+    "db:studio:remote": "tsx --env-file=.env scripts/prisma-remote.ts studio",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "db:copy": "tsx --env-file=.env scripts/copy-db.ts",
+    "db:pull": "tsx --env-file=.env scripts/copy-db.ts --from remote --to local --replace",
+    "db:push": "tsx --env-file=.env scripts/copy-db.ts --from local --to remote",
     "sync:run": "tsx --env-file=.env scripts/run-jobs.ts",
     "scheduler": "tsx scripts/scheduler.ts",
     "user:password": "tsx --env-file=.env scripts/set-password.ts",
     "demo:users": "tsx --env-file=.env scripts/demo-users.ts",
     "import:apk": "tsx --env-file=.env scripts/import-apk-xlsx.ts",
-    "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts"
+    "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts",
+    "apk:versions": "tsx --conditions=react-server --env-file=.env scripts/apk-version-items.ts",
+    "journey:teams": "tsx --conditions=react-server --env-file=.env scripts/journey-teams.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
