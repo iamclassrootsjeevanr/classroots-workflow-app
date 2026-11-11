@@ -16,6 +16,7 @@ import {
   resolveFeedbackAction,
   setOwnerAction,
   setPeerReviewerAction,
+  setVersionClosedAction,
   updateFieldsAction,
   type ActionResult,
 } from '@/app/actions';
@@ -333,6 +334,21 @@ export function FieldsForm({ itemId, fields }: { itemId: string; fields: Editabl
         <FieldRow key={f.key} itemId={itemId} field={f} />
       ))}
     </ul>
+  );
+}
+
+/** APK Testing: close a version once all its tests are updated, or reopen it. `note` = a heads-up (tests not updated); closing is never blocked. */
+export function CloseVersionButton({ itemId, closed, note }: { itemId: string; closed: boolean; note?: string | null }) {
+  const { pending, result, exec } = useAction();
+  const router = useRouter();
+  return (
+    <div>
+      <button type="button" className={closed ? 'btn-ghost' : 'btn-primary'} disabled={pending} onClick={() => exec(() => setVersionClosedAction(itemId, !closed), () => router.refresh())}>
+        {pending ? 'Saving…' : closed ? 'Reopen version' : 'Close version'}
+      </button>
+      {!closed && note && <p className="mt-1 text-xs text-muted">{note} Closes anyway.</p>}
+      {result && !result.ok && <p className="mt-1 text-xs text-bad">{result.error}</p>}
+    </div>
   );
 }
 

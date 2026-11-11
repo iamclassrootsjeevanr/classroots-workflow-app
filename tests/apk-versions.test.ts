@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { planVersionTests, type SourceTest } from '@/lib/apk-versions';
-import { versionStatus } from '@/lib/apk-rollup';
+import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
 import { apkTesting } from '@/modules/apk-testing/definition';
 
 const source: SourceTest[] = [
@@ -70,5 +70,16 @@ describe('versionStatus', () => {
   it('only uses statuses the module has', () => {
     const keys = new Set(apkTesting.statuses.map(s => s.key));
     for (const set of [[], ['pass'], ['fail'], ['fixed'], ['in_process'], ['not_reported']]) expect(keys.has(versionStatus(set))).toBe(true);
+  });
+});
+
+describe('closing a version', () => {
+  it('warns when tests are not updated, without blocking', () => {
+    expect(versionCloseBlocker(['pass', 'fail', 'fixed'])).toBeNull();
+    expect(versionCloseBlocker(['pass', 'not_tested'])).toMatch(/1 test is not updated/);
+    expect(versionCloseBlocker(['in_process', 'not_tested'])).toMatch(/2 tests are not updated/);
+  });
+  it('has a Closed status that counts as done', () => {
+    expect(apkTesting.statuses.find(s => s.key === 'closed')?.category).toBe('done');
   });
 });

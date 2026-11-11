@@ -350,6 +350,8 @@ One work item per **APK version**. Its test cases are **test results** under it 
 
 A version's status is never set by hand. It follows its results (`versionStatus` in `src/lib/apk-rollup.ts`): Not Tested until a result moves, **Fail** while any result fails, Pending Retest once failures are fixed, In Process while some are untested, **Pass** when all passed (or were not reported). Every result change rolls the version up (`rollupVersionTx`), so cycle time, stuck and done on versions follow the testing. The tester of a version is the tester of its results; assigning the version assigns the results nobody else took. Deleting or restoring a version takes its results with it. The version items are app-only (not in the sheet).
 
+**Closing:** a person closes a version (button on the version page). It is always allowed, even when the APK was not tested or tests are still Not Tested / In Process (the button only warns how many), and it ends the version as **Closed** (done), whatever the failures. Results changing never reopen it; **Reopen version** puts it back to the status its results give. Old versions are closed in bulk with `npm run apk:versions -- --apply --close-old` (every version but the newest).
+
 A result's own flow: `Not Tested → In Process → Pass / Fail / Not Reported`. A failure goes `Fail → Fixed (app developer) → Pending Retest → Pass`.
 
 - **Testers** run cases, pass or fail them, retest, and fill in comments, bug and log date.
@@ -442,6 +444,10 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 **Sidebar.** On screens 1024px and wider the sidebar collapses to an icon rail with the button at its top or the `[` key; the state is kept in the `cr_nav` cookie so the next page loads with the same width. Below 1024px the menu is a slide-over drawer (Escape closes it).
 
 ---
+
+### Work done by person
+
+The Overview has a **Work done** card: one row per person and a **Team average** row (average over people who did some of that column). A work type defines the columns in `doneMetrics` (default: done and still open). APK Testing: versions done, tests updated, passed, failures found, fixes marked. Each role sees the columns for what it does (`metricsFor`): testers the test columns, app developers fixes, leads (assign) and admins everything. Own-data roles see only themselves and the average, never colleagues. Open-work charts leave done work out, so once everything is closed they say so and this card shows who did it.
 
 ### APK version chart and table
 

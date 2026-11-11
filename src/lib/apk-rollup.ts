@@ -11,3 +11,10 @@ export function versionStatus(results: readonly string[]): string {
   // Everything is passed or not reported.
   return has('pass') ? 'pass' : 'not_reported';
 }
+
+/** A heads-up shown by Close version when tests are still not updated (closing is allowed anyway). */
+export const versionCloseBlocker = (statuses: readonly string[]) => {
+  const open = statuses.filter(s => s === 'not_tested' || s === 'in_process').length;
+  return open ? `${open} test${open === 1 ? ' is' : 's are'} not updated yet.` : null;
+};
+

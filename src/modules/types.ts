@@ -129,6 +129,26 @@ export type TableColumn = {
   label: string;
 };
 
+/** What one person did, as the "Work done" analytics sees it (pure; no DB types). */
+export type DoneInput = {
+  /** The work items they hold (APK Testing: versions). */
+  work: { status: string; category: StatusCategory }[];
+  /** Their test results (APK Testing only). */
+  results: { status: string }[];
+  /** Times they moved a result to Fixed (APK Testing only). */
+  fixes: number;
+};
+
+/** One column of "Work done by person". `cap` = the role it is for: people see the columns for what they can do, everything if they assign or are admin. */
+export type DoneMetric = {
+  key: string;
+  label: string;
+  hint?: string;
+  kind: 'count' | 'percent';
+  cap?: 'work' | 'review';
+  value: (p: DoneInput) => number | null;
+};
+
 /** One item as seen by a group summary (pure; no DB types). */
 export type GroupSummaryItem = { status: string; category: StatusCategory; data: Record<string, unknown>; assigneeId: string | null };
 
@@ -210,6 +230,8 @@ export type WorkTypeDefinition = {
   /** Order of items inside a group (e.g. journey number, test-case number). */
   sortOrder?: (data: Record<string, unknown>) => number;
   groupSummary?: GroupSummary;
+  /** Columns of the Work done card on the Overview. Omit for the default (work items done / still open). */
+  doneMetrics?: DoneMetric[];
   /** Item list columns: hide default ones, add data fields. */
   table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
