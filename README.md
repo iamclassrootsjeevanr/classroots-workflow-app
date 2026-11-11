@@ -662,6 +662,30 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 
 **Scaling notes.** One app instance handles a small team comfortably. When it grows: raise the Railway plan before adding instances; keep `connection_limit` x instances below Postgres's connection cap (put PgBouncer in front beyond that); lists are paged and filtered in the database, and the indexes on `WorkItem` (work type, group, archived, sort) and the APK tables back them. Overview charts still read a work type's items in one pass, which is fine into the tens of thousands of rows.
 
+### Render (app + Postgres)
+
+The same `Dockerfile` runs on Render (migrations run on every start).
+
+1. **New → PostgreSQL** in the region you will use for the app.
+2. **New → Web Service** from this repo: runtime **Docker**, same region, health check path `/api/health`. Variables as for Railway: `DATABASE_URL` = the **Internal** Database URL + `?connection_limit=10&pool_timeout=20`, `AUTH_SECRET`, `AUTH_URL` (the `onrender.com` address), `ADMIN_EMAILS`, `OFFICE_DOMAINS`, `APP_TIMEZONE`.
+3. Free plan: the service sleeps after ~15 idle minutes and the free database expires after 30 days. Use paid plans for real use.
+
+### Moving data between this machine and the hosted database
+
+Put the hosted database's **External** URL (Render: Connect → External; Railway: `DATABASE_PUBLIC_URL`) with `?sslmode=require` in `.env` as `REMOTE_DATABASE_URL`. Then:
+
+| Command | What it does |
+| --- | --- |
+| `npm run db:deploy:remote` | Apply this checkout's migrations to the remote database |
+| `npm run db:pull` | Remote → local. **Replaces** all local data |
+| `npm run db:push` | Local → remote, only when the remote is empty |
+| `npm run db:push -- --replace` | Local → remote, **wipes** the remote data first |
+| `npm run db:studio:remote` | Browse the remote data at <http://localhost:5555> (edits are live) |
+
+- A copy is the whole database, never a merge. Keep one side as the source of truth: once people use the hosted app, it is; refresh this machine with `db:pull` and never `db:push --replace` over it.
+- Both sides need the same migrations. Schema change: commit the migration and push; the hosted app applies it on deploy (or run `db:deploy:remote`), and `npm run db:deploy` applies it here.
+- Not copied: sign-in sessions, password links, the sheet-sync queue. Sheet sync is switched off in the copy.
+
 ### Vercel + managed Postgres (Neon, Supabase, …)
 
 - Set the variables from `.env.example`, including `CRON_SECRET` and `AUTH_URL` = your public URL.
@@ -687,6 +711,8 @@ The repo is ready for Railway: `railway.json` builds the `Dockerfile` (migration
 | `npm run user:password -- <email>` | Set someone's password from the terminal |
 | `npm run import:journey -- <file.csv> [--replace]` | Journey from the Slack tracker CSV: dry run lists rows to check; `--replace` replaces all journeys |
 | `npm run db:copy -- --to <url> [--replace]` | Copy this machine's database into another one (e.g. Railway); same migrations required, sheet sync switched off in the copy |
+| `npm run db:pull` / `db:push [-- --replace]` | Copy remote → local / local → remote (`REMOTE_DATABASE_URL`); see [Moving data](#moving-data-between-this-machine-and-the-hosted-database) |
+| `npm run db:deploy:remote` / `db:studio:remote` | Migrate / browse the remote database |
 | `npm run import:apk -- <file>` | Import the APK Testing workbook (safe to re-run) |
 | `npm run sync:run` | Run sheet sync and the workload snapshot once |
 | `npm run scheduler` | Call `/api/cron/run` every N minutes (self-hosted) |
