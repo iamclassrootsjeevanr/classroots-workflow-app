@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { VIEWER } from '../roles';
-import type { GroupSummaryRow, WorkTypeDefinition } from '../types';
+import type { DoneMetric, GroupSummaryRow, WorkTypeDefinition } from '../types';
 
 /**
  * APK Testing – every APK build is run through the test-case list. One work item per APK version: its status follows its
@@ -22,6 +22,18 @@ export function apkVersionResult(r: { total: number; pass: number; fail: number;
   if (r.fail) return { label: 'Has failures', tone: 'bad' };
   return { label: 'In progress', tone: 'warn' };
 }
+
+const TESTED = ['pass', 'fail', 'fixed', 'pending_retest', 'not_reported'];
+const share = (n: number, of: number) => (of ? Math.round((n / of) * 1000) / 10 : null);
+
+/** "Work done": what each role is measured on. Testers: tests updated and how they went. App developers: fixes. */
+export const APK_DONE_METRICS: DoneMetric[] = [
+  { key: 'versionsDone', label: 'Versions done', hint: 'closed or passed', kind: 'count', cap: 'work', value: p => p.work.filter(w => w.category === 'done').length },
+  { key: 'testsUpdated', label: 'Tests updated', hint: 'no longer Not Tested / In Process', kind: 'count', cap: 'work', value: p => p.results.filter(r => TESTED.includes(r.status)).length },
+  { key: 'testsPassed', label: 'Passed', kind: 'count', cap: 'work', value: p => p.results.filter(r => r.status === 'pass').length },
+  { key: 'bugsFound', label: 'Failures found', hint: 'failed, fixed or waiting retest', kind: 'count', cap: 'work', value: p => p.results.filter(r => ['fail', 'fixed', 'pending_retest'].includes(r.status)).length },
+  { key: 'fixes', label: 'Fixes marked', hint: 'moved to Fixed', kind: 'count', cap: 'review', value: p => p.fixes },
+];
 
 export const apkTesting: WorkTypeDefinition = {
   key: 'apk-testing',
@@ -53,11 +65,12 @@ export const apkTesting: WorkTypeDefinition = {
       { field: 'developerRemarks', label: 'Developer remarks' },
     ],
   },
+  doneMetrics: APK_DONE_METRICS,
   pages: { groups: 'Results by version', items: 'APK versions', cases: 'Test cases' },
   versions: true,
   timeLog: true,
   importRoles: { assignee: 'tester', owner: 'app-developer' },
-  categoryLabels: { queue: 'Not tested', active: 'In process', feedback: 'Failed', review: 'Fixed / pending retest', done: 'Passed', hold: 'Not reported' },
+  categoryLabels: { queue: 'Not tested', active: 'In process', feedback: 'Failed', review: 'Fixed / pending retest', done: 'Done (passed / closed)', hold: 'Not reported' },
 
   roles: [
     { key: 'tester', name: 'Tester', description: 'Runs test cases on APK builds: tests, logs failures, retests, adds new APK versions.', color: '#00897b', capabilities: ['work', 'create'], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
@@ -72,6 +85,8 @@ export const apkTesting: WorkTypeDefinition = {
     { key: 'fixed', label: 'Fixed', color: '#5c6bc0', category: 'review', marks: ['review'], sheetValue: 'Fixed' },
     { key: 'pending_retest', label: 'Pending Retest', color: '#fdd835', category: 'review', marks: ['review'], sheetValue: 'Pending Retest' },
     { key: 'pass', label: 'Pass', color: '#43a047', category: 'done', marks: ['started', 'submitted', 'approved', 'completed'], sheetValue: 'Pass' },
+    // Version only: set by a person once its tests are all updated (a newer build replaced it, or it is finished). Results never use it.
+    { key: 'closed', label: 'Closed', color: '#607d8b', category: 'done', marks: ['approved', 'completed'], sheetValue: null },
     { key: 'not_reported', label: 'Not Reported', color: '#8d6e63', category: 'hold', sheetValue: 'Not Reported' },
   ],
   initialStatus: 'not_tested',

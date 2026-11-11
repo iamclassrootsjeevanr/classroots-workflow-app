@@ -8,6 +8,9 @@ import type { NavIcon } from '@/components/icons';
 import { formatDuration } from '@/lib/time';
 import { lowerLabel } from '@/lib/text';
 import { itemsUrl } from '@/lib/items-url';
+import { WorkDoneCard } from '@/components/work-done';
+import { doneMetricsOf, metricsFor } from '@/lib/work-done';
+import { loadWorkDone } from '@/server/services/work-done';
 import { groupRollup } from '@/lib/groups';
 import { getModule } from '@/modules/registry';
 import type { StatusCategory } from '@/modules/types';
@@ -39,6 +42,8 @@ export default async function OverviewPage({ params, searchParams }: { params: P
   if (query.size) redirect(`/w/${key}/items?${query}`);
 
   const { user, access, wtAccess, mod, tz, ownOnly } = await loadWorkTypePage(key);
+  const done = await loadWorkDone(key);
+  const doneMetrics = metricsFor(doneMetricsOf(mod), wtAccess.capabilities, access.isAdmin);
   const [d, compare] = await Promise.all([
     dashboard({ workTypeKeys: [key], where: scopeWhere(access, [wtAccess]) }, { weeks: 12 }),
     ownOnly ? comparison(user.id, key) : Promise.resolve(null),
@@ -113,9 +118,11 @@ export default async function OverviewPage({ params, searchParams }: { params: P
         </Card>
       )}
 
+      <WorkDoneCard table={done} metrics={doneMetrics} meId={user.id} onlyMe={ownOnly} />
+
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="By status" description="Click a slice to see its rows">
-          <StatusPie slices={series} itemsHref={itemsHref} note={doneCount ? `Done (${doneCount}) is on its card above.` : undefined} />
+          {series.some(s => s.count) ? <StatusPie slices={series} itemsHref={itemsHref} note={doneCount ? `Done (${doneCount}) is on its card above.` : undefined} /> : <p className="py-10 text-center text-sm text-muted">Nothing open{doneCount ? `: all ${doneCount} are done.` : '.'}</p>}
         </Card>
         {ownOnly ? (
           <Card title="You vs team average" description="Your numbers next to the team's average. Nobody else's items are shown." className="lg:col-span-2">
@@ -123,7 +130,7 @@ export default async function OverviewPage({ params, searchParams }: { params: P
           </Card>
         ) : (
           <Card title={`Work per ${noun}`} description="Click a bar to see that person's rows" className="lg:col-span-2">
-            <StackedByPerson rows={people} series={series} itemsHref={itemsHref} />
+            {people.some(r => Object.keys(r).length > 2) ? <StackedByPerson rows={people} series={series} itemsHref={itemsHref} /> : <p className="py-10 text-center text-sm text-muted">No open work with anyone. Done work is in the Work done card above.</p>}
           </Card>
         )}
       </div>

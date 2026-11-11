@@ -16,3 +16,5 @@
 - 2026-11-05T10:11Z | cursor | Handoff: Journey built and role-audited; PR #14 open and green; next merge, Arjun's QA question, Railway
 - 2026-11-05T10:14Z | codex | Handoff: merged Journey PR #14 into development; deployment awaits Railway setup
 - 2026-11-06T07:51Z | claude-code | Handoff: Journey teams, two-level ownership, default SME and peer reviewers built and pushed; next per-role browser check, PR to development, Railway
+- 2026-11-11T11:35Z | claude-code | Handoff: Render test deployment live from development (Postgres + Docker, Singapore), data pushed, db:pull/push added, Docker Prisma CLI fixed; next per-role checks on live app
+- 2026-11-11T12:44Z | claude-code | APK Testing: one version is one work item, Closed status, Work done analytics

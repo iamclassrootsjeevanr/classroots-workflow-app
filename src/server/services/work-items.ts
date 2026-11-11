@@ -14,7 +14,7 @@ import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
-import { versionStatus } from '@/lib/apk-rollup';
+import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
 
 type Tx = Prisma.TransactionClient;
 
@@ -67,7 +67,8 @@ const isApkVersion = (item: { parentId: string | null; workType: { key: string }
  */
 async function rollupVersionTx(tx: Tx, parentId: string, actor: ChangeActor, now: Date, calendar: WorkCalendar) {
   const parent = await loadItem(tx, parentId);
-  if (parent.archivedAt) return;
+  // A closed version stays closed until a person reopens it.
+  if (parent.archivedAt || parent.status === 'closed') return;
   const mod = requireModule(parent.workType.key);
   const results = await tx.workItem.findMany({ where: { parentId, archivedAt: null }, select: { status: true } });
   const to = versionStatus(results.map(r => r.status));
@@ -77,6 +78,40 @@ async function rollupVersionTx(tx: Tx, parentId: string, actor: ChangeActor, now
     data: { itemId: parent.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: parent.status, toValue: to, source: actor.source, note: 'Follows its test results', at: now },
   });
   await rollInterval(tx, parent.id, to, parent.assigneeId, now, withWorkDays(calendar, mod.workDays));
+}
+
+/**
+ * APK Testing: a person closes a version (finished, not tested, or replaced by a newer build), or reopens it.
+ * Reopening puts it back to the status its results give.
+ */
+export async function setVersionClosedTx(tx: Tx, itemId: string, actor: ChangeActor, closed: boolean, now: Date, calendar: WorkCalendar) {
+  const item = await loadItem(tx, itemId);
+  if (!isApkVersion(item)) throw new Error('Only an APK version can be closed.');
+  if (actor.ctx && !(actor.ctx.isAdmin || hasCap(actor.ctx, 'work') || hasCap(actor.ctx, 'assign') || hasCap(actor.ctx, 'manageFields'))) throw new ForbiddenError('You can’t close or reopen APK versions.');
+  const mod = requireModule(item.workType.key);
+  const results = (await tx.workItem.findMany({ where: { parentId: itemId, archivedAt: null }, select: { status: true } })).map(r => r.status);
+  let to: string;
+  if (closed) {
+    if (item.status === 'closed') return;
+    // Closing never waits for the tests: an APK that was not tested, or a build a newer one replaced, can be closed as it is.
+    to = 'closed';
+  } else {
+    if (item.status !== 'closed') return;
+    to = versionStatus(results);
+  }
+  await saveItem(tx, item, stagePatch(mod, item, to, now));
+  await tx.workItemEvent.create({
+    data: { itemId, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: to, source: actor.source, note: closed ? 'Closed' : 'Reopened', at: now },
+  });
+  await rollInterval(tx, itemId, to, item.assigneeId, now, withWorkDays(calendar, mod.workDays));
+}
+
+export async function setVersionClosed(actor: ChangeActor, itemId: string, closed: boolean) {
+  const cal = await workCalendar();
+  return db.$transaction(async tx => {
+    guardActive(await loadItem(tx, itemId), actor);
+    await setVersionClosedTx(tx, itemId, actor, closed, new Date(), cal);
+  });
 }
 
 /** Queue sheet writes for changed columns (latest value wins). Skipped for changes that came from the sheet. */
@@ -690,4 +725,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };
+export const internals = { setVersionClosedTx, ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

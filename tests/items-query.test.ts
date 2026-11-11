@@ -19,7 +19,7 @@ describe('items list filters run in the database', () => {
     const itemsWhere = await load();
     const w = itemsWhere(apkTesting, { scope: 'overdue' }, 'u1', now) as { AND: { dueAt: { lt: Date }; status: { notIn: string[] } }[] };
     expect(w.AND[0].dueAt.lt).toEqual(now);
-    expect(w.AND[0].status.notIn).toEqual(['pass']);
+    expect(w.AND[0].status.notIn).toEqual(['pass', 'closed']);
   });
   it('mine = assigned to or owned by the person; unassigned = no assignee', async () => {
     const itemsWhere = await load();

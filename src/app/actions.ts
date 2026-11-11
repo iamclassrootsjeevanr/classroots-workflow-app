@@ -9,7 +9,7 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setPeerReviewer, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
@@ -55,6 +55,10 @@ async function itemActor(itemId: string): Promise<ChangeActor> {
 
 export async function changeStatusAction(itemId: string, to: string, version?: number, note?: string) {
   return run(async () => changeStatus(await itemActor(itemId), itemId, to, { expectedVersion: version, note }));
+}
+
+export async function setVersionClosedAction(itemId: string, closed: boolean) {
+  return run(async () => setVersionClosed(await itemActor(itemId), itemId, closed));
 }
 
 export async function assignAction(itemId: string, assigneeId: string | null) {

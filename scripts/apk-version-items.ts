@@ -4,6 +4,7 @@
  *
  *   npm run apk:versions            # show what would change
  *   npm run apk:versions -- --apply
+ *   npm run apk:versions -- --apply --close-old   # also close every version except the newest (replaced by a newer build)
  */
 import { versionStatus } from '../src/lib/apk-rollup';
 import { requireModule } from '../src/modules/registry';
@@ -12,6 +13,7 @@ import { internals } from '../src/server/services/work-items';
 import { DEFAULT_CALENDAR } from '../src/lib/time';
 
 const apply = process.argv.includes('--apply');
+const closeOld = process.argv.includes('--close-old');
 const min = (xs: (Date | null)[]) => xs.filter((x): x is Date => Boolean(x)).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 const max = (xs: (Date | null)[]) => xs.filter((x): x is Date => Boolean(x)).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
 
@@ -61,6 +63,24 @@ async function main() {
         },
         { timeout: 60_000 },
       );
+    }
+  }
+  if (apply && closeOld) {
+    for (const wt of types) {
+      const versions = await db.workItem.findMany({ where: { workTypeId: wt.id, parentId: null, archivedAt: null, status: { not: 'closed' } }, select: { id: true, externalKey: true } });
+      const meta = await db.apkVersion.findMany({ where: { workTypeId: wt.id }, select: { key: true, releaseDate: true } });
+      const dateOf = (k: string) => meta.find(m => m.key === k)?.releaseDate?.getTime() ?? 0;
+      const all = await db.workItem.findMany({ where: { workTypeId: wt.id, parentId: null, archivedAt: null }, select: { externalKey: true } });
+      const newest = all.map(v => v.externalKey).sort((a, b) => dateOf(b) - dateOf(a) || b.localeCompare(a, undefined, { numeric: true }))[0];
+      for (const v of versions.filter(v => v.externalKey !== newest)) {
+        try {
+          await db.$transaction(tx => internals.setVersionClosedTx(tx, v.id, { userId: null, ctx: null, source: 'IMPORT' }, true, new Date(), DEFAULT_CALENDAR));
+          console.log(`  closed ${v.externalKey}`);
+        } catch (e) {
+          console.log(`  kept ${v.externalKey} open: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      console.log(`  newest, left open: ${newest}`);
     }
   }
   if (!apply) console.log('\nDry run. Add --apply to write.');

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldSelect, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldSelect, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
@@ -13,6 +13,7 @@ import { canSeeItem } from '@/lib/access-core';
 import { eventWho, lowerLabel } from '@/lib/text';
 import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
 import { correctionsMove } from '@/server/services/work-items';
+import { versionCloseBlocker } from '@/lib/apk-rollup';
 import { hydrateApkData, hydrateVersion } from '@/lib/apk-data';
 import { loadVersionOptions } from '@/server/apk/queries';
 import { APK_INCLUDE } from '@/server/apk/store';
@@ -205,6 +206,9 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <span className="label">Status</span>
             <StatusSelect itemId={item.id} version={item.version} current={{ key: item.status, label: def.label, color: def.color }} options={transitions} />
           </div>
+          {isVersion && editable && (ctx.isAdmin || hasCap(ctx, 'work') || hasCap(ctx, 'assign') || hasCap(ctx, 'manageFields')) && (
+            <CloseVersionButton itemId={item.id} closed={item.status === 'closed'} note={versionCloseBlocker(runs.map(r => r.status))} />
+          )}
           {headerFields.map(f => (
             <div key={f.key} className="min-w-40">
               <span className="label">{f.label}</span>
