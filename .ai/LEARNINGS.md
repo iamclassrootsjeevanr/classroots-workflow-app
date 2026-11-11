@@ -31,3 +31,4 @@
 
 - APK Testing: any new query over WorkItem must choose its level. `loadItems` / `loadLiteItems` / `queryItemsPage` default to work (version items, `parentId: null`); pass `level: 'runs'` for test results or `'groups'` for group summaries. Sheet sync only touches results (`syncedItems`). Version items are app-only: `enqueue` skips them.
 - Hosted DB from this machine: `REMOTE_DATABASE_URL` in `.env` (External URL + `?sslmode=require`) drives `db:pull` (replaces local), `db:push` (`--replace` to overwrite remote), `db:deploy:remote`, `db:studio:remote`. Copies are whole-database, not merges. Render test env: Postgres + Docker web service in Singapore, branch `start-here`.
+- Docker: the Next standalone output lacks the Prisma CLI's dependencies (`effect`, `c12`…), so the Dockerfile installs `prisma` in its own stage (`/prisma-cli`, same version as the lockfile) and runs `migrate deploy` from there.
