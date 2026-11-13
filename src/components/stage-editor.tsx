@@ -33,12 +33,13 @@ const STATE_HELP: Record<StageState, string> = {
 };
 const STATE_TONE: Record<StageState, 'ok' | 'warn' | 'muted'> = { active: 'ok', paused: 'warn', skipped: 'muted' };
 
-export type ActorLabels = { assignee: string; owner: string };
+export type ActorLabels = { assignee: string; owner: string; developer?: string };
 
 function actorOptions(l: ActorLabels): { value: Actor; label: string; help: string }[] {
   return [
     { value: 'ASSIGNEE', label: `The assigned ${l.assignee}`, help: 'Only on items assigned to them' },
     { value: 'OWNER', label: `The item’s ${l.owner}`, help: 'Only on items where they are set, and they need a reviewing role' },
+    ...(l.developer ? [{ value: 'DEVELOPER' as Actor, label: `The item’s ${l.developer}`, help: 'Only on items where they are set' }] : []),
     { value: 'assign', label: 'Coordinators', help: 'Anyone whose role assigns people' },
     { value: 'review', label: 'Any reviewer', help: 'Anyone whose role reviews' },
     { value: 'work', label: 'Anyone who does the work', help: 'On every item, not only their own' },

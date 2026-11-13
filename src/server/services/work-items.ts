@@ -191,6 +191,37 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   await notifyStage(tx, item, mod, actor, landing);
   if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, cal);
+  const hand = mod.developerHandoff;
+  if (hand && landing === hand.after) await handOffToDeveloperTx(tx, item.id, actor, now, cal);
+}
+
+/**
+ * Journey: the review is closed. The journey moves on to the next stage (design standardization) and a developer is assigned to
+ * check it: the one already on it, else the developer with the fewest journeys waiting in that stage.
+ */
+async function handOffToDeveloperTx(tx: Tx, itemId: string, actor: ChangeActor, now: Date, cal: WorkCalendar) {
+  const item = await loadItem(tx, itemId);
+  const mod = requireModule(item.workType.key);
+  const hand = mod.developerHandoff;
+  const next = hand && nextActiveAfter(mod.statuses, hand.after);
+  if (!hand || !next) return;
+  const system = { ...actor, ctx: null };
+  const developerId = item.developerId ?? (await pickDeveloper(tx, item.workTypeId, hand.role, next));
+  if (developerId && developerId !== item.developerId) await setPersonTx(tx, item, system, 'developer', developerId, now);
+  await changeStatusTx(tx, await loadItem(tx, itemId), system, next, now, cal);
+}
+
+/** The person of `role` with the fewest open journeys in `stage` (ties: by name). Null when nobody has the role. */
+async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: string): Promise<string | null> {
+  const people = await tx.user.findMany({
+    where: { active: true, memberships: { some: { workTypeId, roles: { some: { role: { key: role, workTypeId, canEdit: true } } } } } },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  if (!people.length) return null;
+  const load = await tx.workItem.groupBy({ by: ['developerId'], where: { workTypeId, status: stage, archivedAt: null, developerId: { in: people.map(p => p.id) } }, _count: true });
+  const busy = (id: string) => load.find(l => l.developerId === id)?._count ?? 0;
+  return [...people].sort((a, b) => busy(a.id) - busy(b.id) || (a.name ?? '').localeCompare(b.name ?? ''))[0].id;
 }
 
 /**
@@ -285,21 +316,21 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
   });
 }
 
-type PersonSlot = 'owner' | 'peer';
+type PersonSlot = 'owner' | 'peer' | 'developer';
 
-const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : (mod.labels?.peer ?? 'Peer reviewer'));
+const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : slot === 'developer' ? (mod.developerHandoff?.label ?? 'Developer') : (mod.labels?.peer ?? 'Peer reviewer'));
 
 /** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
 async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
   const mod = requireModule(item.workType.key);
   if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
-  const current = slot === 'owner' ? item.ownerId : item.peerReviewerId;
+  const current = slot === 'owner' ? item.ownerId : slot === 'developer' ? item.developerId : item.peerReviewerId;
   if (current === userId) return false;
   const [from, to] = await Promise.all([
     current ? tx.user.findUnique({ where: { id: current }, select: { name: true } }) : null,
     userId ? tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null,
   ]);
-  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : { peerReviewerId: userId });
+  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : slot === 'developer' ? { developerId: userId } : { peerReviewerId: userId });
   const label = slotLabel(mod, slot);
   await tx.workItemEvent.create({
     data: { itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: label, fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
@@ -309,7 +340,7 @@ async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot:
     if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   }
   if (!quiet && userId && userId !== actor.userId && actor.source === 'APP') {
-    await notify(tx, userId, { kind: 'item.owner', title: `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+    await notify(tx, userId, { kind: slot === 'developer' ? 'item.developer' : 'item.owner', title: slot === 'developer' ? `Check design standardization: ${shortKey(item.externalKey)}` : `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
   return true;
 }
@@ -320,6 +351,15 @@ export async function setOwner(actor: ChangeActor, itemId: string, ownerId: stri
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     await setPersonTx(tx, item, actor, 'owner', ownerId, new Date());
+  });
+}
+
+/** Set the item's developer (Journey: who checks design standardization). Same permission as assigning. */
+export async function setDeveloper(actor: ChangeActor, itemId: string, userId: string | null) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    await setPersonTx(tx, item, actor, 'developer', userId, new Date());
   });
 }
 
@@ -725,4 +765,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { setVersionClosedTx, ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };
+export const internals = { handOffToDeveloperTx, setVersionClosedTx, ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

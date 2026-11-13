@@ -22,7 +22,7 @@ import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
 import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
-import { assignableItemsFor, assignablePeople, deletableItemsFor, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
+import { assignableItemsFor, assignablePeople, deletableItemsFor, developerPeople, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
 import { reviewDefaults } from '@/lib/teams';
 import { loadStewards, loadTeams } from '@/server/teams';
 
@@ -58,6 +58,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       assignee: { select: { id: true, name: true } },
       owner: { select: { name: true } },
       peerReviewer: { select: { name: true } },
+      developer: { select: { name: true } },
       chapter: true,
       parent: { select: { id: true, externalKey: true } },
       intervals: { orderBy: { enteredAt: 'asc' }, include: { assignee: { select: { name: true } } } },
@@ -78,6 +79,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const transitions = editable && !isVersion ? statusOptions(mod, item.status, ctx) : [];
   const canAssign = hasCap(ctx, 'assign') && editable;
   const showOwner = !mod.table?.hide?.includes('owner');
+  const hand = mod.developerHandoff;
+  const developers = hand && canAssign ? await developerPeople(key, hand.role) : null;
   const [people, owners] = await Promise.all([
     canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
     canAssign && showOwner ? reviewPeople(key) : null,
@@ -229,6 +232,12 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <div className="min-w-52">
               <span className="label">{mod.labels?.peer ?? 'Peer reviewer'}</span>
               {peers ? <AssignSelect peer none="None" itemId={item.id} assigneeId={item.peerReviewerId} people={peers} label={`Choose ${lowerLabel(mod.labels?.peer ?? 'peer reviewer')}`} /> : <div className="py-1.5 text-sm">{item.peerReviewer?.name ?? '—'}</div>}
+            </div>
+          )}
+          {hand && (
+            <div className="min-w-52">
+              <span className="label">{hand.label}</span>
+              {developers ? <AssignSelect developer none="Nobody yet" itemId={item.id} assigneeId={item.developerId} people={developers} label={`Choose ${hand.label.toLowerCase()}`} /> : <div className="py-1.5 text-sm">{item.developer?.name ?? '—'}</div>}
             </div>
           )}
           {mod.teams && (

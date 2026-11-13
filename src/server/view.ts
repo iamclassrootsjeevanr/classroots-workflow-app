@@ -40,6 +40,16 @@ export function statusOptions(mod: WorkTypeDefinition, status: string, ctx: Acto
     .map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }));
 }
 
+/** People who hold the work type's developer role (Journey: they check design standardization). */
+export async function developerPeople(workTypeKey: string, role: string): Promise<PersonOption[]> {
+  const users = await db.user.findMany({
+    where: { active: true, memberships: { some: { workType: { key: workTypeKey }, roles: { some: { role: { key: role, canEdit: true } } } } } },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: 'asc' },
+  });
+  return users.map(u => ({ id: u.id, name: u.name ?? u.email ?? '?' }));
+}
+
 /** People who may own (review) items in this work type: active, with an editing role that reviews. */
 export async function reviewPeople(workTypeKey: string): Promise<PersonOption[]> {
   const users = await db.user.findMany({

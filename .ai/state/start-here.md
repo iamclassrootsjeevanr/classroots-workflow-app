@@ -1,7 +1,7 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-11T12:44:28Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-13T06:53:54Z · by: claude-code · owner: Jeevan
 
 ## Goal
 APK Testing: one APK version is one work item; test cases are results inside it. Then Journey review per role, Railway deploy.
@@ -15,12 +15,15 @@ APK Testing: one APK version is one work item; test cases are results inside it.
 - Local data: `npm run apk:versions -- --apply --close-old` ran (23 versions, 331 live results; all but the newest closed).
 - `npm run typecheck` clean, `npm test` 199 passing (23 files). Signed-in pages NOT viewed in a browser (agents cannot sign in).
 
+- Journey developer handoff (13 Nov): `WorkItem.developerId` (migration 20261113090000), Developer role, actor 'DEVELOPER', `developerHandoff` on the module: closing a review moves the journey to Design standardization (no longer paused) and assigns the least busy developer. `npm run journey:developers -- --people "Jeevan,Swathi" --apply` (ran locally). Local DB was re-pulled from development (`npm run db:pull`; `copy-db.ts` now copies parents first); old `.pgdata` is in `.pgdata.bak-20261113` (ignored).
+- Restart `next dev` after any `prisma generate` (stale client was the error).
+
 ## In progress
 Nothing mid-edit. Code is not broken.
 
 ## Next steps
 1. Jeevan: look at APK versions, a version page, Overview Work done and All tests in the Browser pane (light/dark, 375px).
-2. Production/staging DB with old APK data: run `npm run apk:versions -- --apply --close-old` after `db:deploy`.
+2. Render/staging DB: `npm run db:deploy`, then `npm run apk:versions -- --apply --close-old` (old APK data) and `npm run journey:developers -- --people "Jeevan,Swathi" --apply`.
 3. Journey: browser check per role (Teams, Chapters, Journeys list, journey page); Railway per docs/DEPLOY.md.
 4. Journey open questions below.
 

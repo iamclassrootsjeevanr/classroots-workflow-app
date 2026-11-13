@@ -29,6 +29,7 @@
     "import:apk": "tsx --env-file=.env scripts/import-apk-xlsx.ts",
     "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts",
     "apk:versions": "tsx --conditions=react-server --env-file=.env scripts/apk-version-items.ts",
+    "journey:developers": "tsx --conditions=react-server --env-file=.env scripts/journey-developers.ts",
     "journey:teams": "tsx --conditions=react-server --env-file=.env scripts/journey-teams.ts"
   },
   "dependencies": {

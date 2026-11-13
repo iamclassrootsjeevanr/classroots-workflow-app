@@ -62,7 +62,7 @@ export type StatusDef = {
  * 'ASSIGNEE' = has the "work" capability and the item is assigned to them.
  * 'OWNER' = has the "review" capability and is the item's owner (e.g. its reviewer). Admins may do anything.
  */
-export type Actor = Capability | 'ASSIGNEE' | 'OWNER';
+export type Actor = Capability | 'ASSIGNEE' | 'OWNER' | 'DEVELOPER';
 
 /** `to` is a status key, or `@next:<key>` = the next active main-line stage after <key>. */
 export type Transition = {
@@ -212,6 +212,12 @@ export type WorkTypeDefinition = {
    * (reviewer), the assignee's buddy is its peer reviewer, and groups have stewards. Adds the Teams page.
    */
   teams?: boolean;
+  /**
+   * A person of `role` is assigned (least busy first) when an item enters the stage after `after`, and the item moves on at once.
+   * Journey: when the review closes, a developer checks design standardization. The slot is `WorkItem.developerId`; the actor
+   * 'DEVELOPER' is the person in it.
+   */
+  developerHandoff?: { after: string; role: string; label: string };
   /** Role keys given to people created from the sheet / import (assignee column, owner column). */
   importRoles?: { assignee: string; owner?: string };
   /** Roles of this work type. Omit to derive them from the flow (who moves statuses, who edits fields). */

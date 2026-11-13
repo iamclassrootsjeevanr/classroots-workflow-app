@@ -83,6 +83,7 @@ model User {
   snapshots     WorkloadSnapshot[]
   createdItems  WorkItem[]         @relation("creator")
   peerItems     WorkItem[]         @relation("peerReviewer")
+  developerItems WorkItem[]        @relation("developer")
   notifications Notification[]
   coordinatedTeams Team[]          @relation("teamCoordinator")
   reviewedTeams    Team[]          @relation("teamReviewer")
@@ -318,6 +319,8 @@ model WorkItem {
   ownerId     String?
   /// Journey: the creator's peer review buddy (default from their team, changed per item by a coordinator).
   peerReviewerId String?
+  /// Journey: the developer who checks design standardization after the review closes (set automatically, changed by a coordinator).
+  developerId    String?
   /// APK Testing: a test result points at the APK version it belongs to. The version is the work; results are hidden from lists and analytics.
   parentId    String?
   chapterId   String?
@@ -355,6 +358,7 @@ model WorkItem {
   owner     User?                   @relation("owner", fields: [ownerId], references: [id], onDelete: SetNull)
   createdBy User?                   @relation("creator", fields: [createdById], references: [id], onDelete: SetNull)
   peerReviewer User?                @relation("peerReviewer", fields: [peerReviewerId], references: [id], onDelete: SetNull)
+  developer User?                   @relation("developer", fields: [developerId], references: [id], onDelete: SetNull)
   chapter   Chapter?                @relation(fields: [chapterId], references: [id], onDelete: SetNull)
   parent    WorkItem?               @relation("runs", fields: [parentId], references: [id], onDelete: Cascade)
   runs      WorkItem[]              @relation("runs")
@@ -372,6 +376,7 @@ model WorkItem {
   @@index([assigneeId, status])
   @@index([ownerId])
   @@index([peerReviewerId])
+  @@index([developerId])
   @@index([parentId])
   @@index([dueAt])
   @@index([completedAt])

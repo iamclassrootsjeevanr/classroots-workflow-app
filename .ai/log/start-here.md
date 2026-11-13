@@ -18,3 +18,4 @@
 - 2026-11-06T07:51Z | claude-code | Handoff: Journey teams, two-level ownership, default SME and peer reviewers built and pushed; next per-role browser check, PR to development, Railway
 - 2026-11-11T11:35Z | claude-code | Handoff: Render test deployment live from development (Postgres + Docker, Singapore), data pushed, db:pull/push added, Docker Prisma CLI fixed; next per-role checks on live app
 - 2026-11-11T12:44Z | claude-code | APK Testing: one version is one work item, Closed status, Work done analytics
+- 2026-11-13T06:53Z | claude-code | Journey developer handoff on review close; db:pull copies parents first

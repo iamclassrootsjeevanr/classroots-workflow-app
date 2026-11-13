@@ -32,7 +32,7 @@ const openable = (types: WorkTypeAccess[]) => new Set(types.filter(t => t.pages.
 async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: WorkTypeAccess[]; tz: string }) {
   const now = new Date();
   const cal = await workCalendar();
-  const mine = await loadItems({ workTypeKeys: keys(types), assigneeId: user.id }, { includePausedTypes: false });
+  const mine = await loadItems({ workTypeKeys: keys(types), involvedId: user.id }, { includePausedTypes: false });
   const mineGroups = types.some(t => getModule(t.workTypeKey)?.groupSummary) ? await loadItems({ workTypeKeys: keys(types), assigneeId: user.id, level: 'groups' }, { includePausedTypes: false }) : [];
   const open = mine.filter(i => i.category !== 'done');
   const [options, edits, deletable, meVsTeam, recent] = await Promise.all([

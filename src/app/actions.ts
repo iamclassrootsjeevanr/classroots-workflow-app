@@ -9,7 +9,7 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
@@ -67,6 +67,10 @@ export async function assignAction(itemId: string, assigneeId: string | null) {
 
 export async function setOwnerAction(itemId: string, ownerId: string | null) {
   return run(async () => setOwner(await itemActor(itemId), itemId, ownerId));
+}
+
+export async function setDeveloperAction(itemId: string, userId: string | null) {
+  return run(async () => setDeveloper(await itemActor(itemId), itemId, userId));
 }
 
 export async function setPeerReviewerAction(itemId: string, userId: string | null) {

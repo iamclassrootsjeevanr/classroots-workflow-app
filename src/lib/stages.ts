@@ -22,7 +22,7 @@ export type StageRow = {
 
 export const NEXT_TO = '@next:';
 /** Who can be allowed to press a stage's button. */
-export const ACTORS: Actor[] = ['ASSIGNEE', 'OWNER', 'work', 'review', 'assign', 'manageFields', 'create'];
+export const ACTORS: Actor[] = ['ASSIGNEE', 'OWNER', 'DEVELOPER', 'work', 'review', 'assign', 'manageFields', 'create'];
 export const STAGE_STATES: StageState[] = ['active', 'paused', 'skipped'];
 export const CATEGORIES: StatusCategory[] = ['queue', 'active', 'review', 'feedback', 'approved', 'done', 'hold'];
 

@@ -71,6 +71,6 @@ describe('journeys list: team filters', () => {
     expect(itemsWhere(journeyApplet, { scope: 'team' }, 'nobody', now, teams)).toEqual({ AND: [{ id: '__none__' }] });
   });
   it('Mine includes the journeys I peer-review', () => {
-    expect(itemsWhere(journeyApplet, { scope: 'mine' }, 'u', now)).toEqual({ AND: [{ OR: [{ assigneeId: 'u' }, { ownerId: 'u' }, { peerReviewerId: 'u' }] }] });
+    expect(itemsWhere(journeyApplet, { scope: 'mine' }, 'u', now)).toEqual({ AND: [{ OR: [{ assigneeId: 'u' }, { ownerId: 'u' }, { peerReviewerId: 'u' }, { developerId: 'u' }] }] });
   });
 });

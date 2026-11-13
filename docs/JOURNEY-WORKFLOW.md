@@ -89,8 +89,8 @@ After the review closes, the Journey follows this line:
 
 ```text
 Closed
-  ↓ Coordinator sends to design standardization
-Design standardization (currently paused)
+  ↓ automatically, when the review closes: a developer is assigned
+Design standardization (the developer checks it)
   ↓ Coordinator marks design done
 Last look after design
   ↓ Creator marks last look done
@@ -159,15 +159,15 @@ Once a Journey is **Closed**, the coordinator moves it through the delivery step
 
 | Stage | Person who advances it | Action / outcome |
 | --- | --- | --- |
-| Closed | Coordinator | **Send to design standardization**. |
-| Design standardization | Coordinator | **Design done** when this currently paused step is enabled. |
+| Closed | (automatic) | Moves on to design standardization at once and a developer is assigned. A coordinator can still press **Send to design standardization** if one is stuck here. |
+| Design standardization | Developer (or Coordinator) | **Design done**. |
 | Last look after design | SME creator | **Last look done**. If design introduced a problem, **Send back to design**. |
 | Video replacement | Coordinator | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`. |
 | UAT → prod migration | Coordinator | Advance after Engineering has migrated it. |
 | Published on prod | Coordinator | Start user testing. |
 | User testing and QA | Coordinator | **Mark done**, or use feedback and **Send back for a fix**. |
 
-**Design standardization is paused** until its process/design document is ready. A Journey sent there waits until an admin or coordinator with the relevant stage settings enables it.
+**Developer:** when a review closes, the journey moves to Design standardization and goes to the developer with the fewest journeys waiting there (Jeevan and Swathi today). The Developer role is given in Admin → People; a coordinator can change the developer on the journey page. The developer sees it in My work.
 
 If QA finds a defect, the coordinator must write feedback and use **Send back for a fix**. The Journey returns to **Changes asked**, so the creator and reviewer use the normal correction and verification loop again.
 
