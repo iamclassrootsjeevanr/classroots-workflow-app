@@ -62,7 +62,7 @@ export function AddChapterForm({ workTypeId, known, stewards, example = 'G04C05'
           <label>
             <span className="label">Steward</span>
             <select className="input" required value={v.stewardId} onChange={e => setV(s => ({ ...s, stewardId: e.target.value }))}>
-              <option value="">Choose a coordinator</option>
+              <option value="">Choose a steward</option>
               {stewards.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}

@@ -175,6 +175,7 @@ All settings live in `.env`. It is git-ignored, so **never commit it**, and don'
 | `SYNC_TOKEN` | for sync | Shared secret between the app and the Apps Script (same value in both). |
 | `CRON_SECRET` | for jobs | Protects `/api/cron/run`. The scheduler and Vercel Cron send it as a Bearer token. |
 | `RELAY_KEY` | for the relay | Bearer key of the journey relay (Claude) for `/api/relay`: read journeys, set Creation stage, nothing else. Empty = off. |
+| `RELAY_URL`, `RELAY_CF_CLIENT_ID`, `RELAY_CF_CLIENT_SECRET` | for relay sync | The live journey relay (MCP endpoint) and its Cloudflare Access service token. All three set = the relay is pulled every scheduler run. |
 | `DEMO_PASSWORD` | local only | Password for `npm run demo:users` accounts. |
 
 ---
@@ -340,6 +341,8 @@ curl -X POST -H "Authorization: Bearer $RELAY_KEY" -H "Content-Type: application
 
 `stage` accepts `3a Spine`, `4 · Build`, `build`, `Published` and the like; `at` (optional) is when it changed on the relay: not in the future, at most 31 days back, and never before the journey's last recorded change. Answers are JSON: the journey, its `creationStage`, `stage` (the line) and `changed`; errors are `{"error": …}` with 400 (bad input), 401 (key), 404 (no such journey) or 409 (Journey paused).
 
+**Live relay sync (pull).** The relay's live ledger (who holds each journey, its stage, its approvals) is pulled into the dashboard; the relay feeds **creation**, the dashboard keeps **review and everything after it**. Set `RELAY_URL` (the relay's `/mcp-sso` endpoint) and `RELAY_CF_CLIENT_ID` / `RELAY_CF_CLIENT_SECRET` (a Cloudflare Access service token an Access admin issues; it must be allowed to call `allocations` and `journey_status`). With all three set, the scheduler (`runJobs`, every 5–10 min) and **Admin → Sheet sync → Journey relay → Sync RELAY now** run `syncRelay` (`src/server/services/relay-sync.ts`): a journey the relay allocates and the dashboard lacks is created (creator matched by email; an email not in People is reported, nobody is assigned); each journey's relay events are stored once per event id (`RelayEvent`, shown on the journey page under **RELAY**); the Creation stage follows the latest approval or step that still counts (a withdrawn approval does not; a stage the dashboard is already past is reported, not lowered); the first stage moves Allocated → Creating. Nothing else is touched. Journey keys also accept the relay's forms (`G07P1C03ST2J1`, a `_slug` suffix). CLI: `npm run relay:sync -- --dry-run` (report only), `-- --key G04C05ST1J1`, `-- --probe` (read-only: prints the shape of `whoami` / `allocations`, no values), `-- --fixture file.json` (recorded replies instead of the live relay). For local testing with a person's login instead of the token pair, set `RELAY_AUTH=sso` and `RELAY_SSO_HOME` (the folder whose `.cloudflared` holds the `cloudflared access login` session; the RELAY seat uses `RELAY/.seat`); it expires, so production uses the service token. The relay's own publish status (`up_for_review`, `corrections_wip`, `ready_for_student`) is shown on the journey's RELAY card and never applied. The older push API above still works for instant updates.
+
 ### Configurable stages (Admin → Work types → Stages)
 
 The module code holds the default stages; an admin can rename them, change colour, kind and time limit, change the button and who may press it, set a stage **Paused** (items arrive and wait, counted as on hold) or **Skipped** (moves jump over it), and **add a stage** after any stage that has a "next" button. Stages with history are skipped, never deleted. Only the changes are stored (`WorkflowStage`, null = code default); `applyStageConfig` in `src/lib/stages.ts` merges them and generates the "next stage" moves, and `getModule` returns the merged definition (refreshed every 10 s and on save, `src/server/stages.ts`). First, last and loop stages are fixed. Work types without `next` buttons (APK Testing) can only be renamed and re-timed.
@@ -444,6 +447,10 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 **Sidebar.** On screens 1024px and wider the sidebar collapses to an icon rail with the button at its top or the `[` key; the state is kept in the `cr_nav` cookie so the next page loads with the same width. Below 1024px the menu is a slide-over drawer (Escape closes it).
 
 ---
+
+### Testing as other people (View as)
+
+An admin can see the app exactly as any active person does, with no password: sign in once as yourself (Google), then use **View as…** in the bar at the top (it turns yellow while you view as someone, with an **Exit** button). It follows that person's roles, dashboards and My work. It is on by default except in production; set `VIEW_AS=on` to allow it on a test server, empty or `off` to switch it off. Only a real admin session can start it (`src/server/view-as.ts`). Anything you change while viewing is saved as that person.
 
 ### Work done by person
 

@@ -99,7 +99,7 @@ export function StatusSelect({
 export type PersonOption = { id: string; name: string; hint?: string };
 
 /** Who works on the item (default), with `owner` who owns it (e.g. its SME reviewer), or with `peer` who peer-reviews it. */
-export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer, developer, label = 'Assign developer', none = 'Unassigned' }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean; owner?: boolean; peer?: boolean; developer?: boolean; label?: string; none?: string }) {
+export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer, developer, color, label = 'Assign developer', none = 'Unassigned' }: { itemId: string; assigneeId: string | null; people: PersonOption[]; compact?: boolean; owner?: boolean; peer?: boolean; developer?: boolean; /** Tint of the select (the developer stage's colour). */ color?: string; label?: string; none?: string }) {
   const { pending, result, exec } = useAction();
   const [next, setNext] = useState<string | null>(null);
   useEffect(() => {
@@ -109,7 +109,8 @@ export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer,
     <div className="min-w-0">
       <select
         aria-label={label}
-        className={`input ${compact ? 'w-auto py-1 text-xs' : ''}`}
+        className={color ? `status-control max-w-full cursor-pointer rounded-md border font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand/30 disabled:cursor-wait disabled:opacity-60 ${compact ? 'px-1.5 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'}` : `input ${compact ? 'w-auto py-1 text-xs' : ''}`}
+        style={color ? ({ '--status': color } as React.CSSProperties) : undefined}
         value={next ?? assigneeId ?? ''}
         disabled={pending}
         onChange={e => {

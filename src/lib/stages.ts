@@ -48,6 +48,17 @@ export function nextActiveAfter(statuses: StatusDef[], key: string): string | un
   return main.slice(i + 1).find(s => s.state !== 'skipped')?.key;
 }
 
+/**
+ * Journey developer handoff: the stage where a developer checks the design (the next one after the review closes) and whether
+ * the developer may be assigned or changed now: only while the journey is in that stage and the stage is active (not paused).
+ */
+export function developerStage(statuses: StatusDef[], hand: { after: string } | undefined, status?: string): { stage?: string; color?: string; paused: boolean; open: boolean } {
+  const stage = hand ? nextActiveAfter(statuses, hand.after) : undefined;
+  const def = statuses.find(s => s.key === stage);
+  const paused = def?.state === 'paused';
+  return { stage, color: def?.color, paused, open: Boolean(stage) && status === stage && !paused };
+}
+
 /** Where a move into `to` lands for this item: stages whose `skipWhen` matches its data are passed on to the next stage. */
 export function landingStage(statuses: StatusDef[], to: string, data: Record<string, unknown>): string {
   let at = to;

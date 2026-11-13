@@ -53,42 +53,42 @@ enum OutboxStatus {
 // ─── People & auth ──────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
+  id                String    @id @default(cuid())
+  name              String?
+  email             String?   @unique
+  emailVerified     DateTime?
+  image             String?
   /// Full access to everything, including People, Roles, Work types and Sync.
-  isAdmin       Boolean   @default(false)
-  active        Boolean   @default(true)
+  isAdmin           Boolean   @default(false)
+  active            Boolean   @default(true)
   /// Concurrent items this person can comfortably carry (workload level = open / capacity).
-  capacity      Int       @default(3)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
+  capacity          Int       @default(3)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
   /// scrypt hash for email + password sign-in (null = Google sign-in only)
   passwordHash      String?
   passwordUpdatedAt DateTime?
   /// UI preferences (theme, text size, density) – see src/lib/prefs.ts
   prefs             Json      @default("{}")
 
-  accounts      Account[]
-  sessions      Session[]
-  memberships   WorkTypeMember[]
-  assignedItems WorkItem[]         @relation("assignee")
-  ownedItems    WorkItem[]         @relation("owner")
-  events        WorkItemEvent[]
-  feedback      Feedback[]
-  intervals     WorkItemStageInterval[]
-  snapshots     WorkloadSnapshot[]
-  createdItems  WorkItem[]         @relation("creator")
-  peerItems     WorkItem[]         @relation("peerReviewer")
-  developerItems WorkItem[]        @relation("developer")
-  notifications Notification[]
-  coordinatedTeams Team[]          @relation("teamCoordinator")
-  reviewedTeams    Team[]          @relation("teamReviewer")
-  teamMemberships  TeamMember[]    @relation("teamMember")
-  peerOf           TeamMember[]    @relation("teamPeer")
+  accounts         Account[]
+  sessions         Session[]
+  memberships      WorkTypeMember[]
+  assignedItems    WorkItem[]              @relation("assignee")
+  ownedItems       WorkItem[]              @relation("owner")
+  events           WorkItemEvent[]
+  feedback         Feedback[]
+  intervals        WorkItemStageInterval[]
+  snapshots        WorkloadSnapshot[]
+  createdItems     WorkItem[]              @relation("creator")
+  peerItems        WorkItem[]              @relation("peerReviewer")
+  developerItems   WorkItem[]              @relation("developer")
+  notifications    Notification[]
+  coordinatedTeams Team[]                  @relation("teamCoordinator")
+  reviewedTeams    Team[]                  @relation("teamReviewer")
+  teamMemberships  TeamMember[]            @relation("teamMember")
+  peerOf           TeamMember[]            @relation("teamPeer")
 
   @@index([isAdmin, active])
 }
@@ -132,27 +132,28 @@ model VerificationToken {
 // ─── Work types (pluggable modules) ─────────────────────────────
 
 model WorkType {
-  id          String        @id @default(cuid())
+  relaySync   RelaySyncState?
+  id          String          @id @default(cuid())
   /// Matches a module key in src/modules/registry.ts
-  key         String        @unique
+  key         String          @unique
   name        String
   description String?
-  state       WorkTypeState @default(ACTIVE)
+  state       WorkTypeState   @default(ACTIVE)
   /// { sync: { enabled, tab } , ... }
-  config      Json          @default("{}")
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  config      Json            @default("{}")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
   pausedAt    DateTime?
   archivedAt  DateTime?
 
-  members   WorkTypeMember[]
-  teams     Team[]
-  roles     AccessRole[]
-  apkVersions  ApkVersion[]
-  apkCases     ApkTestCase[]
-  items     WorkItem[]
-  syncState SyncState?
-  stages    WorkflowStage[]
+  members     WorkTypeMember[]
+  teams       Team[]
+  roles       AccessRole[]
+  apkVersions ApkVersion[]
+  apkCases    ApkTestCase[]
+  items       WorkItem[]
+  syncState   SyncState?
+  stages      WorkflowStage[]
 }
 
 /// An admin's changes to one stage of a work type's flow. Built-in stages come from the module definition and only get a
@@ -186,52 +187,52 @@ model WorkflowStage {
 
 /// Admin-managed role: a named set of capabilities, given to people per work type.
 model AccessRole {
-  id              String   @id @default(cuid())
+  id              String               @id @default(cuid())
   /// The work type whose flow this role belongs to. A work type has many roles; a role belongs to one work type.
   workTypeId      String
   key             String
   name            String
   description     String?
-  color           String   @default("#1976d2")
+  color           String               @default("#1976d2")
   /// Seeded roles can be edited but not deleted.
-  isSystem        Boolean  @default(false)
+  isSystem        Boolean              @default(false)
   /// Can be assigned work, start, submit and re-submit it.
-  capWork         Boolean  @default(false)
+  capWork         Boolean              @default(false)
   /// Can approve, request corrections and give feedback.
-  capReview       Boolean  @default(false)
+  capReview       Boolean              @default(false)
   /// Can assign or reassign people.
-  capAssign       Boolean  @default(false)
+  capAssign       Boolean              @default(false)
   /// Can add new items.
-  capCreate       Boolean  @default(false)
+  capCreate       Boolean              @default(false)
   /// Can edit owner-side fields (due date, SME details).
-  capManageFields Boolean  @default(false)
+  capManageFields Boolean              @default(false)
   /// Which items people with this role see; a person with several roles gets the widest.
-  dataScope       DataScope @default(OWN)
+  dataScope       DataScope            @default(OWN)
   /// False = view only. A person can edit if any of their roles can.
-  canEdit         Boolean  @default(true)
-  pageDashboard   Boolean  @default(true)
-  pageItems       Boolean  @default(true)
-  pageReports     Boolean  @default(false)
-  pageExport      Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  canEdit         Boolean              @default(true)
+  pageDashboard   Boolean              @default(true)
+  pageItems       Boolean              @default(true)
+  pageReports     Boolean              @default(false)
+  pageExport      Boolean              @default(false)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
   members         WorkTypeMemberRole[]
-  workType        WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  workType        WorkType             @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
 
   @@unique([workTypeId, key])
 }
 
 /// A person's access to one work type = the roles they hold there. Data scope, edit right and pages come from the roles.
 model WorkTypeMember {
-  workTypeId    String
-  userId        String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  workType      WorkType  @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roles         WorkTypeMemberRole[]
+  workTypeId String
+  userId     String
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  workType   WorkType             @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles      WorkTypeMemberRole[]
   /// Groups (Journey: chapter codes) where their assign / add / edit-details rights apply. Empty = every group.
-  groupKeys     String[]  @default([])
+  groupKeys  String[]             @default([])
 
   @@id([workTypeId, userId])
   @@index([userId])
@@ -253,17 +254,17 @@ model WorkTypeMemberRole {
 /// A coordinator's team in one work type (Journey). The coordinator owns the completion of every item assigned to a member,
 /// wherever it was allocated, and reviews it by default.
 model Team {
-  id            String   @id @default(cuid())
+  id            String       @id @default(cuid())
   workTypeId    String
   name          String
   coordinatorId String
   /// Default reviewer (item owner) for the members' items. Null = the coordinator.
   reviewerId    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  workType      WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
-  coordinator   User     @relation("teamCoordinator", fields: [coordinatorId], references: [id], onDelete: Cascade)
-  reviewer      User?    @relation("teamReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workType      WorkType     @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  coordinator   User         @relation("teamCoordinator", fields: [coordinatorId], references: [id], onDelete: Cascade)
+  reviewer      User?        @relation("teamReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   members       TeamMember[]
 
   @@unique([workTypeId, name])
@@ -289,9 +290,9 @@ model TeamMember {
 // ─── Reference data ─────────────────────────────────────────────
 
 model Chapter {
-  id                 String    @id @default(cuid())
+  id                 String     @id @default(cuid())
   /// e.g. G04C01
-  code               String    @unique
+  code               String     @unique
   grade              Int?
   book               String?
   part               String?
@@ -307,27 +308,27 @@ model Chapter {
 // ─── Work items & history ───────────────────────────────────────
 
 model WorkItem {
-  id          String   @id @default(cuid())
-  workTypeId  String
+  id             String    @id @default(cuid())
+  workTypeId     String
   /// Business key, e.g. GxxCxxJxx – unique within a work type, used for sheet sync.
-  externalKey String
-  title       String
+  externalKey    String
+  title          String
   /// Module-defined status key (see the module definition).
-  status      String
-  assigneeId  String?
-  createdById String?
-  ownerId     String?
+  status         String
+  assigneeId     String?
+  createdById    String?
+  ownerId        String?
   /// Journey: the creator's peer review buddy (default from their team, changed per item by a coordinator).
   peerReviewerId String?
   /// Journey: the developer who checks design standardization after the review closes (set automatically, changed by a coordinator).
   developerId    String?
   /// APK Testing: a test result points at the APK version it belongs to. The version is the work; results are hidden from lists and analytics.
-  parentId    String?
-  chapterId   String?
+  parentId       String?
+  chapterId      String?
   /// Grouping key for lists (e.g. G07C04).
-  groupKey    String?
-  sortOrder   Int      @default(0)
-  dueAt       DateTime?
+  groupKey       String?
+  sortOrder      Int       @default(0)
+  dueAt          DateTime?
 
   // Stage timestamps (denormalized from events for fast lists/analytics)
   receivedAt      DateTime  @default(now())
@@ -344,30 +345,31 @@ model WorkItem {
   reopenCount   Int @default(0)
 
   /// Module-specific fields (validated by the module's zod schema).
-  data          Json     @default("{}")
+  data          Json      @default("{}")
   /// Last values seen in the sheet, by sheet column – base for the 3-way sync diff.
   sheetSnapshot Json?
-  sheetMissing  Boolean  @default(false)
-  version       Int      @default(1)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  sheetMissing  Boolean   @default(false)
+  version       Int       @default(1)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
   archivedAt    DateTime?
 
-  workType  WorkType                @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
-  assignee  User?                   @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  owner     User?                   @relation("owner", fields: [ownerId], references: [id], onDelete: SetNull)
-  createdBy User?                   @relation("creator", fields: [createdById], references: [id], onDelete: SetNull)
-  peerReviewer User?                @relation("peerReviewer", fields: [peerReviewerId], references: [id], onDelete: SetNull)
-  developer User?                   @relation("developer", fields: [developerId], references: [id], onDelete: SetNull)
-  chapter   Chapter?                @relation(fields: [chapterId], references: [id], onDelete: SetNull)
-  parent    WorkItem?               @relation("runs", fields: [parentId], references: [id], onDelete: Cascade)
-  runs      WorkItem[]              @relation("runs")
-  events    WorkItemEvent[]
-  intervals WorkItemStageInterval[]
-  feedback  Feedback[]
-  outbox    SyncOutbox[]
+  workType     WorkType                @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  assignee     User?                   @relation("assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  owner        User?                   @relation("owner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy    User?                   @relation("creator", fields: [createdById], references: [id], onDelete: SetNull)
+  peerReviewer User?                   @relation("peerReviewer", fields: [peerReviewerId], references: [id], onDelete: SetNull)
+  developer    User?                   @relation("developer", fields: [developerId], references: [id], onDelete: SetNull)
+  chapter      Chapter?                @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+  parent       WorkItem?               @relation("runs", fields: [parentId], references: [id], onDelete: Cascade)
+  runs         WorkItem[]              @relation("runs")
+  events       WorkItemEvent[]
+  relayEvents  RelayEvent[]
+  intervals    WorkItemStageInterval[]
+  feedback     Feedback[]
+  outbox       SyncOutbox[]
   /// APK Testing only: which version and test case this row is a run of.
-  apkTest   ApkTest?
+  apkTest      ApkTest?
 
   @@unique([workTypeId, externalKey])
   @@index([workTypeId, status])
@@ -586,4 +588,41 @@ model ApkTest {
 
   @@unique([versionId, testCaseId])
   @@index([testCaseId])
+}
+
+// ─── Journey relay (buildjourneyrelay) ───────────────────────────
+
+/// One step / approval / baseline / reopen the relay recorded for a journey (its append-only ledger), stored once per `eventId`.
+model RelayEvent {
+  id          String   @id @default(cuid())
+  itemId      String
+  /// The relay's stable sha256 id; makes re-syncing idempotent. A chapter or scope approval appears under every journey beneath it, so unique per journey.
+  eventId     String
+  /// step | approval | baseline | reopen
+  kind        String
+  /// 0 | 3a | 3b | 4 | 5
+  stage       String?
+  version     Int?
+  what        String?
+  /// e.g. human-approve-05 (spine).
+  approval    String?
+  approver    String?
+  fingerprint String?
+  at          DateTime
+  withdrawn   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  item        WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, eventId])
+  @@index([itemId, at])
+}
+
+/// Last run of the relay sync per work type (shown in Admin → Sync).
+model RelaySyncState {
+  workTypeId String   @id
+  lastRunAt  DateTime
+  ok         Boolean
+  /// Counts and problems of the last run.
+  report     Json
+  workType   WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
 }

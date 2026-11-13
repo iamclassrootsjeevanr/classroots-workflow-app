@@ -66,7 +66,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
             </nav>
             {canAdd && <AddChapterForm workTypeId={wt.id} known={chapters.known} stewards={access.isAdmin ? chapters.coordinators : undefined} example={mod.keyExample?.slice(0, 6)} />}
           </div>
-          <Card title={mine ? `My ${groupLabel.toLowerCase()}s` : `${groupLabel}s and their stewards`} description={`The steward owns the ${groupLabel.toLowerCase()}: every ${mod.itemNoun} in it is theirs to see through. A ${mod.itemNoun} given to another team’s creator is owned by that team’s coordinator.`} className="mb-5">
+          <Card title={mine ? `My ${groupLabel.toLowerCase()}s` : `${groupLabel}s and their stewards`} description={`The steward owns the ${groupLabel.toLowerCase()}: every ${mod.itemNoun} in it is theirs to see through. A ${mod.itemNoun} given to another team’s creator is owned by that team’s steward.`} className="mb-5">
             {rows.length ? (
               <Sheet maxHeight="50vh">
                 <table className="sheet">

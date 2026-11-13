@@ -57,7 +57,7 @@ export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, 
       title={team.name}
       description={
         <>
-          Coordinator <b className="text-ink">{team.coordinatorName}</b> owns every {labels.noun} of this team, in any chapter.
+          Steward <b className="text-ink">{team.coordinatorName}</b> owns every {labels.noun} of this team, in any chapter.
         </>
       }
       actions={
@@ -208,9 +208,9 @@ export function TeamForm({ workTypeId, team, coordinators, onDone }: { workTypeI
         <input className="input" required value={name} onChange={e => setName(e.target.value)} placeholder="Team Arjun" />
       </label>
       <label className="min-w-52 flex-1 sm:flex-none">
-        <span className="label">Coordinator</span>
+        <span className="label">Steward</span>
         <select className="input" required value={coordinatorId} onChange={e => setCoordinatorId(e.target.value)}>
-          <option value="">Choose a coordinator</option>
+          <option value="">Choose a steward</option>
           {coordinators.map(c => (
             <option key={c.id} value={c.id}>
               {c.name}

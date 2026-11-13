@@ -50,7 +50,7 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        A {labels.noun} belongs to the coordinator of its {labels.creator.toLowerCase()}&rsquo;s team, whoever allocated it and in whichever chapter. That coordinator is its default {labels.reviewer.toLowerCase()}; the
+        A {labels.noun} belongs to the steward of its {labels.creator.toLowerCase()}&rsquo;s team, whoever allocated it and in whichever chapter. That steward is its default {labels.reviewer.toLowerCase()}; the
         creator&rsquo;s buddy is its {labels.peer.toLowerCase()}. Both can be changed here for the team, or on one {labels.noun}.
       </p>
       {access.isAdmin && editable && (

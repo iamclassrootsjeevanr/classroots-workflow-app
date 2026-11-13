@@ -7,6 +7,7 @@ import {
   enableModuleAction,
   setWorkTypeStateAction,
   syncNowAction,
+  syncRelayAction,
   updateSyncAction,
   type ActionResult,
 } from '@/app/actions';
@@ -231,6 +232,22 @@ export function SyncNowButton({ id, disabled }: { id: string; disabled?: boolean
     <div className="flex flex-wrap items-center gap-3">
       <button className="btn-primary" disabled={pending || disabled} onClick={() => exec(() => syncNowAction(id))}>
         {pending ? 'Syncing…' : 'Sync now'}
+      </button>
+      <ActionMessage result={result} />
+    </div>
+  );
+}
+
+/** Admin: pull the journey relay now, or see what a pull would change first. */
+export function SyncRelayButtons({ disabled }: { disabled?: boolean }) {
+  const { pending, result, exec } = useAction();
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button className="btn-primary" disabled={pending || disabled} onClick={() => exec(() => syncRelayAction(false))}>
+        {pending ? 'Syncing…' : 'Sync RELAY now'}
+      </button>
+      <button className="btn-ghost" disabled={pending || disabled} onClick={() => exec(() => syncRelayAction(true))}>
+        Dry run
       </button>
       <ActionMessage result={result} />
     </div>

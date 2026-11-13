@@ -3,7 +3,7 @@
 import { Bell, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { NavGlyph, type NavIcon } from './icons';
 import { activeChild } from '@/app/(app)/nav-link';
 
@@ -74,14 +74,14 @@ export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups:
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-2 text-sm">
             {groups.map((g, i) => (
-              <div key={i}>
+              <div key={`${g.title ?? 'group'}-${i}`}>
                 {g.title && <div className="px-2 pt-4 pb-1 text-2xs font-semibold tracking-wide text-muted uppercase">{g.title}</div>}
                 {g.links.map(l => {
                   const active = isActive(l.href, l.exact);
                   const kids = l.children ?? [];
                   const current = active && kids.length ? activeChild(path, l.href, kids) : undefined;
                   return (
-                    <div key={l.href}>
+                    <div key={`${i}-${l.href}`}>
                       <Link
                         href={l.href}
                         aria-current={active && !kids.length ? 'page' : undefined}
@@ -125,7 +125,7 @@ export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups:
                 <span className="block text-2xs text-muted">My account</span>
               </span>
             </Link>
-            {signOut}
+            <Fragment key="sign-out">{signOut}</Fragment>
           </div>
         </nav>
       </div>

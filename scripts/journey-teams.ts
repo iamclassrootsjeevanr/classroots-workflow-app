@@ -19,7 +19,7 @@ const at = (name: string) => `${name}@classrootsedu.com`;
 /** Coordinator = default SME reviewer. Buddies peer-review each other. */
 const TEAMS: { name: string; coordinator: string; buddies: [string, string][] }[] = [
   { name: 'Team Arjun', coordinator: at('arjun'), buddies: [[at('kapil'), at('animesh')], [at('preethi'), at('supriya')]] },
-  { name: 'Team Devjyoti', coordinator: at('devjyoti'), buddies: [[at('vaishali'), at('divyanshu')], [at('krishna'), at('manasa')]] },
+  { name: 'Team Devjyoti', coordinator: at('devjyoti'), buddies: [[at('vaishali'), at('divyanshu')], [at('krishna.rander'), at('manasa')]] },
 ];
 
 async function main() {

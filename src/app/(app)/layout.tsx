@@ -9,6 +9,8 @@ import { getAccess } from '@/server/access';
 import { signOut } from '@/server/auth';
 import { requireUser } from '@/server/rbac';
 import { InboxMenu } from '@/components/inbox';
+import { ExitViewAs, ViewAsPicker } from '@/components/view-as';
+import { viewAsPeople } from '@/server/view-as';
 import { unreadCount } from '@/server/services/notifications';
 import { AccountLink, NavGroupLink, NavLink } from './nav-link';
 import { getModule } from '@/modules/registry';
@@ -25,6 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const hasDashboard = workTypesWith(access, 'dashboard').length > 0;
   const hasReports = workTypesWith(access, 'reports').length > 0;
   const unread = await unreadCount(user.id);
+  const viewAs = user.canViewAs ? await viewAsPeople() : null;
   const roleNames = [...new Set([...access.byKey.values()].flatMap(a => a.roles.map(r => r.name)))];
   const subtitle = user.isAdmin ? 'Admin' : roleNames.join(' · ') || 'No access yet';
 
@@ -123,13 +126,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </Sidebar>
 
       <div className="min-w-0 flex-1">
+        {viewAs && (
+          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-1.5 text-xs sm:px-6 ${user.viewAsBy ? 'border-warn/30 bg-warn-soft text-ink' : 'border-line bg-surface-2/60 text-muted'}`}>
+            {user.viewAsBy ? (
+              <>
+                <span>
+                  Viewing as <b>{user.name ?? user.email}</b> ({subtitle}). You are signed in as {user.viewAsBy}.
+                </span>
+                <ViewAsPicker people={viewAs} currentId={user.id} />
+                <ExitViewAs />
+              </>
+            ) : (
+              <>
+                <span>Admin testing:</span>
+                <ViewAsPicker people={viewAs} />
+              </>
+            )}
+          </div>
+        )}
         <MobileNav
           groups={groups}
           name={user.name ?? user.email ?? ''}
           unread={unread}
           subtitle={subtitle}
           signOut={
-            <form action={signOutAction}>
+            <form key="sign-out" action={signOutAction}>
               <button className="mt-2 flex min-h-10 w-full items-center rounded-lg px-3 text-left text-xs text-muted hover:bg-surface-2 hover:text-ink">Sign out</button>
             </form>
           }

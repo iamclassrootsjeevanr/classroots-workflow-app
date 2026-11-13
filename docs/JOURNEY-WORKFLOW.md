@@ -22,7 +22,7 @@ Journeys are grouped by chapter. All Journey roles can see every Journey, but a 
 | --- | --- | --- |
 | **SME creator** | Builds the Journey with Claude, submits it, makes corrections, and does the last look after design. | Only Journeys assigned to them as SME creator. |
 | **SME reviewer** | Reviews the Journey, gives feedback, verifies corrections, and closes the review. By default this is the coordinator of the creator's team. | Only Journeys assigned to them as SME reviewer. |
-| **Coordinator** | Steward of their chapters and owner of their team's Journeys: adds chapters and Journeys, allocates, sets pick-up dates, maintains details, and drives the post-review steps. | Journeys in chapters they steer, and every Journey of their team's creators in any chapter. Elsewhere they can only view. |
+| **Steward** | Coordinator of their chapters and owner of their team's Journeys: adds chapters and Journeys, allocates, sets pick-up dates, maintains details, and drives the post-review steps. | Journeys in chapters they steer, and every Journey of their team's creators in any chapter. Elsewhere they can only view. |
 | **Program manager** | Watches delivery through dashboards, Journey lists, reports, and exports. | View only. |
 | **Admin** | Maintains the system and resolves exceptions. | Any Journey and any stage. |
 
@@ -33,9 +33,9 @@ One person may hold more than one role. For example, a coordinator who is also t
 Ownership has two levels:
 
 1. **Chapter**: each chapter has a **steward**, the coordinator responsible for completing all its Journeys. The **Chapters** tab lists every chapter with its steward; **My chapters** shows only yours. A coordinator adds a chapter with **+ New chapter** and can remove one that has no Journeys.
-2. **Journey**: a Journey belongs to the coordinator of its creator's team, whoever allocated it and in whichever chapter. If Devjyoti allocates a Journey in her chapter to a creator from Team Arjun, Arjun owns its completion. The list and the Journey page show this person as **Owner**.
+2. **Journey**: a Journey belongs to the coordinator of its creator's team, whoever allocated it and in whichever chapter. If Devjyoti allocates a Journey in her chapter to a creator from Team Arjun, Arjun owns its completion. The list and the Journey page show this person as **Steward**.
 
-| Team | Coordinator (default SME reviewer) | Peer review buddies |
+| Team | Steward (default SME reviewer) | Peer review buddies |
 | --- | --- | --- |
 | Team Arjun | Arjun | Kapil ↔ Animesh, Preethi ↔ Supriya |
 | Team Devjyoti | Devjyoti | Vaishali ↔ Divyanshu, Krishna ↔ Manasa |
@@ -64,7 +64,7 @@ Do not infer one from the other. A creator may submit a Journey for review while
 ## Full workflow
 
 ```text
-Coordinator creates and assigns the Journey
+Steward creates and assigns the Journey
                     ↓
 Allocated ── Creator starts ──→ In creation
                                   │
@@ -91,18 +91,19 @@ After the review closes, the Journey follows this line:
 Closed
   ↓ automatically, when the review closes: a developer is assigned
 Design standardization (the developer checks it)
-  ↓ Coordinator marks design done
+  ↓ Developer fixes and marks design done
 Last look after design
+  ├─ Creator sends back with feedback → Design standardization (developer fixes, marks design done again)
   ↓ Creator marks last look done
 Video replacement (skipped when not needed)
-  ↓ Coordinator marks videos replaced
+  ↓ Steward marks videos replaced
 UAT → prod migration
-  ↓ Coordinator marks migrated to prod
+  ↓ Steward marks migrated to prod
 Published on prod
-  ↓ Coordinator starts user testing
+  ↓ Steward starts user testing
 User testing and QA
-  ├─ Coordinator marks done → Done
-  └─ Coordinator sends back for a fix → Changes asked
+  ├─ Steward marks done → Done
+  └─ Steward sends back for a fix → Changes asked
 ```
 
 ## Step-by-step instructions
@@ -160,14 +161,14 @@ Once a Journey is **Closed**, the coordinator moves it through the delivery step
 | Stage | Person who advances it | Action / outcome |
 | --- | --- | --- |
 | Closed | (automatic) | Moves on to design standardization at once and a developer is assigned. A coordinator can still press **Send to design standardization** if one is stuck here. |
-| Design standardization | Developer (or Coordinator) | **Design done**. |
-| Last look after design | SME creator | **Last look done**. If design introduced a problem, **Send back to design**. |
-| Video replacement | Coordinator | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`. |
-| UAT → prod migration | Coordinator | Advance after Engineering has migrated it. |
-| Published on prod | Coordinator | Start user testing. |
-| User testing and QA | Coordinator | **Mark done**, or use feedback and **Send back for a fix**. |
+| Design standardization | Developer (or Steward) | The developer checks and fixes the design, then presses **Design done**. |
+| Last look after design | SME creator | **Last look done**. If something is wrong, write feedback and **Send back to design**: the developer gets the feedback, fixes it and presses **Design done** again. Repeats until the creator is happy. |
+| Video replacement | Steward | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`. |
+| UAT → prod migration | Steward | Advance after Engineering has migrated it. |
+| Published on prod | Steward | Start user testing. |
+| User testing and QA | Steward | **Mark done**, or use feedback and **Send back for a fix**. |
 
-**Developer:** when a review closes, the journey moves to Design standardization and goes to the developer with the fewest journeys waiting there (Jeevan and Swathi today). The Developer role is given in Admin → People; a coordinator can change the developer on the journey page. The developer sees it in My work.
+**Developer:** when a review closes, the journey moves to Design standardization and goes to the developer with the fewest journeys waiting there (Jeevan and Swathi today). The Developer role is given in Admin → People; the coordinator or the journey's own SME creator can change the developer on the journey page (the list shows how many journeys each developer is checking) and in the Developer column of the Journeys list. The developer can be set or changed only while the journey is in Design standardization. If that stage is paused in Admin → Work types → Stages, journeys wait there with no developer; assign one once the stage is active again. The developer sees it in My work.
 
 If QA finds a defect, the coordinator must write feedback and use **Send back for a fix**. The Journey returns to **Changes asked**, so the creator and reviewer use the normal correction and verification loop again.
 
@@ -187,10 +188,10 @@ If QA finds a defect, the coordinator must write feedback and use **Send back fo
 | --- | --- |
 | SME creator | Their own creation stage and Journey links (CMS, AI Tutor). |
 | SME reviewer | The assigned Journey's review date and Journey links. |
-| Coordinator | In their chapters and on their team's Journeys: creator, SME reviewer, peer reviewer, pick-up date and half, creation stage, review date, links and `Needs video replacement`. Not the submitted date. |
+| Steward | In their chapters and on their team's Journeys: creator, SME reviewer, peer reviewer, pick-up date and half, creation stage, review date, links and `Needs video replacement`. Not the submitted date. |
 | Program manager | Nothing. |
 
-Coordinators can add and delete Journeys in their own chapters. Creators and reviewers cannot create, allocate, or delete Journeys.
+Stewards can add and delete Journeys in their own chapters. Creators and reviewers cannot create, allocate, or delete Journeys.
 
 ## Everyday checklist
 
@@ -210,7 +211,7 @@ Coordinators can add and delete Journeys in their own chapters. Creators and rev
 3. Close the review, or leave clear feedback and press **Ask for changes**.
 4. Verify corrections and either close the review or request another change round.
 
-### Coordinator
+### Steward
 
 1. Create each Journey in the correct chapter, assign its creator, and set its pick-up date.
 1. Keep your team, its default SME reviewer and the peer reviewers up to date on the **Teams** tab.

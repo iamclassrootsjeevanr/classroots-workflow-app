@@ -23,6 +23,16 @@ const schema = z.object({
   CRON_SECRET: z.string().optional(),
   /** Key the journey relay (Claude) sends to /api/relay: it can only read journeys and set their Creation stage. */
   RELAY_KEY: z.string().optional(),
+  /** The live journey relay (buildjourneyrelay): MCP endpoint and a Cloudflare Access service token. All three set = relay sync is on. */
+  RELAY_URL: z.string().optional(),
+  RELAY_CF_CLIENT_ID: z.string().optional(),
+  RELAY_CF_CLIENT_SECRET: z.string().optional(),
+  /** `sso` = use a person's Cloudflare Access login (`cloudflared access token`; local testing, expires). Default: the service token. */
+  RELAY_AUTH: z.string().optional(),
+  /** SSO only: the HOME that holds the `.cloudflared` login (the RELAY seat's `.seat` folder). */
+  RELAY_SSO_HOME: z.string().optional(),
+  /** "on" lets admins view the app as any person (Admin testing). Default: on everywhere except production. */
+  VIEW_AS: z.string().optional(),
   NODE_ENV: z.string().default('development'),
 });
 
@@ -36,5 +46,6 @@ export function env(): Env {
   return cached;
 }
 
+export const viewAsEnabled = () => (env().VIEW_AS ? env().VIEW_AS === 'on' : env().NODE_ENV !== 'production');
 export const googleEnabled = () => Boolean(env().AUTH_GOOGLE_ID && env().AUTH_GOOGLE_SECRET);
 export const emailEnabled = () => Boolean(env().EMAIL_SERVER);

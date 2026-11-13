@@ -3,7 +3,7 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
-import { landingStage, nextActiveAfter } from '@/lib/stages';
+import { developerStage, landingStage, nextActiveAfter } from '@/lib/stages';
 import { lowerLabel, matchOption } from '@/lib/text';
 import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
@@ -206,7 +206,8 @@ async function handOffToDeveloperTx(tx: Tx, itemId: string, actor: ChangeActor, 
   const next = hand && nextActiveAfter(mod.statuses, hand.after);
   if (!hand || !next) return;
   const system = { ...actor, ctx: null };
-  const developerId = item.developerId ?? (await pickDeveloper(tx, item.workTypeId, hand.role, next));
+  // A paused design standardization stage only collects journeys: nobody is assigned until it is active again.
+  const developerId = item.developerId ?? (!developerStage(mod.statuses, hand).paused ? await pickDeveloper(tx, item.workTypeId, hand.role, next) : null);
   if (developerId && developerId !== item.developerId) await setPersonTx(tx, item, system, 'developer', developerId, now);
   await changeStatusTx(tx, await loadItem(tx, itemId), system, next, now, cal);
 }
@@ -245,6 +246,16 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   }
   if (mod.notifyOn.approved && marks.includes('approved') && item.assigneeId && item.assigneeId !== actor.userId) {
     await notify(tx, item.assigneeId, { kind: 'item.approved', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  // Design loop: Design done goes to the creator for the last look; sent back with feedback goes to the developer.
+  const hand = mod.developerHandoff;
+  const design = hand && nextActiveAfter(mod.statuses, hand.after);
+  const look = design && nextActiveAfter(mod.statuses, design);
+  if (look && to === look && item.assigneeId && item.assigneeId !== actor.userId) {
+    await notify(tx, item.assigneeId, { kind: 'item.last-look', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  if (design && to === design && item.developerId && item.developerId !== actor.userId && item.status === look) {
+    await notify(tx, item.developerId, { kind: 'item.developer', title: `Sent back to design: ${shortKey(item.externalKey)}`, body: item.title, href });
   }
 }
 
@@ -323,7 +334,13 @@ const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owne
 /** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
 async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
   const mod = requireModule(item.workType.key);
-  if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
+  // The developer can also be changed by the item's own creator (assignee); owner and peer reviewer stay with coordinators.
+  const may = actor.ctx && (hasCap(actor.ctx, 'assign') || (slot === 'developer' && actor.ctx.isAssignee && hasCap(actor.ctx, 'work')));
+  if (actor.ctx && !may) throw new ForbiddenError(slot === 'developer' ? 'Only the steward or the SME creator can change the developer.' : 'You don’t have permission to assign work here.');
+  // The developer is only assigned or changed while the journey is in the design standardization stage (and it is not paused).
+  if (slot === 'developer' && actor.ctx && !developerStage(mod.statuses, mod.developerHandoff, item.status).open) {
+    throw new ForbiddenError('The developer can be set only while the journey is in design standardization.');
+  }
   const current = slot === 'owner' ? item.ownerId : slot === 'developer' ? item.developerId : item.peerReviewerId;
   if (current === userId) return false;
   const [from, to] = await Promise.all([
@@ -611,8 +628,11 @@ export async function addFeedback(
     await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
-    if (item.assigneeId && item.assigneeId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, item.assigneeId, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
+    // Feedback from the creator (the last look after design) goes to the developer; every other feedback goes to the creator.
+    const fromCreator = Boolean(actor.userId) && actor.userId === item.assigneeId && Boolean(item.developerId);
+    const to = fromCreator ? item.developerId : item.assigneeId;
+    if (to && to !== actor.userId && actor.source === 'APP') {
+      await notify(tx, to, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
     }
     if (input.requestCorrections) {
       const fresh = await loadItem(tx, itemId);
@@ -634,14 +654,14 @@ export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: Acto
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
   const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { include: { workType: { select: { key: true } } } } } });
   const mod = requireModule(fb.item.workType.key);
-  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
+  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !actor.ctx.isDeveloper && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
   await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
 }
 
-/** The creator's reply to one feedback point (empty clears it). Only the item's assignee (or an admin). */
+/** The reply to one feedback point (empty clears it): the item's creator, its developer (design fixes) or an admin. */
 export async function noteFeedback(actor: ChangeActor, feedbackId: string, note: string) {
   const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId } });
-  if (actor.ctx && !actor.ctx.isAdmin && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work'))) throw new ForbiddenError('Only the person working on it can reply to feedback.');
+  if (actor.ctx && !actor.ctx.isAdmin && !actor.ctx.isDeveloper && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work'))) throw new ForbiddenError('Only the person working on it can reply to feedback.');
   const text = note.trim();
   await db.feedback.update({ where: { id: feedbackId }, data: { note: text || null, noteById: text ? actor.userId : null, noteAt: text ? new Date() : null } });
   if (text) await db.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `Reply to feedback: ${text}`, source: actor.source } });

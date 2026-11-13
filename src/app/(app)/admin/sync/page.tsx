@@ -1,11 +1,13 @@
 import Link from 'next/link';
-import { SyncNowButton, SyncSettings } from '@/components/admin-controls';
+import { SyncNowButton, SyncRelayButtons, SyncSettings } from '@/components/admin-controls';
 import { Card, PageHeader } from '@/components/ui';
 import { formatDateTime } from '@/lib/time';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import { env } from '@/server/env';
 import { requireAdmin } from '@/server/rbac';
+import { relayConfigured } from '@/server/relay/client';
+import type { RelayReport } from '@/server/services/relay-sync';
 import { appTz } from '@/server/settings';
 import { syncDirection, workTypeConfig } from '@/server/services/work-items';
 
@@ -16,6 +18,9 @@ export default async function SyncPage() {
   const tz = appTz();
   const configured = Boolean(env().APPS_SCRIPT_URL);
   const types = (await db.workType.findMany({ where: { state: { not: 'ARCHIVED' } }, include: { syncState: true }, orderBy: { name: 'asc' } })).filter(t => getModule(t.key)?.sheet);
+  const relayOn = relayConfigured();
+  const relayState = await db.relaySyncState.findFirst({ include: { workType: { select: { name: true } } } });
+  const relayReport = relayState?.report as RelayReport | undefined;
   const [conflicts, failed, pending, missing] = await Promise.all([
     db.workItemEvent.findMany({ where: { type: 'SYNC_CONFLICT' }, include: { item: { select: { id: true, externalKey: true, workType: { select: { key: true } } } } }, orderBy: { at: 'desc' }, take: 20 }),
     db.syncOutbox.findMany({ where: { OR: [{ status: 'FAILED' }, { status: 'PENDING', attempts: { gt: 0 } }] }, include: { item: { select: { externalKey: true } } }, orderBy: { createdAt: 'desc' }, take: 20 }),
@@ -34,6 +39,43 @@ export default async function SyncPage() {
       )}
 
       <div className="space-y-4">
+        <Card title="Journey relay (live)" description="The relay feeds creation: who holds each journey, its Creation stage and approvals. Review and everything after it stay here. Pulled every few minutes by the scheduler.">
+          {!relayOn && <p className="note-warn mb-3">RELAY_URL, RELAY_CF_CLIENT_ID and RELAY_CF_CLIENT_SECRET are not set in .env, so the relay can’t be read.</p>}
+          <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="label">Last run</div>
+              {relayState ? formatDateTime(relayState.lastRunAt, tz) : 'never'}
+            </div>
+            <div>
+              <div className="label">On the relay</div>
+              {relayReport ? `${relayReport.allocated} journeys · ${relayReport.created.length} added` : '—'}
+            </div>
+            <div>
+              <div className="label">Last changes</div>
+              {relayReport ? `${relayReport.stageChanges.length} stage changes · ${relayReport.eventsAdded} events` : '—'}
+            </div>
+            <div>
+              <div className="label">Needs a look</div>
+              {relayReport ? (
+                relayReport.errors.length + relayReport.unknownPeople.length + relayReport.creatorDiffers.length + relayReport.dashboardAhead.length ? (
+                  <span className="text-warn">
+                    {relayReport.errors.length} errors · {relayReport.unknownPeople.length} creators not in People · {relayReport.creatorDiffers.length} creators differ · {relayReport.dashboardAhead.length} ahead of the relay
+                  </span>
+                ) : (
+                  <span className="text-ok">nothing</span>
+                )
+              ) : (
+                '—'
+              )}
+            </div>
+          </div>
+          {relayReport && relayReport.unknownPeople.length > 0 && (
+            <p className="mt-3 text-xs text-muted">Add these people in People (their email must match the relay), then sync again: {[...new Set(relayReport.unknownPeople.map(p => p.email))].join(', ')}</p>
+          )}
+          <div className="mt-4">
+            <SyncRelayButtons disabled={!relayOn} />
+          </div>
+        </Card>
         {types.map(t => {
           const cfg = workTypeConfig(t).sync ?? {};
           const direction = syncDirection(t);

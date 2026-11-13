@@ -159,3 +159,28 @@ describe('developer', () => {
     expect(actorMatches(['DEVELOPER'], { ...base, isDeveloper: true, canEdit: false })).toBe(false);
   });
 });
+
+describe('developer stage window', () => {
+  const hand = { after: 'closed' };
+  it('is open only in design standardization, and not when that stage is paused', async () => {
+    const { developerStage } = await import('@/lib/stages');
+    expect(developerStage(base.statuses, hand, 'design_standardization')).toMatchObject({ stage: 'design_standardization', open: true });
+    expect(developerStage(base.statuses, hand, 'closed').open).toBe(false);
+    expect(developerStage(base.statuses, hand, 'last_look').open).toBe(false);
+    const paused = base.statuses.map(s => (s.key === 'design_standardization' ? { ...s, state: 'paused' as const } : s));
+    expect(developerStage(paused, hand, 'design_standardization')).toMatchObject({ paused: true, open: false });
+  });
+});
+
+describe('design loop', () => {
+  const creator = ctxFor(['sme-creator'], { assignee: true });
+  const developer = { ...ctxFor(['developer']), isDeveloper: true };
+  it('the creator sends a journey back from the last look with feedback; the developer cannot', () => {
+    const back = allowedTransitions(mod, 'last_look', creator).find(t => t.to === 'design_standardization');
+    expect(back?.requires).toBe('feedback');
+    expect(moves(developer, 'last_look')).toEqual([]);
+  });
+  it('the developer presses Design done to send it to the creator again', () => {
+    expect(moves(developer, 'design_standardization')).toEqual(['last_look']);
+  });
+});

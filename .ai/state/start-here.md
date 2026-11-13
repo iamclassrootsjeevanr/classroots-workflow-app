@@ -1,39 +1,36 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-13T06:53:54Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-14T12:00:00Z · by: claude-code · owner: Jeevan
 
 ## Goal
-APK Testing: one APK version is one work item; test cases are results inside it. Then Journey review per role, Railway deploy.
+Journey: live link to the RELAY (buildjourneyrelay) so creation progress flows into the dashboard; the dashboard keeps review and everything after. Earlier: APK Testing versions as work items, Journey developer handoff.
 
 ## Done this stretch
-- `WorkItem.parentId` (migration 20261111090000). Version item = the work (key = version name); test cases = child results (ApkTest link). Results stay out of lists/KPIs/analytics (`levelWhere`: work | runs | groups | all). Sheet sync and outbox use results only.
-- Version status derived from results (`src/lib/apk-rollup.ts`, `rollupVersionTx` in work-items.ts); never set by hand. New Closed status (done): Close / Reopen version button on the version page, always allowed (warns if tests not updated).
-- Assigning a version assigns its results; delete/restore a version takes its results with it.
-- UI: APK versions list (rolled-up columns), version page with Test results table, All tests toggle (`?view=tests`), Results by version tab, chart drilldown to tests.
-- Overview: Work done card (per person + team average, columns per role: tests updated, passed, failures found, versions done, fixes marked); own-data roles see only themselves + average. `doneMetrics` on the module, `src/lib/work-done.ts`, `src/components/work-done.tsx`.
-- Local data: `npm run apk:versions -- --apply --close-old` ran (23 versions, 331 live results; all but the newest closed).
-- `npm run typecheck` clean, `npm test` 199 passing (23 files). Signed-in pages NOT viewed in a browser (agents cannot sign in).
-
-- Journey developer handoff (13 Nov): `WorkItem.developerId` (migration 20261113090000), Developer role, actor 'DEVELOPER', `developerHandoff` on the module: closing a review moves the journey to Design standardization (no longer paused) and assigns the least busy developer. `npm run journey:developers -- --people "Jeevan,Swathi" --apply` (ran locally). Local DB was re-pulled from development (`npm run db:pull`; `copy-db.ts` now copies parents first); old `.pgdata` is in `.pgdata.bak-20261113` (ignored).
-- Restart `next dev` after any `prisma generate` (stale client was the error).
+- **RELAY pull sync** (relay feeds creation, dashboard owns review; one way RELAY → dashboard). `src/server/relay/client.ts` (MCP over HTTPS, Cloudflare service token or `RELAY_AUTH=sso` + `RELAY_SSO_HOME` for local tests), `src/lib/relay-map.ts` (pure parse/map, tests in `tests/relay-map.test.ts`), `src/server/services/relay-sync.ts` (`syncRelay`: creates allocated journeys, assigns creators by email then by name, Creation stage from the relay's `stage`, stores events in `RelayEvent`, never lowers a stage, never touches review statuses). Runs from `runJobs`, Admin → Sheet sync → Journey relay (Sync now / Dry run), `npm run relay:sync` (`--dry-run`, `--key`, `--probe`, `--fixture`).
+- Migrations `20261114090000_relay_events`, `20261114100000_relay_event_per_journey` (applied locally only). RELAY card on the journey page. Journey keys accept `G07P1C03ST2J1` and `_slug` (`parseJourneyKey`, `journeyKeyOf`).
+- Applied to the LOCAL db with Jeevan's SSO (read-only on the relay): 39 G07 journeys added, 23 stages updated, ~490 events. Krishna's email changed to krishna.rander@classrootsedu.com locally and in scripts.
+- Journey: coordinator role is shown as **Steward**; list Developer column is a dropdown (steward or creator, only while in Design standardization, tinted; paused stage = no developer); design loop: creator sends back from Last look with feedback, developer fixes and presses Design done again (feedback/replies/notifications for the developer); My dashboard shows journeys held as developer; Journeys list/inbox link fix (resolve by key).
+- Admin "View as" (VIEW_AS) for testing roles. `docs/CHAPTER-WALKTHROUGH.md` (simple end-to-end example by role). README, DECISIONS, LEARNINGS updated.
+- `npm run typecheck` clean, `npm test` 211 passing. Signed-in pages NOT viewed in a browser (agents cannot sign in).
 
 ## In progress
-Nothing mid-edit. Code is not broken.
+Nothing mid-edit. Code is not broken. Unverified: the React "unique key" warning fix in `src/app/(app)/layout.tsx` / `mobile-nav.tsx` (best guess).
 
 ## Next steps
-1. Jeevan: look at APK versions, a version page, Overview Work done and All tests in the Browser pane (light/dark, 375px).
-2. Render/staging DB: `npm run db:deploy`, then `npm run apk:versions -- --apply --close-old` (old APK data) and `npm run journey:developers -- --people "Jeevan,Swathi" --apply`.
-3. Journey: browser check per role (Teams, Chapters, Journeys list, journey page); Railway per docs/DEPLOY.md.
-4. Journey open questions below.
+1. Jeevan: restart `next dev` (`rm -rf .next && npm run dev`) after the Prisma changes; check My dashboard (as Developer), journey page RELAY card, Journeys list Developer dropdown, Last look send-back, Admin → Sheet sync.
+2. Get a Cloudflare Access **service token** (must be allowed to call `allocations` and `journey_status`). Then on Render set `RELAY_URL`, `RELAY_CF_CLIENT_ID`, `RELAY_CF_CLIENT_SECRET`, run `npm run db:deploy`, `npm run relay:sync -- --dry-run`, review, then apply.
+3. Render/staging DB also needs: `npm run apk:versions -- --apply --close-old`, `npm run journey:developers -- --people "Jeevan,Swathi" --apply`, `npm run notifications:fix-links -- --apply`, and Krishna's email changed in Admin → People.
+4. Relay report items to decide: 5 journeys whose relay holder differs from the tracker creator, 3 journeys Published here but at 5 on the relay, 7 old journeys not on the relay; whether the relay's publish status (up_for_review, corrections_wip, ready_for_student) should ever drive a dashboard status (today display only).
+5. Later: more workflow stages, round counter / verify step in the design loop, count developer-held journeys in load.
 
 ## Blockers / open questions
-- Journey: 5 Team Devjyoti journeys still have Arjun as SME reviewer; what does the peer reviewer do; should a QA fix return to User testing and QA.
-- Railway account, Workspace admin and mailbox app-password needed for deployment.
-- Fixes marked counts only from app use (imported history has no person).
+- Cloudflare service token (needs an Access admin).
+- Journey: 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
+- Railway/Render account details for deployment.
 
 ## Key files
-- `src/lib/apk-rollup.ts`, `src/server/services/work-items.ts` (rollupVersionTx, setVersionClosedTx, ensureVersionItemTx)
-- `src/server/services/analytics.ts` (levelWhere, apkVersionFacts), `src/server/services/work-done.ts`
-- `src/modules/apk-testing/definition.ts`, `scripts/apk-version-items.ts`
-- `src/app/(app)/w/[workType]/[itemId]/page.tsx`, `.../(tabs)/items/page.tsx`
+- `src/server/services/relay-sync.ts`, `src/server/relay/client.ts`, `src/lib/relay-map.ts`, `scripts/relay-sync.ts`
+- `src/server/jobs.ts`, `src/app/(app)/admin/sync/page.tsx`, `src/app/(app)/w/[workType]/[itemId]/page.tsx`
+- `src/modules/journey-applet/definition.ts`, `src/lib/stages.ts` (developerStage), `src/server/view.ts` (developerEditsFor)
+- `docs/CHAPTER-WALKTHROUGH.md`, `docs/JOURNEY-WORKFLOW.md`

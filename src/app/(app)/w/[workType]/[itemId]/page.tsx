@@ -24,7 +24,9 @@ import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
 import { assignableItemsFor, assignablePeople, deletableItemsFor, developerPeople, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
 import { reviewDefaults } from '@/lib/teams';
+import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
+import { approvalLabel } from '@/lib/relay-map';
 
 const EVENT_TEXT: Record<string, string> = {
   CREATED: 'created',
@@ -46,12 +48,21 @@ export async function generateMetadata({ params }: { params: Promise<{ workType:
   return { title: item && canSeeItem(access, workType, item) ? `${item.externalKey} ${item.title}` : 'Not found' };
 }
 
+/** The item id for a link: the id itself, else the item of this work type whose key is the link's last part. */
+async function resolveItemId(workTypeKey: string, idOrKey: string) {
+  if (await db.workItem.findUnique({ where: { id: idOrKey }, select: { id: true } })) return idOrKey;
+  const byKey = await db.workItem.findFirst({ where: { workType: { key: workTypeKey }, externalKey: decodeURIComponent(idOrKey).toUpperCase(), archivedAt: null }, select: { id: true } });
+  return byKey?.id ?? idOrKey;
+}
+
 export default async function ItemPage({ params }: { params: Promise<{ workType: string; itemId: string }> }) {
   const { workType: key, itemId } = await params;
   const { user, access } = await requireWorkTypePage(key, 'items');
   const mod = getModule(key);
+  // A link from an old notification may carry a journey's key, or an id from before a re-import: fall back to the key.
+  const wanted = await resolveItemId(key, itemId);
   const item = await db.workItem.findUnique({
-    where: { id: itemId },
+    where: { id: wanted },
     include: {
       workType: true,
       ...APK_INCLUDE,
@@ -80,7 +91,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const canAssign = hasCap(ctx, 'assign') && editable;
   const showOwner = !mod.table?.hide?.includes('owner');
   const hand = mod.developerHandoff;
-  const developers = hand && canAssign ? await developerPeople(key, hand.role) : null;
+  // The coordinator and the journey's own SME creator can change the developer.
+  const devStage = developerStage(mod.statuses, hand, item.status);
+  const canPickDeveloper = Boolean(hand) && editable && devStage.open && (hasCap(ctx, 'assign') || (ctx.isAssignee && hasCap(ctx, 'work')));
+  const developers = hand && canPickDeveloper ? await developerPeople(key, hand.role, nextActiveAfter(mod.statuses, hand.after), item.developerId) : null;
   const [people, owners] = await Promise.all([
     canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
     canAssign && showOwner ? reviewPeople(key) : null,
@@ -116,9 +130,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
     editable: editable && !f.computed && canEditField(f, ctx),
   }));
+  // Journey: what the live relay recorded for it (approvals and steps), when any have been synced.
+  const relayEvents = mod.teams ? await db.relayEvent.findMany({ where: { itemId: item.id }, orderBy: { at: 'asc' } }) : [];
   const isReviewer = canGiveFeedback(mod, ctx);
   const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
-  const canReply = editable && (ctx.isAdmin || (ctx.isAssignee && hasCap(ctx, 'work')));
+  const canReply = editable && (ctx.isAdmin || ctx.isDeveloper || (ctx.isAssignee && hasCap(ctx, 'work')));
   const replyAuthors = new Map(
     (await db.user.findMany({ where: { id: { in: item.feedback.map(f => f.noteById).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map(u => [u.id, u.name]),
   );
@@ -237,7 +253,9 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           {hand && (
             <div className="min-w-52">
               <span className="label">{hand.label}</span>
-              {developers ? <AssignSelect developer none="Nobody yet" itemId={item.id} assigneeId={item.developerId} people={developers} label={`Choose ${hand.label.toLowerCase()}`} /> : <div className="py-1.5 text-sm">{item.developer?.name ?? '—'}</div>}
+              {developers ? <AssignSelect developer color={devStage.color} none="Nobody yet" itemId={item.id} assigneeId={item.developerId} people={developers} label={`Choose ${hand.label.toLowerCase()}`} /> : <div className="py-1.5 text-sm">{item.developer?.name ?? '—'}</div>}
+              {developers && <p className="mt-1 text-2xs text-muted">Assigned automatically (fewest waiting). Change it if needed.</p>}
+              {!developers && !devStage.open && !item.developer && <p className="mt-1 text-2xs text-muted">{devStage.paused ? 'Design standardization is paused: no developer for now.' : 'Assigned when the review closes.'}</p>}
             </div>
           )}
           {mod.teams && (
@@ -272,6 +290,24 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
               actions={editable && hasCap(ctx, 'create') ? <AddTestCaseButton workTypeId={item.workTypeId} versions={versionOptions.filter(v => v.name === item.externalKey)} assigneeId={item.assigneeId ?? undefined} /> : undefined}
             >
               <ItemsTable items={runs} statusOptions={runOptions} fieldEdits={runEdits} deletable={runDeletable} people={people ?? undefined} assignable={runAssignable} tz={tz} labels={mod.labels} table={mod.runTable} groupByChapter={false} empty="No test cases in this version yet." />
+            </Card>
+          )}
+
+          {relayEvents.length > 0 && (
+            <Card title="RELAY" description="Creation progress recorded on the relay. Review stays here.">
+              <ol className="space-y-2 text-sm">
+                {relayEvents.map(e => (
+                  <li key={e.id} className={e.withdrawn ? 'text-muted line-through' : ''}>
+                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.what || e.kind}</span>
+                    <span className="text-muted">
+                      {' '}
+                      · {e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}
+                      {e.version ? ` · v${e.version}` : ''}
+                      {e.approver ? ` · ${e.approver}` : ''} · {formatDateTime(e.at, tz)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             </Card>
           )}
 
@@ -315,7 +351,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                       {f.category && <span className="rounded-md bg-surface px-1.5 ring-1 ring-line">{f.category}</span>}
                       {f.severity && <span className={`rounded-md px-1.5 ring-1 ${f.severity === 'Blocker' ? 'bg-bad-soft text-bad ring-bad/20' : 'bg-surface ring-line'}`}>{f.severity}</span>}
                       {f.resolvedAt && <span className="text-ok">resolved {formatDateTime(f.resolvedAt, tz)}</span>}
-                      <span className="ml-auto">{(ctx.isAssignee || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
+                      <span className="ml-auto">{(ctx.isAssignee || ctx.isDeveloper || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
                     </div>
                     <p className="text-sm whitespace-pre-wrap">{f.body}</p>
                     {(f.note || canReply) && <FeedbackReply id={f.id} note={f.note} by={f.noteById ? replyAuthors.get(f.noteById) : null} editable={canReply} />}

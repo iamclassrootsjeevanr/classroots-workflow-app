@@ -22,6 +22,7 @@
     "db:copy": "tsx --env-file=.env scripts/copy-db.ts",
     "db:pull": "tsx --env-file=.env scripts/copy-db.ts --from remote --to local --replace",
     "db:push": "tsx --env-file=.env scripts/copy-db.ts --from local --to remote",
+    "relay:sync": "tsx --conditions=react-server --env-file=.env scripts/relay-sync.ts",
     "sync:run": "tsx --env-file=.env scripts/run-jobs.ts",
     "scheduler": "tsx scripts/scheduler.ts",
     "user:password": "tsx --env-file=.env scripts/set-password.ts",
@@ -30,6 +31,7 @@
     "import:journey": "tsx --conditions=react-server --env-file=.env scripts/import-journey-csv.ts",
     "apk:versions": "tsx --conditions=react-server --env-file=.env scripts/apk-version-items.ts",
     "journey:developers": "tsx --conditions=react-server --env-file=.env scripts/journey-developers.ts",
+    "notifications:fix-links": "tsx --env-file=.env scripts/fix-notification-links.ts",
     "journey:teams": "tsx --conditions=react-server --env-file=.env scripts/journey-teams.ts"
   },
   "dependencies": {

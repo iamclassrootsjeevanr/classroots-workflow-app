@@ -1,5 +1,6 @@
 import 'server-only';
 import { workloadByUser, type ItemLite } from '@/lib/analytics-core';
+import { developerStage } from '@/lib/stages';
 import { instantToDateKey } from '@/lib/time';
 import { allowedTransitions, canDeleteItem, canEditField, hasCap, type ActorContext } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
@@ -41,13 +42,18 @@ export function statusOptions(mod: WorkTypeDefinition, status: string, ctx: Acto
 }
 
 /** People who hold the work type's developer role (Journey: they check design standardization). */
-export async function developerPeople(workTypeKey: string, role: string): Promise<PersonOption[]> {
+export async function developerPeople(workTypeKey: string, role: string, stage?: string, keepId?: string | null): Promise<PersonOption[]> {
   const users = await db.user.findMany({
-    where: { active: true, memberships: { some: { workType: { key: workTypeKey }, roles: { some: { role: { key: role, canEdit: true } } } } } },
+    where: { active: true, OR: [{ memberships: { some: { workType: { key: workTypeKey }, roles: { some: { role: { key: role, canEdit: true } } } } } }, ...(keepId ? [{ id: keepId }] : [])] },
     select: { id: true, name: true, email: true },
     orderBy: { name: 'asc' },
   });
-  return users.map(u => ({ id: u.id, name: u.name ?? u.email ?? '?' }));
+  // How many journeys each is checking now, so the least busy is easy to pick.
+  const waiting = stage ? await db.workItem.groupBy({ by: ['developerId'], where: { workType: { key: workTypeKey }, status: stage, archivedAt: null, developerId: { in: users.map(u => u.id) } }, _count: true }) : [];
+  return users.map(u => {
+    const n = waiting.find(w => w.developerId === u.id)?._count ?? 0;
+    return { id: u.id, name: u.name ?? u.email ?? '?', hint: stage ? `${n} checking` : undefined };
+  });
 }
 
 /** People who may own (review) items in this work type: active, with an editing role that reviews. */
@@ -100,6 +106,19 @@ export async function editFieldsForItem(user: CurrentUser, itemId: string, tz: s
 export async function assignableItemsFor(user: CurrentUser, items: ItemRow[]): Promise<Set<string>> {
   const access = await getAccess(user);
   return new Set(items.filter(it => hasCap(actorContextFor(access, it.workTypeKey, it), 'assign')).map(it => it.id));
+}
+
+/** Ids of the items whose developer the viewer may change: the coordinator, or the journey's own SME creator (Journey developer handoff). */
+export async function developerEditsFor(user: CurrentUser, items: ItemRow[]): Promise<Set<string>> {
+  const access = await getAccess(user);
+  const out = new Set<string>();
+  for (const it of items) {
+    const mod = getModule(it.workTypeKey);
+    if (!mod?.developerHandoff || !developerStage(mod.statuses, mod.developerHandoff, it.status).open) continue;
+    const ctx = actorContextFor(access, it.workTypeKey, it);
+    if (hasCap(ctx, 'assign') || (ctx.isAssignee && hasCap(ctx, 'work'))) out.add(it.id);
+  }
+  return out;
 }
 
 /** Ids of the items the viewer may delete. */

@@ -5,6 +5,7 @@ import { NewApkVersionButton } from '@/components/new-apk-version';
 import { Pager } from '@/components/pager';
 import Link from 'next/link';
 import { Card } from '@/components/ui';
+import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import { teamOf } from '@/lib/teams';
@@ -12,7 +13,7 @@ import { loadTeams } from '@/server/teams';
 import { loadVersionOptions } from '@/server/apk/queries';
 import { queryItemsPage, type ItemsFilters } from '@/server/services/items-query';
 import { loadWorkTypePage } from '@/server/work-type-page';
-import { assignableItemsFor, assignablePeople, deletableItemsFor, editableItemsFor, statusOptionsFor } from '@/server/view';
+import { assignableItemsFor, assignablePeople, deletableItemsFor, developerEditsFor, developerPeople, editableItemsFor, statusOptionsFor } from '@/server/view';
 
 type Search = ItemsFilters & { page?: string };
 
@@ -44,6 +45,9 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, groupKey: { not: null } }, distinct: ['groupKey'], select: { groupKey: true } }),
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
   ]);
+  const hand = mod.developerHandoff;
+  const developerEdits = hand && editable && !testsView ? await developerEditsFor(user, shown.rows) : undefined;
+  const developerOptions = hand && developerEdits?.size ? await developerPeople(key, hand.role, nextActiveAfter(mod.statuses, hand.after)) : undefined;
   const smeOptions = can('create') && editable && !mod.versions
     ? await db.user.findMany({
         where: { active: true, name: { not: null }, OR: [{ isAdmin: true }, { memberships: { some: { workTypeId: wt.id, roles: { some: { role: { capReview: true } } } } } }] },
@@ -109,7 +113,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       />
 
       <Card>
-        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} tz={tz} labels={mod.labels} table={testsView ? mod.runTable : mod.table} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
+        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} developerEdits={developerEdits} developerOptions={developerOptions} developerColor={developerStage(mod.statuses, hand, undefined).color} tz={tz} labels={mod.labels} table={testsView ? mod.runTable : mod.table} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
         <Pager basePath={`/w/${key}/items`} params={sp as Record<string, string | undefined>} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
     </>

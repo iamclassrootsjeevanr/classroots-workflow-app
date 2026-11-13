@@ -103,16 +103,16 @@ export const journeyApplet: WorkTypeDefinition = {
   pages: { groups: 'Chapters', items: 'Journeys', teams: 'Teams' },
   teams: true,
   itemNoun: 'journey',
-  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', peer: 'Peer reviewer', accountable: 'Owner' },
+  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', peer: 'Peer reviewer', accountable: 'Steward' },
   categoryLabels: { queue: 'Not started', active: 'Being worked', review: 'In review', feedback: 'Changes asked', approved: 'Review closed', done: 'Done', hold: 'Paused' },
   importRoles: { assignee: 'sme-creator', owner: 'sme-reviewer' },
   developerHandoff: { after: 'closed', role: 'developer', label: 'Developer' },
 
   roles: [
-    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design. Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design (and sends it back to the developer with feedback until it is right). Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review.', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'coordinator', name: 'Coordinator', description: 'Chapter steward and team owner: adds chapters and journeys, allocates creators, reviewers and peer reviewers, sets pick-up dates, edits details, moves journeys through the after-steps and sends them back from QA for a fix. Acts in their own chapters and on every journey of their team.', color: '#00897b', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
-    { key: 'developer', name: 'Developer', description: 'Checks design standardization once a journey’s review is closed: the journey is assigned to them automatically (least busy developer first). Marks Design done, which sends it on to the last look.', color: '#26a69a', capabilities: [], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators, reviewers and peer reviewers, sets pick-up dates, edits details, moves journeys through the after-steps and sends them back from QA for a fix. Acts in their own chapters and on every journey of their team.', color: '#00897b', capabilities: ['assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    { key: 'developer', name: 'Developer', description: 'Checks and fixes design standardization once a journey’s review is closed: the journey is assigned to them automatically (least busy developer first). Marks Design done, which sends it to the creator’s last look. If the creator sends it back with feedback, they fix it and mark Design done again.', color: '#26a69a', capabilities: [], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'program-manager', name: 'Program manager', description: 'Watches the dashboards and reports; cannot change journeys.', color: '#546e7a', capabilities: [], dataScope: 'ALL', canEdit: false, pages: ['dashboard', 'items', 'reports', 'export'] },
   ],
   statuses,
@@ -124,7 +124,7 @@ export const journeyApplet: WorkTypeDefinition = {
     { from: 'changes_asked', to: 'correction_verification', by: [...CREATOR], label: 'Corrections done' },
     { from: 'correction_verification', to: 'changes_asked', by: [...REVIEWER], label: 'Ask for changes again', requires: 'feedback' },
     { from: 'correction_verification', to: '@next:review_in_progress', by: [...REVIEWER], label: 'Close review', stamp: ['reviewDate'] },
-    { from: 'last_look', to: 'design_standardization', by: [...CREATOR], label: 'Send back to design' },
+    { from: 'last_look', to: 'design_standardization', by: [...CREATOR], label: 'Send back to design', requires: 'feedback' },
     { from: 'user_testing_qa', to: 'changes_asked', by: [...COORDINATOR], label: 'Send back for a fix', requires: 'feedback' },
   ],
 
@@ -176,7 +176,7 @@ export const journeyApplet: WorkTypeDefinition = {
   table: {
     extra: [
       { field: 'peerReviewer', label: 'Peer reviewer' },
-      { field: 'teamOwner', label: 'Owner' },
+      { field: 'teamOwner', label: 'Steward' },
       { field: 'developer', label: 'Developer' },
       { field: 'creationStage', label: 'Creation stage' },
       { field: 'pickedUpAt', label: 'Picked up' },
