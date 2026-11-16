@@ -49,7 +49,7 @@ export function scopeWhere(access: Access, types: WorkTypeAccess[]): Prisma.Work
     OR: types.map(t =>
       t.dataScope === 'ALL'
         ? { workTypeId: t.workTypeId }
-        : { workTypeId: t.workTypeId, OR: [{ assigneeId: me }, { ownerId: me }, { createdById: me }] },
+        : { workTypeId: t.workTypeId, OR: [{ assigneeId: me }, { ownerId: me }, { createdById: me }, { developerId: me }] },
     ),
   };
 }

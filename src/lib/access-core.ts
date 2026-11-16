@@ -181,11 +181,11 @@ export function hasCapabilityAnywhere(access: Access, cap: Capability, page: Pag
   return workTypesWith(access, page).some(a => a.capabilities.has(cap));
 }
 
-export type ItemOwnership = { assigneeId: string | null; ownerId: string | null; createdById: string | null };
+export type ItemOwnership = { assigneeId: string | null; ownerId: string | null; createdById: string | null; developerId?: string | null };
 
-/** OWN = assigned to me, owned by me, or created by me. */
+/** OWN = assigned to me, owned (reviewed) by me, created by me, or mine to design as developer. */
 export function isOwnItem(item: ItemOwnership, userId: string): boolean {
-  return item.assigneeId === userId || item.ownerId === userId || item.createdById === userId;
+  return item.assigneeId === userId || item.ownerId === userId || item.createdById === userId || item.developerId === userId;
 }
 
 /** Whether the item is within the person's data scope. Page ticks decide where it is shown, not whether it is theirs. */
