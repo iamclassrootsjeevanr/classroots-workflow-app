@@ -13,7 +13,7 @@ import { startViewAs, stopViewAs } from '@/server/view-as';
 import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
-import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
+import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { httpRelayClient, relayConfigured } from '@/server/relay/client';
 import { syncRelay } from '@/server/services/relay-sync';
@@ -374,6 +374,16 @@ export async function addChapterAction(workTypeId: string, input: { code: string
   });
 }
 
+/** Hand a chapter to another steward: an admin, or the chapter's current steward. */
+export async function moveChapterAction(workTypeId: string, code: string, toUserId: string) {
+  return run(async () => {
+    const a = await teamsActor(workTypeId);
+    if (!a.isAdmin && !(a.coordinator && a.wt.groupKeys?.has(code))) throw new ForbiddenError('Only the chapter’s steward or an admin hands it over.');
+    const r = await moveChapter(workTypeId, code, toUserId);
+    return `${code} is now ${r.to}’s chapter`;
+  });
+}
+
 export async function removeChapterAction(workTypeId: string, code: string) {
   return run(async () => {
     const a = await teamsActor(workTypeId);
@@ -650,6 +660,10 @@ export async function syncRelayAction(dryRun: boolean) {
     const bits = [`${r.allocated} journeys on the relay`, `${r.created.length} ${dryRun ? 'to add' : 'added'}`, `${r.stageChanges.length} Creation stage ${dryRun ? 'changes to make' : 'changes'}`];
     if (r.stewards.length) bits.push(`${r.stewards.length} chapter steward ${dryRun ? 'changes to make' : 'changes'} (${r.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : '✕'} ${x.steward}`).join(', ')})`);
     if (r.stewardIssues.length) bits.push(`stewards to check: ${r.stewardIssues.join('; ')}`);
+    if (r.reassigned.length) bits.push(`${r.reassigned.length} journeys ${dryRun ? 'to move' : 'moved'} to the relay's creator (${r.reassigned.map(x => `${x.key} → ${x.to}`).join(', ')})`);
+    if (r.creatorDiffers.length) bits.push(`${r.creatorDiffers.length} reassigned here after the relay, kept`);
+    if (r.teamChanges.length) bits.push(`${r.teamChanges.length} team ${dryRun ? 'changes to make' : 'changes'} (${r.teamChanges.map(x => `${x.person} → ${x.team}`).join(', ')})`);
+    if (r.teamIssues.length) bits.push(`teams to check: ${r.teamIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
     return (dryRun ? 'Dry run (nothing changed): ' : '') + bits.join(' · ');

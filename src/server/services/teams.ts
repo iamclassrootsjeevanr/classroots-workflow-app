@@ -13,8 +13,8 @@ type Defaults = Map<string, { reviewerId: string | null; peerReviewerId: string 
 
 const snapshot = (teams: TeamLite[], userIds: string[]): Defaults => new Map(userIds.map(id => [id, reviewDefaults(teams, id)]));
 
-/** Trusted: the action already checked the team's coordinator or an admin is acting. */
-const system = (userId: string): ChangeActor => ({ userId, ctx: null, source: 'APP' });
+/** Trusted: the action already checked the team's coordinator or an admin is acting. No user = the relay sync. */
+const system = (userId: string | null): ChangeActor => ({ userId, ctx: null, source: userId ? 'APP' : 'RELAY' });
 
 async function teamOrThrow(teamId: string) {
   return db.team.findUniqueOrThrow({ where: { id: teamId }, include: { members: { select: { userId: true } } } });
@@ -60,7 +60,7 @@ export async function setTeamReviewer(actorId: string, teamId: string, reviewerI
   return refillReviewDefaults(system(actorId), team.workTypeId, { creatorIds: people, was });
 }
 
-export async function addTeamMember(actorId: string, teamId: string, userId: string) {
+export async function addTeamMember(actorId: string | null, teamId: string, userId: string) {
   const team = await teamOrThrow(teamId);
   if (userId === team.coordinatorId) throw new Error('The coordinator already leads this team.');
   const person = await hasRight(team.workTypeId, userId, 'capWork');
@@ -105,8 +105,20 @@ export async function addChapter(workTypeId: string, input: { code: string; titl
   const known = await db.chapter.findUnique({ where: { code } });
   const title = input.title.trim() || known?.title || '';
   if (!title) throw new Error('Give the chapter a name.');
-  const member = await db.workTypeMember.findUnique({ where: { workTypeId_userId: { workTypeId, userId: input.stewardId } } });
-  if (!member || !(await hasRight(workTypeId, input.stewardId, 'capAssign'))) throw new Error('The steward needs the Steward role here.');
+  const member = await db.workTypeMember.findUnique({ where: { workTypeId_userId: { workTypeId, userId: input.stewardId } }, include: { roles: { include: { role: true } } } });
+  const steward = Boolean(member?.roles.some(r => r.role.capAssign && r.role.canEdit));
+  if (!steward) {
+    // An admin picked as steward gets the role through the hand-over path; anyone else needs it first.
+    const admin = await db.user.findFirst({ where: { id: input.stewardId, active: true, isAdmin: true }, select: { id: true } });
+    if (!admin) throw new Error('The steward needs the Steward role here.');
+    const grade = Number(/^G(\d+)C/.exec(code)?.[1]) || null;
+    const chapterNo = Number(/C(\d+)$/.exec(code)?.[1]) || null;
+    if (known) await db.chapter.update({ where: { code }, data: { title } });
+    else await db.chapter.create({ data: { code, title, grade, chapterNo } });
+    await moveChapter(workTypeId, code, input.stewardId);
+    return { code, title, everyChapter: false };
+  }
+  if (!member) throw new Error('The steward needs the Steward role here.');
   const taken = await db.workTypeMember.findFirst({ where: { workTypeId, groupKeys: { has: code }, NOT: { userId: input.stewardId } }, include: { user: { select: { name: true } } } });
   if (taken) throw new ForbiddenError(`${code} is already ${taken.user.name ?? 'someone'}’s chapter. An admin can move it (People → their access).`);
   const grade = Number(/^G(\d+)C/.exec(code)?.[1]) || null;
@@ -131,4 +143,34 @@ export async function removeChapter(workTypeId: string, code: string) {
     if (m.groupKeys.length === 1) throw new Error(`${code} is the only chapter of its steward. Add their next chapter first, or ask an admin.`);
   }
   await db.$transaction(members.map(m => db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId: m.userId } }, data: { groupKeys: m.groupKeys.filter(k => k !== code) } })));
+}
+
+/**
+ * Hand a chapter to another steward: it leaves its current stewards' lists and joins the new one's. An admin without the
+ * Steward role here gets it (admins see everything anyway). Never empties a non-admin's list (empty = every chapter).
+ */
+export async function moveChapter(workTypeId: string, code: string, toUserId: string) {
+  const to = await db.user.findFirst({ where: { id: toUserId, active: true }, select: { id: true, name: true, isAdmin: true } });
+  if (!to) throw new Error('Pick an active person.');
+  const role = await db.accessRole.findFirst({ where: { workTypeId, capAssign: true, canEdit: true }, orderBy: [{ isSystem: 'desc' }, { key: 'asc' }], select: { id: true } });
+  const target = await db.workTypeMember.findUnique({ where: { workTypeId_userId: { workTypeId, userId: toUserId } }, include: { roles: { include: { role: true } } } });
+  const isSteward = Boolean(target?.roles.some(r => r.role.capAssign && r.role.canEdit));
+  if (!isSteward && !to.isAdmin) throw new Error(`${to.name ?? 'They'} need the Steward role here first (Admin → People).`);
+  if (isSteward && !to.isAdmin && !target!.groupKeys.length) throw new Error(`${to.name ?? 'They'} already steer every chapter (no chapter list). Give them a chapter list in People first.`);
+  const holders = await db.workTypeMember.findMany({ where: { workTypeId, groupKeys: { has: code }, NOT: { userId: toUserId } }, include: { user: { select: { name: true, isAdmin: true } } } });
+  for (const h of holders) {
+    if (h.groupKeys.length === 1 && !h.user.isAdmin) throw new Error(`${code} is ${h.user.name ?? 'their'}’s only chapter. Give them another chapter first, or ask an admin.`);
+  }
+  await db.$transaction(async tx => {
+    for (const h of holders) await tx.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId: h.userId } }, data: { groupKeys: h.groupKeys.filter(k => k !== code) } });
+    // An admin made steward starts their own chapter list (they see every chapter anyway).
+    const keys = [...new Set([...(isSteward ? target!.groupKeys : []), code])].sort();
+    if (!target) {
+      if (!role) throw new Error('There is no Steward role here.');
+      await tx.workTypeMember.create({ data: { workTypeId, userId: toUserId, groupKeys: keys, roles: { create: { roleId: role.id } } } });
+    } else {
+      await tx.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId: toUserId } }, data: { groupKeys: keys, ...(isSteward || !role ? {} : { roles: { create: { roleId: role.id } } }) } });
+    }
+  });
+  return { to: to.name ?? 'them', from: holders.map(h => h.user.name ?? '?') };
 }
