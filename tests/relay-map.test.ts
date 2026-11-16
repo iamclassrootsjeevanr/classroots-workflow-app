@@ -115,5 +115,33 @@ describe('relay chapter stewards', () => {
     expect(plan.keptLast).toEqual([{ code: 'G07P1C03', userId: 'last' }]);
     expect(plan.notCoordinator).toEqual([{ code: 'G04C05', email: 'kapil@x.com' }]);
     expect(plan.unknown).toEqual([{ code: 'G08P2C01', email: 'nobody@x.com' }]);
+    expect(plan.grantRole).toEqual([]);
+  });
+  it('makes admins named by the relay steward of their chapters', () => {
+    const plan = planStewards(
+      [
+        { code: 'G06C07', email: 'vinay@x.com' },
+        { code: 'G08P2C01', email: 'aswin@x.com' },
+        { code: 'G08P2C02', email: 'aswin@x.com' },
+        { code: 'G05C02', email: 'boss@x.com' },
+      ],
+      [
+        { userId: 'vinay', email: 'vinay@x.com', groupKeys: [], coordinator: false, admin: true },
+        { userId: 'aswin', email: 'aswin@x.com', groupKeys: [], coordinator: false, admin: true },
+        { userId: 'boss', email: 'boss@x.com', groupKeys: [], coordinator: true, admin: true },
+      ],
+    );
+    expect(plan.grantRole).toEqual([
+      { userId: 'vinay', code: 'G06C07' },
+      { userId: 'aswin', code: 'G08P2C01' },
+    ]);
+    expect(plan.add).toEqual([
+      { userId: 'vinay', code: 'G06C07' },
+      { userId: 'aswin', code: 'G08P2C01' },
+      { userId: 'aswin', code: 'G08P2C02' },
+      { userId: 'boss', code: 'G05C02' },
+    ]);
+    expect(plan.steersAll).toEqual([]);
+    expect(plan.notCoordinator).toEqual([]);
   });
 });

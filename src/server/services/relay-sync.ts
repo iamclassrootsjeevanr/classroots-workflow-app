@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
-import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, planStewards, type RelayAllocation } from '@/lib/relay-map';
+import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
+  type StewardMember, parseStatus, parseStatusMeta, planStewards, type RelayAllocation } from '@/lib/relay-map';
 import { shortKey } from '@/lib/notifications-core';
 import { db } from '../db';
 import { workCalendar } from '../settings';
@@ -165,22 +166,49 @@ async function syncStewards(workTypeId: string, stewards: { code: string; email:
   if (!stewards.length) return;
   const rows = await db.workTypeMember.findMany({
     where: { workTypeId, user: { active: true } },
-    select: { userId: true, groupKeys: true, user: { select: { email: true, name: true } }, roles: { select: { role: { select: { capAssign: true, canEdit: true } } } } },
+    select: { userId: true, groupKeys: true, user: { select: { email: true, name: true, isAdmin: true } }, roles: { select: { role: { select: { capAssign: true, canEdit: true } } } } },
   });
-  const members = rows.map(r => ({ userId: r.userId, email: r.user.email, groupKeys: r.groupKeys, coordinator: r.roles.some(x => x.role.capAssign && x.role.canEdit) }));
-  const nameOf = new Map(rows.map(r => [r.userId, r.user.name ?? r.user.email ?? r.userId]));
+  // Admins named by the relay but not in this work type yet: they can be made steward too.
+  const named = [...new Set(stewards.map(s => s.email))];
+  const outsiders = await db.user.findMany({
+    where: { isAdmin: true, active: true, email: { in: named, mode: 'insensitive' }, NOT: { id: { in: rows.map(r => r.userId) } } },
+    select: { id: true, email: true, name: true },
+  });
+  const members: StewardMember[] = [
+    ...rows.map(r => ({ userId: r.userId, email: r.user.email, groupKeys: r.groupKeys, coordinator: r.roles.some(x => x.role.capAssign && x.role.canEdit), admin: r.user.isAdmin })),
+    ...outsiders.map(u => ({ userId: u.id, email: u.email, groupKeys: [], coordinator: false, admin: true })),
+  ];
+  const isMember = new Set(rows.map(r => r.userId));
+  const nameOf = new Map([...rows.map(r => [r.userId, r.user.name ?? r.user.email ?? r.userId] as const), ...outsiders.map(u => [u.id, u.name ?? u.email ?? u.id] as const)]);
   const plan = planStewards(stewards, members);
   for (const u of plan.unknown) report.stewardIssues.push(`${u.code}: ${u.email} has no Journey access (give them the Steward role in People)`);
   for (const u of plan.notCoordinator) report.stewardIssues.push(`${u.code}: ${u.email} is in Journey without the Steward role`);
   for (const u of plan.steersAll) report.stewardIssues.push(`${u.code}: ${u.email} already steers every chapter (no chapter list), left as is`);
   for (const k of plan.keptLast) report.stewardIssues.push(`${k.code}: still on ${nameOf.get(k.userId)}, their only chapter`);
+  for (const g of plan.grantRole) report.stewardIssues.push(`${g.code}: ${nameOf.get(g.userId)} is an admin, given the Steward role in Journey`);
   for (const a of plan.add) report.stewards.push({ code: a.code, steward: nameOf.get(a.userId) ?? a.userId, change: 'added' });
   for (const r of plan.remove) report.stewards.push({ code: r.code, steward: nameOf.get(r.userId) ?? r.userId, change: 'removed' });
   if (dryRun) return;
-  const next = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
+  const granted = new Set(plan.grantRole.map(g => g.userId));
+  const next = new Map(members.map(m => [m.userId, granted.has(m.userId) ? [] : [...m.groupKeys]]));
   for (const a of plan.add) next.get(a.userId)!.push(a.code);
   for (const r of plan.remove) next.set(r.userId, next.get(r.userId)!.filter(k => k !== r.code));
-  const changed = new Set([...plan.add, ...plan.remove].map(x => x.userId));
+  if (granted.size) {
+    const role =
+      (await db.accessRole.findFirst({ where: { workTypeId, key: 'coordinator' }, select: { id: true } })) ??
+      (await db.accessRole.findFirst({ where: { workTypeId, capAssign: true, canEdit: true }, orderBy: { isSystem: 'desc' }, select: { id: true } }));
+    if (!role) {
+      report.stewardIssues.push('No Steward role in this work type: admins not made steward');
+      for (const id of granted) next.delete(id);
+    } else {
+      for (const userId of granted) {
+        const groupKeys = [...new Set(next.get(userId))].sort();
+        if (!isMember.has(userId)) await db.workTypeMember.create({ data: { workTypeId, userId, groupKeys, roles: { create: { roleId: role.id } } } });
+        else await db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId } }, data: { groupKeys, roles: { create: { roleId: role.id } } } });
+      }
+    }
+  }
+  const changed = new Set([...plan.add, ...plan.remove].map(x => x.userId).filter(id => !granted.has(id)));
   for (const userId of changed) {
     await db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId } }, data: { groupKeys: [...new Set(next.get(userId))].sort() } });
   }

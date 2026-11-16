@@ -58,7 +58,14 @@ export function parseChapterStewards(reply: unknown): { code: string; email: str
   return [...out.entries()].map(([code, email]) => ({ code, email })).sort((a, b) => a.code.localeCompare(b.code));
 }
 
-export type StewardMember = { userId: string; email: string | null; groupKeys: string[]; coordinator: boolean };
+export type StewardMember = {
+  userId: string;
+  email: string | null;
+  groupKeys: string[];
+  coordinator: boolean;
+  /** Admins see everything anyway: the relay can make them a chapter's steward (role given, chapter list set). */
+  admin?: boolean;
+};
 export type StewardPlan = {
   /** Chapter codes to add to a coordinator's chapters. */
   add: { userId: string; code: string }[];
@@ -70,14 +77,18 @@ export type StewardPlan = {
   /** Their chapter list is empty, which means every chapter: adding one would narrow it. */
   steersAll: { code: string; email: string }[];
   keptLast: { code: string; userId: string }[];
+  /** Admins named by the relay who get the Steward role (and a Journey membership if they have none). */
+  grantRole: { userId: string; code: string }[];
 };
 
 /**
  * Make the dashboard's stewards follow the relay's chapter owners. The steward is a coordinator whose chapter list holds the code.
- * Never grants a role, never empties a list (empty = every chapter), never touches people the relay does not name for a chapter.
+ * Never empties a list (empty = every chapter), never touches people the relay does not name for a chapter. Grants the Steward role
+ * only to admins (they see every chapter anyway, so a chapter list never narrows them); other people are reported.
  */
 export function planStewards(stewards: { code: string; email: string }[], members: StewardMember[]): StewardPlan {
-  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [] };
+  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [], grantRole: [] };
+  const granted = new Set<string>();
   const byEmail = new Map(members.filter(m => m.email).map(m => [m.email!.toLowerCase(), m]));
   const keys = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
   for (const { code, email } of stewards) {
@@ -86,12 +97,17 @@ export function planStewards(stewards: { code: string; email: string }[], member
       plan.unknown.push({ code, email });
       continue;
     }
-    if (!m.coordinator) {
+    if (!m.coordinator && !m.admin) {
       plan.notCoordinator.push({ code, email });
       continue;
     }
+    if (!m.coordinator && !granted.has(m.userId)) {
+      granted.add(m.userId);
+      plan.grantRole.push({ userId: m.userId, code });
+      keys.set(m.userId, []);
+    }
     const mine = keys.get(m.userId)!;
-    if (!mine.length) plan.steersAll.push({ code, email });
+    if (!mine.length && !m.admin) plan.steersAll.push({ code, email });
     else if (!mine.includes(code)) {
       plan.add.push({ userId: m.userId, code });
       mine.push(code);
