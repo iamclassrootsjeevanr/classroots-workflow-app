@@ -144,6 +144,22 @@ describe('relay chapter stewards', () => {
     expect(plan.steersAll).toEqual([]);
     expect(plan.notCoordinator).toEqual([]);
   });
+  it('an admin never displaces a chapter’s current steward; the relay’s steward takes over from an admin', () => {
+    const plan = planStewards(
+      [
+        { code: 'G04C05', email: 'aswin@x.com' },
+        { code: 'G08P2C01', email: 'arjun@x.com' },
+      ],
+      [
+        { userId: 'arjun', email: 'arjun@x.com', groupKeys: ['G04C05'], coordinator: true },
+        { userId: 'aswin', email: 'aswin@x.com', groupKeys: ['G08P2C01'], coordinator: true, admin: true },
+      ],
+    );
+    expect(plan.keptCurrent).toEqual([{ code: 'G04C05', userId: 'arjun', adminId: 'aswin' }]);
+    expect(plan.add).toEqual([{ userId: 'arjun', code: 'G08P2C01' }]);
+    expect(plan.remove).toEqual([{ userId: 'aswin', code: 'G08P2C01' }]);
+    expect(plan.keptLast).toEqual([]);
+  });
 });
 
 describe('relay reassignments and teams', () => {

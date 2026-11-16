@@ -222,6 +222,7 @@ async function syncStewards(workTypeId: string, stewards: { code: string; email:
   for (const u of plan.notCoordinator) report.stewardIssues.push(`${u.code}: ${u.email} is in Journey without the Steward role`);
   for (const u of plan.steersAll) report.stewardIssues.push(`${u.code}: ${u.email} already steers every chapter (no chapter list), left as is`);
   for (const k of plan.keptLast) report.stewardIssues.push(`${k.code}: still on ${nameOf.get(k.userId)}, their only chapter`);
+  for (const k of plan.keptCurrent) report.stewardIssues.push(`${k.code}: ${nameOf.get(k.userId)} stays its steward (default); ${nameOf.get(k.adminId)} steers it as admin`);
   for (const g of plan.grantRole) report.stewardIssues.push(`${g.code}: ${nameOf.get(g.userId)} is an admin, given the Steward role in Journey`);
   for (const a of plan.add) report.stewards.push({ code: a.code, steward: nameOf.get(a.userId) ?? a.userId, change: 'added' });
   for (const r of plan.remove) report.stewards.push({ code: r.code, steward: nameOf.get(r.userId) ?? r.userId, change: 'removed' });

@@ -93,15 +93,18 @@ export type StewardPlan = {
   keptLast: { code: string; userId: string }[];
   /** Admins named by the relay who get the Steward role (and a Journey membership if they have none). */
   grantRole: { userId: string; code: string }[];
+  /** An admin named by the relay for a chapter that already has a steward: the current steward stays its default. */
+  keptCurrent: { code: string; userId: string; adminId: string }[];
 };
 
 /**
  * Make the dashboard's stewards follow the relay's chapter owners. The steward is a coordinator whose chapter list holds the code.
  * Never empties a list (empty = every chapter), never touches people the relay does not name for a chapter. Grants the Steward role
- * only to admins (they see every chapter anyway, so a chapter list never narrows them); other people are reported.
+ * only to admins (they see every chapter anyway, so a chapter list never narrows them); other people are reported. An admin never
+ * displaces a chapter's current (non-admin) steward: that steward stays the default, the admin steers it as admin.
  */
 export function planStewards(stewards: { code: string; email: string }[], members: StewardMember[]): StewardPlan {
-  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [], grantRole: [] };
+  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [], grantRole: [], keptCurrent: [] };
   const granted = new Set<string>();
   const byEmail = new Map(members.filter(m => m.email).map(m => [m.email!.toLowerCase(), m]));
   const keys = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
@@ -120,6 +123,13 @@ export function planStewards(stewards: { code: string; email: string }[], member
       plan.grantRole.push({ userId: m.userId, code });
       keys.set(m.userId, []);
     }
+    if (m.admin) {
+      const current = members.find(o => o.userId !== m.userId && o.coordinator && !o.admin && keys.get(o.userId)!.includes(code));
+      if (current) {
+        plan.keptCurrent.push({ code, userId: current.userId, adminId: m.userId });
+        continue;
+      }
+    }
     const mine = keys.get(m.userId)!;
     if (!mine.length && !m.admin) plan.steersAll.push({ code, email });
     else if (!mine.includes(code)) {
@@ -130,7 +140,8 @@ export function planStewards(stewards: { code: string; email: string }[], member
       if (other.userId === m.userId || !other.coordinator) continue;
       const theirs = keys.get(other.userId)!;
       if (!theirs.includes(code)) continue;
-      if (theirs.length === 1) {
+      // An admin may end up with no chapter list: they see every chapter anyway.
+      if (theirs.length === 1 && !other.admin) {
         plan.keptLast.push({ code, userId: other.userId });
         continue;
       }
