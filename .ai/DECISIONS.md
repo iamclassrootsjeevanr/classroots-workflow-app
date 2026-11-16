@@ -142,3 +142,13 @@ By: claude-code
 Decision: the developer checks and fixes in Design standardization; the creator's last look sends it back with written feedback (`last_look → design_standardization` now `requires: 'feedback'`), the developer replies, resolves and presses Design done again. Feedback from the creator is notified to the developer; Design done notifies the creator. The developer can be set or changed only while the journey is in Design standardization and that stage is active (`developerStage` in `src/lib/stages.ts`; paused stage = no auto-assign, no dropdown). Journey's coordinator role is displayed as Steward (role key unchanged).
 Why: the check needs a back-and-forth with the creator, like review, and a paused stage must not collect assignments. Rejected: a second feedback round counter (later).
 By: claude-code
+
+## 2026-11-16 — Feedback is a ticket with a chat; only the author closes
+Decision: each feedback is a ticket (TICK-nnnnn, title, severity) with a chat thread (`FeedbackMessage`). Anyone working on the item can raise and reply; only the author (or an admin) closes or reopens; a closed ticket blocks replies. Inbox messages go to the other side only (new ticket, reply, close, reopen). `resolvedAt` stays the close time.
+Why: reviewers and creators need to go back and forth per issue. Rejected: one reply field per feedback (old), and a general "your turn" message on every stage (too noisy; only assignment and feedback messages are wanted).
+By: claude-code
+
+## 2026-11-16 — Relay board follows the reports page; one confirm dialog for risky actions
+Decision: the Relay board (creators x creation stage) is visible to roles with the `reports` page and shows only what their data scope allows. Risky actions use the shared centered `ConfirmDialog` (`useConfirm` replaces `window.confirm`).
+Why: one place and one look for confirmations; the board is analytics, so it reuses the reports permission. Rejected: inline confirm rows (cramped in tables, inconsistent).
+By: claude-code
