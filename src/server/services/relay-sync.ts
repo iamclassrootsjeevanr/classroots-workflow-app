@@ -1,11 +1,13 @@
 import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
-import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, planStewards, type RelayAllocation } from '@/lib/relay-map';
+import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
+  type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, type RelayAllocation } from '@/lib/relay-map';
 import { shortKey } from '@/lib/notifications-core';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 import type { RelayClient } from '../relay/client';
 import { notify } from './notifications';
+import { addTeamMember, removeTeamMember } from './teams';
 import { assign, createItemTx, updateFields, type ChangeActor } from './work-items';
 
 /**
@@ -26,8 +28,13 @@ export type RelayReport = {
   eventsAdded: number;
   /** The relay holds the journey for an email that is not a dashboard user (nobody is assigned until they are added). */
   unknownPeople: { key: string; email: string }[];
-  /** The dashboard has a different creator than the relay (reported, not changed). */
+  /** The relay moved the journey to another creator after the dashboard's last reassignment: the dashboard follows. */
+  reassigned: { key: string; from: string | null; to: string }[];
+  /** The dashboard reassigned the journey after the relay's allocation: kept, reported. */
   creatorDiffers: { key: string; dashboard: string | null; relay: string }[];
+  /** Creators put in the team the relay allocates their journeys under. */
+  teamChanges: { person: string; team: string; from: string | null }[];
+  teamIssues: string[];
   /** The dashboard is ahead of the relay (e.g. Published): not changed. */
   dashboardAhead: { key: string; dashboard: string; relay: string }[];
   /** Dashboard journeys the relay has no allocation for (old tracker imports). */
@@ -40,7 +47,7 @@ export type RelayReport = {
   errors: { key: string; error: string }[];
 };
 
-const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], eventsAdded: 0, unknownPeople: [], creatorDiffers: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
+const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], eventsAdded: 0, unknownPeople: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
 
 export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string } = {}): Promise<RelayReport> {
@@ -68,6 +75,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   // The relay's email may differ from the dashboard's (krishna.rander@ vs krishna@): fall back to the name the email spells, when it is unique.
   const idsByName = new Map<string, string[]>();
   for (const u of users) if (u.name) idsByName.set(u.name.trim().toLowerCase().replace(/\s+/g, ' '), [...(idsByName.get(u.name.trim().toLowerCase().replace(/\s+/g, ' ')) ?? []), u.id]);
+  const nameById = new Map(users.map(u => [u.id, u.name ?? u.email ?? u.id]));
   const personFor = (email: string) => userByEmail.get(email) ?? (idsByName.get(nameFromEmail(email))?.length === 1 ? idsByName.get(nameFromEmail(email))![0] : null);
   const chapterByCode = new Map(chapters.map(c => [c.code, c.id]));
   const relayKeys = new Set(allocations.map(a => a.key));
@@ -80,6 +88,23 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       await syncOne(a);
     } catch (e) {
       report.errors.push({ key: a.key, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  if (!only) {
+    try {
+      await syncTeams(
+        wt.id,
+        allocations.flatMap(a => {
+          const userId = a.email ? personFor(a.email) : null;
+          return userId ? [{ userId, team: a.team }] : [];
+        }),
+        nameById,
+        report,
+        dryRun,
+      );
+    } catch (e) {
+      report.errors.push({ key: 'teams', error: e instanceof Error ? e.message : String(e) });
     }
   }
 
@@ -117,7 +142,20 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         byKey.set(a.key, item);
       }
     } else if (a.email && item.assigneeId !== assigneeId && assigneeId) {
-      report.creatorDiffers.push({ key: a.key, dashboard: item.assignee?.name ?? null, relay: a.email });
+      // Reassigned on the relay after anyone here last reassigned it: follow the relay. A later change made here stands.
+      const lastHere = await db.workItemEvent.findFirst({ where: { itemId: item.id, type: { in: ['ASSIGNED', 'UNASSIGNED'] }, source: 'APP' }, orderBy: { at: 'desc' }, select: { at: true } });
+      if (relayHolderWins(a.at, lastHere?.at ?? null)) {
+        report.reassigned.push({ key: a.key, from: item.assignee?.name ?? null, to: nameById.get(assigneeId) ?? a.email });
+        if (!dryRun) {
+          await assign(ACTOR, item.id, assigneeId);
+          const id = item.id;
+          await db.$transaction(tx => notify(tx, assigneeId, { kind: 'item.assigned', title: `Journey allocated to you: ${shortKey(a.key)}`, body: a.title ?? a.key, href: `/w/${JOURNEY}/${id}` }));
+          item = { ...item, assigneeId, assignee: { name: nameById.get(assigneeId) ?? null } };
+          byKey.set(a.key, item);
+        }
+      } else {
+        report.creatorDiffers.push({ key: a.key, dashboard: item.assignee?.name ?? null, relay: a.email });
+      }
     }
 
     const reply = await client.journeyStatus(a.key);
@@ -165,23 +203,75 @@ async function syncStewards(workTypeId: string, stewards: { code: string; email:
   if (!stewards.length) return;
   const rows = await db.workTypeMember.findMany({
     where: { workTypeId, user: { active: true } },
-    select: { userId: true, groupKeys: true, user: { select: { email: true, name: true } }, roles: { select: { role: { select: { capAssign: true, canEdit: true } } } } },
+    select: { userId: true, groupKeys: true, user: { select: { email: true, name: true, isAdmin: true } }, roles: { select: { role: { select: { capAssign: true, canEdit: true } } } } },
   });
-  const members = rows.map(r => ({ userId: r.userId, email: r.user.email, groupKeys: r.groupKeys, coordinator: r.roles.some(x => x.role.capAssign && x.role.canEdit) }));
-  const nameOf = new Map(rows.map(r => [r.userId, r.user.name ?? r.user.email ?? r.userId]));
+  // Admins named by the relay but not in this work type yet: they can be made steward too.
+  const named = [...new Set(stewards.map(s => s.email))];
+  const outsiders = await db.user.findMany({
+    where: { isAdmin: true, active: true, email: { in: named, mode: 'insensitive' }, NOT: { id: { in: rows.map(r => r.userId) } } },
+    select: { id: true, email: true, name: true },
+  });
+  const members: StewardMember[] = [
+    ...rows.map(r => ({ userId: r.userId, email: r.user.email, groupKeys: r.groupKeys, coordinator: r.roles.some(x => x.role.capAssign && x.role.canEdit), admin: r.user.isAdmin })),
+    ...outsiders.map(u => ({ userId: u.id, email: u.email, groupKeys: [], coordinator: false, admin: true })),
+  ];
+  const isMember = new Set(rows.map(r => r.userId));
+  const nameOf = new Map([...rows.map(r => [r.userId, r.user.name ?? r.user.email ?? r.userId] as const), ...outsiders.map(u => [u.id, u.name ?? u.email ?? u.id] as const)]);
   const plan = planStewards(stewards, members);
   for (const u of plan.unknown) report.stewardIssues.push(`${u.code}: ${u.email} has no Journey access (give them the Steward role in People)`);
   for (const u of plan.notCoordinator) report.stewardIssues.push(`${u.code}: ${u.email} is in Journey without the Steward role`);
   for (const u of plan.steersAll) report.stewardIssues.push(`${u.code}: ${u.email} already steers every chapter (no chapter list), left as is`);
   for (const k of plan.keptLast) report.stewardIssues.push(`${k.code}: still on ${nameOf.get(k.userId)}, their only chapter`);
+  for (const k of plan.keptCurrent) report.stewardIssues.push(`${k.code}: ${nameOf.get(k.userId)} stays its steward (default); ${nameOf.get(k.adminId)} steers it as admin`);
+  for (const g of plan.grantRole) report.stewardIssues.push(`${g.code}: ${nameOf.get(g.userId)} is an admin, given the Steward role in Journey`);
   for (const a of plan.add) report.stewards.push({ code: a.code, steward: nameOf.get(a.userId) ?? a.userId, change: 'added' });
   for (const r of plan.remove) report.stewards.push({ code: r.code, steward: nameOf.get(r.userId) ?? r.userId, change: 'removed' });
   if (dryRun) return;
-  const next = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
+  const granted = new Set(plan.grantRole.map(g => g.userId));
+  const next = new Map(members.map(m => [m.userId, granted.has(m.userId) ? [] : [...m.groupKeys]]));
   for (const a of plan.add) next.get(a.userId)!.push(a.code);
   for (const r of plan.remove) next.set(r.userId, next.get(r.userId)!.filter(k => k !== r.code));
-  const changed = new Set([...plan.add, ...plan.remove].map(x => x.userId));
+  if (granted.size) {
+    const role =
+      (await db.accessRole.findFirst({ where: { workTypeId, key: 'coordinator' }, select: { id: true } })) ??
+      (await db.accessRole.findFirst({ where: { workTypeId, capAssign: true, canEdit: true }, orderBy: { isSystem: 'desc' }, select: { id: true } }));
+    if (!role) {
+      report.stewardIssues.push('No Steward role in this work type: admins not made steward');
+      for (const id of granted) next.delete(id);
+    } else {
+      for (const userId of granted) {
+        const groupKeys = [...new Set(next.get(userId))].sort();
+        if (!isMember.has(userId)) await db.workTypeMember.create({ data: { workTypeId, userId, groupKeys, roles: { create: { roleId: role.id } } } });
+        else await db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId } }, data: { groupKeys, roles: { create: { roleId: role.id } } } });
+      }
+    }
+  }
+  const changed = new Set([...plan.add, ...plan.remove].map(x => x.userId).filter(id => !granted.has(id)));
   for (const userId of changed) {
     await db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId } }, data: { groupKeys: [...new Set(next.get(userId))].sort() } });
+  }
+}
+
+/** Creators join the team their relay journeys are allocated under (only when all of them agree). */
+async function syncTeams(workTypeId: string, holders: { userId: string; team: string | null }[], nameById: Map<string, string>, report: RelayReport, dryRun: boolean) {
+  const teams = await db.team.findMany({ where: { workTypeId }, select: { id: true, name: true, coordinatorId: true, coordinator: { select: { name: true } }, members: { select: { userId: true } } } });
+  if (!teams.length) return;
+  const memberOf = new Map(teams.flatMap(t => t.members.map(m => [m.userId, t.id] as const)));
+  const plan = planTeams(holders, teams.map(t => ({ id: t.id, name: t.name, coordinatorId: t.coordinatorId, coordinatorName: t.coordinator.name })), memberOf);
+  const teamName = new Map(teams.map(t => [t.id, t.name]));
+  for (const m of plan.mixed) {
+    const here = memberOf.get(m.userId);
+    report.teamIssues.push(`${nameById.get(m.userId)} has journeys in ${m.teams.join(' and ')} on the relay: team left as is${here ? ` (${teamName.get(here)})` : ''}`);
+  }
+  for (const t of plan.unknownTeams) report.teamIssues.push(`${t} is on the relay but not in Teams: add it in the Teams tab`);
+  for (const mv of plan.moves) {
+    report.teamChanges.push({ person: nameById.get(mv.userId) ?? mv.userId, team: teamName.get(mv.teamId)!, from: mv.fromTeamId ? teamName.get(mv.fromTeamId)! : null });
+    if (dryRun) continue;
+    try {
+      if (mv.fromTeamId) await removeTeamMember(mv.fromTeamId, mv.userId);
+      await addTeamMember(null, mv.teamId, mv.userId);
+    } catch (e) {
+      report.teamIssues.push(`${nameById.get(mv.userId)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 }

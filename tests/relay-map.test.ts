@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, nameFromEmail, planStewards } from '@/lib/relay-map';
+import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, nameFromEmail, planStewards, planTeams, relayHolderWins, teamForRelayName } from '@/lib/relay-map';
 
 describe('relay allocations', () => {
   it('keeps journeys, normalises keys and emails, drops chapters and subtopics', () => {
@@ -115,5 +115,100 @@ describe('relay chapter stewards', () => {
     expect(plan.keptLast).toEqual([{ code: 'G07P1C03', userId: 'last' }]);
     expect(plan.notCoordinator).toEqual([{ code: 'G04C05', email: 'kapil@x.com' }]);
     expect(plan.unknown).toEqual([{ code: 'G08P2C01', email: 'nobody@x.com' }]);
+    expect(plan.grantRole).toEqual([]);
+  });
+  it('makes admins named by the relay steward of their chapters', () => {
+    const plan = planStewards(
+      [
+        { code: 'G06C07', email: 'vinay@x.com' },
+        { code: 'G08P2C01', email: 'aswin@x.com' },
+        { code: 'G08P2C02', email: 'aswin@x.com' },
+        { code: 'G05C02', email: 'boss@x.com' },
+      ],
+      [
+        { userId: 'vinay', email: 'vinay@x.com', groupKeys: [], coordinator: false, admin: true },
+        { userId: 'aswin', email: 'aswin@x.com', groupKeys: [], coordinator: false, admin: true },
+        { userId: 'boss', email: 'boss@x.com', groupKeys: [], coordinator: true, admin: true },
+      ],
+    );
+    expect(plan.grantRole).toEqual([
+      { userId: 'vinay', code: 'G06C07' },
+      { userId: 'aswin', code: 'G08P2C01' },
+    ]);
+    expect(plan.add).toEqual([
+      { userId: 'vinay', code: 'G06C07' },
+      { userId: 'aswin', code: 'G08P2C01' },
+      { userId: 'aswin', code: 'G08P2C02' },
+      { userId: 'boss', code: 'G05C02' },
+    ]);
+    expect(plan.steersAll).toEqual([]);
+    expect(plan.notCoordinator).toEqual([]);
+  });
+  it('an admin never displaces a chapter’s current steward; the relay’s steward takes over from an admin', () => {
+    const plan = planStewards(
+      [
+        { code: 'G04C05', email: 'aswin@x.com' },
+        { code: 'G08P2C01', email: 'arjun@x.com' },
+      ],
+      [
+        { userId: 'arjun', email: 'arjun@x.com', groupKeys: ['G04C05'], coordinator: true },
+        { userId: 'aswin', email: 'aswin@x.com', groupKeys: ['G08P2C01'], coordinator: true, admin: true },
+      ],
+    );
+    expect(plan.keptCurrent).toEqual([{ code: 'G04C05', userId: 'arjun', adminId: 'aswin' }]);
+    expect(plan.add).toEqual([{ userId: 'arjun', code: 'G08P2C01' }]);
+    expect(plan.remove).toEqual([{ userId: 'aswin', code: 'G08P2C01' }]);
+    expect(plan.keptLast).toEqual([]);
+  });
+});
+
+describe('relay reassignments and teams', () => {
+  const d = (s: string) => new Date(s);
+  it('reads when and under which team a journey was allocated', () => {
+    const [row] = parseAllocations({ allocations: [{ key: 'G06C07ST1J1', level: 'journey', owner: 'vaishali@x.com', team: 'Team Devjyoti', at: '2026-11-11T08:09:36Z' }] });
+    expect(row.team).toBe('Team Devjyoti');
+    expect(row.at?.toISOString()).toBe('2026-11-11T08:09:36.000Z');
+  });
+  it('the later change wins: relay after a change here moves it, a change here after the relay stands', () => {
+    expect(relayHolderWins(d('2026-11-11'), null)).toBe(true);
+    expect(relayHolderWins(d('2026-11-11'), d('2026-11-10'))).toBe(true);
+    expect(relayHolderWins(d('2026-11-11'), d('2026-11-12'))).toBe(false);
+    expect(relayHolderWins(null, null)).toBe(true);
+    expect(relayHolderWins(null, d('2026-11-12'))).toBe(false);
+  });
+  const teams = [
+    { id: 'ta', name: 'Team Arjun', coordinatorId: 'arjun', coordinatorName: 'Arjun Singh' },
+    { id: 'td', name: 'Devjyoti’s team', coordinatorId: 'dj', coordinatorName: 'Devjyoti Mondal' },
+  ];
+  it('matches a relay team by name, else by the coordinator’s first name', () => {
+    expect(teamForRelayName('team arjun', teams)?.id).toBe('ta');
+    expect(teamForRelayName('Team Devjyoti', teams)?.id).toBe('td');
+    expect(teamForRelayName('Team Vinay', teams)).toBeNull();
+  });
+  it('moves creators whose relay journeys share one team; leaves split ones, coordinators and solo seats', () => {
+    const plan = planTeams(
+      [
+        { userId: 'kapil', team: 'Team Arjun' },
+        { userId: 'kapil', team: 'Team Arjun' },
+        { userId: 'manasa', team: 'Team Devjyoti' },
+        { userId: 'vaishali', team: 'Team Arjun' },
+        { userId: 'vaishali', team: 'Team Devjyoti' },
+        { userId: 'arjun', team: 'Team Arjun' },
+        { userId: 'aswin', team: 'Aswin' },
+        { userId: 'x', team: 'Team Vinay' },
+        { userId: 'preethi', team: 'Team Arjun' },
+      ],
+      teams,
+      new Map([
+        ['manasa', 'ta'],
+        ['preethi', 'ta'],
+      ]),
+    );
+    expect(plan.moves).toEqual([
+      { userId: 'kapil', teamId: 'ta', fromTeamId: null },
+      { userId: 'manasa', teamId: 'td', fromTeamId: 'ta' },
+    ]);
+    expect(plan.mixed).toEqual([{ userId: 'vaishali', teams: ['Team Arjun', 'Team Devjyoti'] }]);
+    expect(plan.unknownTeams).toEqual(['Team Vinay']);
   });
 });

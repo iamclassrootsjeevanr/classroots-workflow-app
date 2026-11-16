@@ -1,8 +1,8 @@
 'use client';
 
-import { Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
-import { addChapterAction, removeChapterAction, type ActionResult } from '@/app/actions';
+import { addChapterAction, moveChapterAction, removeChapterAction, type ActionResult } from '@/app/actions';
 import { useConfirm } from './confirm';
 import { ActionMessage, type PersonOption } from './controls';
 
@@ -103,6 +103,47 @@ export function RemoveChapterButton({ workTypeId, code }: { workTypeId: string; 
         <Trash2 size={14} aria-hidden="true" />
         Remove
       </button>
+      {dialog}
+      {result && !result.ok && <ActionMessage result={result} />}
+    </span>
+  );
+}
+
+/** Hand the chapter to another steward: pick them, confirm. */
+export function ChangeStewardButton({ workTypeId, code, current, stewards }: { workTypeId: string; code: string; /** Current steward names. */ current: string; stewards: PersonOption[] }) {
+  const { pending, result, exec } = useAction();
+  const { confirm, dialog } = useConfirm();
+  const [open, setOpen] = useState(false);
+  const pick = async (id: string) => {
+    const to = stewards.find(p => p.id === id);
+    if (!to) return;
+    const ok = await confirm({
+      title: `Give ${code} to ${to.name}?`,
+      description: current ? `${current} stops being its steward. The next relay sync sets it back if the relay still names someone else.` : 'They become its steward.',
+      confirmLabel: 'Change steward',
+      tone: 'warn',
+    });
+    if (ok) exec(() => moveChapterAction(workTypeId, code, id), () => setOpen(false));
+  };
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      {open ? (
+        <select className="input w-auto py-1 text-sm" autoFocus disabled={pending} aria-label={`New steward of ${code}`} defaultValue="" onChange={e => pick(e.target.value)} onBlur={() => !pending && setOpen(false)}>
+          <option value="" disabled>
+            Choose a steward
+          </option>
+          {stewards.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <button className="btn-ghost" disabled={pending} title={`Change the steward of ${code}`} onClick={() => setOpen(true)}>
+          <ArrowLeftRight size={14} aria-hidden="true" />
+          {pending ? 'Changing…' : 'Change steward'}
+        </button>
+      )}
       {dialog}
       {result && !result.ok && <ActionMessage result={result} />}
     </span>

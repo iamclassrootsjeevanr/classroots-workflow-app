@@ -59,7 +59,7 @@ export default async function SyncPage() {
               {relayReport ? (
                 relayReport.errors.length + relayReport.unknownPeople.length + relayReport.creatorDiffers.length + relayReport.dashboardAhead.length ? (
                   <span className="text-warn">
-                    {relayReport.errors.length} errors · {relayReport.unknownPeople.length} creators not in People · {relayReport.creatorDiffers.length} creators differ · {relayReport.dashboardAhead.length} ahead of the relay
+                    {relayReport.errors.length} errors · {relayReport.unknownPeople.length} creators not in People · {relayReport.creatorDiffers.length} reassigned here (kept) · {relayReport.dashboardAhead.length} ahead of the relay
                   </span>
                 ) : (
                   <span className="text-ok">nothing</span>
@@ -72,6 +72,13 @@ export default async function SyncPage() {
           {relayReport && (relayReport.stewards?.length ?? 0) > 0 && (
             <p className="mt-3 text-xs text-muted">Chapter stewards from the relay: {relayReport.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : 'taken from'} ${x.steward}`).join(', ')}</p>
           )}
+          {relayReport && (relayReport.reassigned?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Moved to the relay’s creator: {relayReport.reassigned.map(x => `${x.key} ${x.from ?? 'nobody'} → ${x.to}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.teamChanges?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Teams from the relay: {relayReport.teamChanges.map(x => `${x.person} → ${x.team}${x.from ? ` (was ${x.from})` : ''}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.teamIssues?.length ?? 0) > 0 && <p className="mt-2 text-xs text-warn">Teams to check: {relayReport.teamIssues.join('; ')}</p>}
           {relayReport && (relayReport.stewardIssues?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-warn">Stewards to check: {relayReport.stewardIssues.join('; ')}</p>
           )}

@@ -56,6 +56,12 @@ describe('coordinator rights follow the team', () => {
     expect(capabilitiesIn(a, 'G05C02', null).has('assign')).toBe(false);
     expect(capabilitiesIn(a, 'G04C05', 'vaishali').has('assign')).toBe(true);
   });
+
+  it('a steward also creates: work rights, and full rights on their own journey in any chapter', () => {
+    expect(a.capabilities.has('work')).toBe(true);
+    expect(capabilitiesIn(a, 'G05C02', 'arjun').has('assign')).toBe(true);
+    expect(capabilitiesIn(a, 'G05C02', 'arjun').has('work')).toBe(true);
+  });
 });
 
 describe('journeys list: team filters', () => {

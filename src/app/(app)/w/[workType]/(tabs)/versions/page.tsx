@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AddChapterForm, RemoveChapterButton } from '@/components/chapters-panel';
+import { AddChapterForm, ChangeStewardButton, RemoveChapterButton } from '@/components/chapters-panel';
 import { GroupSummaryCard } from '@/components/group-summary';
 import { NewApkVersionButton } from '@/components/new-apk-version';
 import { Sheet } from '@/components/sheet';
@@ -77,7 +77,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
                       <th>Steward</th>
                       <th>{mod.pages?.items ?? 'Items'}</th>
                       <th>Open</th>
-                      {rows.some(r => r.canRemove) && editable && <th className="pin-end">Actions</th>}
+                      {rows.some(r => r.canRemove || r.canMove) && editable && <th className="pin-end">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -100,7 +100,14 @@ export default async function VersionsPage({ params, searchParams }: { params: P
                             {r.open}
                           </Link>
                         </td>
-                        {rows.some(x => x.canRemove) && editable && <td className="pin-end">{r.canRemove && <RemoveChapterButton workTypeId={wt.id} code={r.code} />}</td>}
+                        {rows.some(x => x.canRemove || x.canMove) && editable && (
+                          <td className="pin-end">
+                            <span className="inline-flex flex-wrap items-start justify-end gap-1">
+                              {r.canMove && <ChangeStewardButton workTypeId={wt.id} code={r.code} current={r.stewards} stewards={chapters.coordinators} />}
+                              {r.canRemove && <RemoveChapterButton workTypeId={wt.id} code={r.code} />}
+                            </span>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -134,7 +141,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
       loadTeams(db, [workTypeId]),
       db.chapter.findMany({ select: { code: true, title: true }, orderBy: { code: 'asc' } }),
       db.user.findMany({
-        where: { active: true, memberships: { some: { workTypeId, roles: { some: { role: { capAssign: true, canEdit: true } } } } } },
+        where: { active: true, OR: [{ isAdmin: true }, { memberships: { some: { workTypeId, roles: { some: { role: { capAssign: true, canEdit: true } } } } } }] },
         select: { id: true, name: true, email: true },
         orderBy: { name: 'asc' },
       }),
@@ -161,6 +168,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
           total: inIt.length,
           open: inIt.filter(i => i.category !== 'done').length,
           canRemove: steered.includes(code) && (isAdmin || (can('assign') && Boolean(myGroups?.has(code)))),
+          canMove: isAdmin || (can('assign') && Boolean(myGroups?.has(code))),
         };
       }),
     };

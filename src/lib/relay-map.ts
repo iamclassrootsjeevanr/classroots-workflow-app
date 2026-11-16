@@ -9,7 +9,17 @@ import { journeyKeyOf } from './journey';
 const STAGE_NAMES: Record<string, string> = { '3a': '3a · Spine', '3b': '3b · Script', '4': '4 · Build', '5': '5 · Ship' };
 export const creationStageOfRelay = (stage: unknown): string | null => STAGE_NAMES[String(stage ?? '').trim().toLowerCase()] ?? null;
 
-export type RelayAllocation = { key: string; level: string; email: string | null; name: string | null; title: string | null };
+export type RelayAllocation = {
+  key: string;
+  level: string;
+  email: string | null;
+  name: string | null;
+  title: string | null;
+  /** When the relay allocated it (to this holder). */
+  at: Date | null;
+  /** The relay team the journey was allocated under ("Team Arjun"). */
+  team: string | null;
+};
 export type RelayEventRow = {
   eventId: string;
   kind: string;
@@ -26,6 +36,10 @@ export type RelayEventRow = {
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const when = (v: unknown): Date | null => {
+  const d = new Date(String(v ?? ''));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
 
 /** The allocations reply (or `whoami`'s `allocations`) → one row per allocated *journey*. Chapters and subtopics are ignored. */
 export function parseAllocations(reply: unknown): RelayAllocation[] {
@@ -39,7 +53,7 @@ export function parseAllocations(reply: unknown): RelayAllocation[] {
     const who = rec(a.person ?? a.holder ?? a.held_by);
     // The live relay names the holder in `owner` (an email); older shapes used person / holder.
     const email = (str(a.owner) ?? str(a.email) ?? str(a.person) ?? str(a.holder) ?? str(a.held_by) ?? str(who.email))?.toLowerCase() ?? null;
-    out.set(key, { key, level: 'journey', email: email?.includes('@') ? email : null, name: str(a.name) ?? str(a.person_name) ?? str(who.name), title: str(a.title) });
+    out.set(key, { key, level: 'journey', email: email?.includes('@') ? email : null, name: str(a.name) ?? str(a.person_name) ?? str(who.name), title: str(a.title), at: when(a.at), team: str(a.team) });
   }
   return [...out.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
@@ -58,7 +72,14 @@ export function parseChapterStewards(reply: unknown): { code: string; email: str
   return [...out.entries()].map(([code, email]) => ({ code, email })).sort((a, b) => a.code.localeCompare(b.code));
 }
 
-export type StewardMember = { userId: string; email: string | null; groupKeys: string[]; coordinator: boolean };
+export type StewardMember = {
+  userId: string;
+  email: string | null;
+  groupKeys: string[];
+  coordinator: boolean;
+  /** Admins see everything anyway: the relay can make them a chapter's steward (role given, chapter list set). */
+  admin?: boolean;
+};
 export type StewardPlan = {
   /** Chapter codes to add to a coordinator's chapters. */
   add: { userId: string; code: string }[];
@@ -70,14 +91,21 @@ export type StewardPlan = {
   /** Their chapter list is empty, which means every chapter: adding one would narrow it. */
   steersAll: { code: string; email: string }[];
   keptLast: { code: string; userId: string }[];
+  /** Admins named by the relay who get the Steward role (and a Journey membership if they have none). */
+  grantRole: { userId: string; code: string }[];
+  /** An admin named by the relay for a chapter that already has a steward: the current steward stays its default. */
+  keptCurrent: { code: string; userId: string; adminId: string }[];
 };
 
 /**
  * Make the dashboard's stewards follow the relay's chapter owners. The steward is a coordinator whose chapter list holds the code.
- * Never grants a role, never empties a list (empty = every chapter), never touches people the relay does not name for a chapter.
+ * Never empties a list (empty = every chapter), never touches people the relay does not name for a chapter. Grants the Steward role
+ * only to admins (they see every chapter anyway, so a chapter list never narrows them); other people are reported. An admin never
+ * displaces a chapter's current (non-admin) steward: that steward stays the default, the admin steers it as admin.
  */
 export function planStewards(stewards: { code: string; email: string }[], members: StewardMember[]): StewardPlan {
-  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [] };
+  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [], grantRole: [], keptCurrent: [] };
+  const granted = new Set<string>();
   const byEmail = new Map(members.filter(m => m.email).map(m => [m.email!.toLowerCase(), m]));
   const keys = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
   for (const { code, email } of stewards) {
@@ -86,12 +114,24 @@ export function planStewards(stewards: { code: string; email: string }[], member
       plan.unknown.push({ code, email });
       continue;
     }
-    if (!m.coordinator) {
+    if (!m.coordinator && !m.admin) {
       plan.notCoordinator.push({ code, email });
       continue;
     }
+    if (!m.coordinator && !granted.has(m.userId)) {
+      granted.add(m.userId);
+      plan.grantRole.push({ userId: m.userId, code });
+      keys.set(m.userId, []);
+    }
+    if (m.admin) {
+      const current = members.find(o => o.userId !== m.userId && o.coordinator && !o.admin && keys.get(o.userId)!.includes(code));
+      if (current) {
+        plan.keptCurrent.push({ code, userId: current.userId, adminId: m.userId });
+        continue;
+      }
+    }
     const mine = keys.get(m.userId)!;
-    if (!mine.length) plan.steersAll.push({ code, email });
+    if (!mine.length && !m.admin) plan.steersAll.push({ code, email });
     else if (!mine.includes(code)) {
       plan.add.push({ userId: m.userId, code });
       mine.push(code);
@@ -100,7 +140,8 @@ export function planStewards(stewards: { code: string; email: string }[], member
       if (other.userId === m.userId || !other.coordinator) continue;
       const theirs = keys.get(other.userId)!;
       if (!theirs.includes(code)) continue;
-      if (theirs.length === 1) {
+      // An admin may end up with no chapter list: they see every chapter anyway.
+      if (theirs.length === 1 && !other.admin) {
         plan.keptLast.push({ code, userId: other.userId });
         continue;
       }
@@ -111,10 +152,6 @@ export function planStewards(stewards: { code: string; email: string }[], member
   return plan;
 }
 
-const when = (v: unknown): Date | null => {
-  const d = new Date(String(v ?? ''));
-  return Number.isNaN(d.getTime()) ? null : d;
-};
 
 /** The journey_status reply → its events (steps, approvals, baselines, reopens), oldest first, with withdrawn approvals marked. */
 export function parseStatus(reply: unknown): RelayEventRow[] {
@@ -192,3 +229,66 @@ export const approvalLabel = (id: string | null) => (id ? (APPROVAL_LABELS[id.re
 
 /** "krishna.rander@classrootsedu.com" → "krishna rander": the name an email's local part spells, for matching a person whose dashboard email differs. */
 export const nameFromEmail = (email: string) => email.split('@')[0].replace(/[._+-]+/g, ' ').trim().toLowerCase();
+
+/**
+ * Whether the relay's holder replaces the dashboard's creator: the relay allocation is later than the dashboard's last
+ * (re)assignment. A reassignment made here after the relay's allocation stands, and is reported instead.
+ */
+export function relayHolderWins(relayAt: Date | null, lastAssignedHere: Date | null): boolean {
+  if (!relayAt) return !lastAssignedHere;
+  return !lastAssignedHere || relayAt.getTime() > lastAssignedHere.getTime();
+}
+
+export type TeamLiteForRelay = { id: string; name: string; coordinatorId: string; coordinatorName: string | null };
+
+/** "Team Arjun" → the dashboard team of that name, else the team whose coordinator's first name is Arjun. */
+export function teamForRelayName(relayTeam: string, teams: TeamLiteForRelay[]): TeamLiteForRelay | null {
+  const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, ' ');
+  const want = norm(relayTeam);
+  const byName = teams.find(t => norm(t.name) === want);
+  if (byName) return byName;
+  const first = want.replace(/^team\s+/, '');
+  const byCoordinator = teams.filter(t => norm(t.coordinatorName ?? '').split(' ')[0] === first);
+  return byCoordinator.length === 1 ? byCoordinator[0] : null;
+}
+
+export type TeamPlan = {
+  /** Put in this team (removed from their old one first when `fromTeamId` is set). */
+  moves: { userId: string; teamId: string; fromTeamId: string | null }[];
+  /** The relay allocates their journeys under more than one team: left as is. */
+  mixed: { userId: string; teams: string[] }[];
+  /** A relay team with no dashboard team. */
+  unknownTeams: string[];
+};
+
+/**
+ * Each creator's team from the relay: the team all their relay journeys are allocated under. A creator split across teams,
+ * a team's own coordinator, and teams the dashboard does not have are left alone.
+ */
+export function planTeams(
+  holders: { userId: string; team: string | null }[],
+  teams: TeamLiteForRelay[],
+  memberOf: Map<string, string>,
+): TeamPlan {
+  const plan: TeamPlan = { moves: [], mixed: [], unknownTeams: [] };
+  const byUser = new Map<string, Set<string>>();
+  for (const h of holders) if (h.team) byUser.set(h.userId, (byUser.get(h.userId) ?? new Set()).add(h.team));
+  const unknown = new Set<string>();
+  for (const [userId, names] of byUser) {
+    if (names.size > 1) {
+      plan.mixed.push({ userId, teams: [...names].sort() });
+      continue;
+    }
+    const name = [...names][0];
+    const team = teamForRelayName(name, teams);
+    if (!team) {
+      // A person's own name ("Aswin") is a solo seat on the relay, not a team.
+      if (/^team\s/i.test(name)) unknown.add(name);
+      continue;
+    }
+    if (team.coordinatorId === userId || memberOf.get(userId) === team.id) continue;
+    plan.moves.push({ userId, teamId: team.id, fromTeamId: memberOf.get(userId) ?? null });
+  }
+  plan.unknownTeams = [...unknown].sort();
+  return plan;
+}

@@ -66,7 +66,7 @@ export type WorkTypeAccess = {
   pages: ReadonlySet<PageKey>;
   /** Groups where GROUP_CAPABILITIES apply; null = every group. */
   groupKeys: ReadonlySet<string> | null;
-  /** Team coordinator: GROUP_CAPABILITIES also apply to items assigned to these people, in any group. */
+  /** Team coordinator: GROUP_CAPABILITIES also apply to items assigned to these people (and to themselves), in any group. */
   teamUserIds?: ReadonlySet<string>;
 };
 
@@ -156,7 +156,8 @@ export function buildAccess(
       canEdit: c.canEdit,
       pages: c.pages,
       groupKeys: m.groupKeys?.length ? new Set(m.groupKeys) : null,
-      teamUserIds: new Set(m.teamUserIds ?? []),
+      // Their own journeys count like their team's: a steward who also creates keeps steward rights on them in any chapter.
+      teamUserIds: new Set([...(m.teamUserIds ?? []), userId]),
     });
   }
   return { userId, isAdmin, byKey };
@@ -180,11 +181,11 @@ export function hasCapabilityAnywhere(access: Access, cap: Capability, page: Pag
   return workTypesWith(access, page).some(a => a.capabilities.has(cap));
 }
 
-export type ItemOwnership = { assigneeId: string | null; ownerId: string | null; createdById: string | null };
+export type ItemOwnership = { assigneeId: string | null; ownerId: string | null; createdById: string | null; developerId?: string | null };
 
-/** OWN = assigned to me, owned by me, or created by me. */
+/** OWN = assigned to me, owned (reviewed) by me, created by me, or mine to design as developer. */
 export function isOwnItem(item: ItemOwnership, userId: string): boolean {
-  return item.assigneeId === userId || item.ownerId === userId || item.createdById === userId;
+  return item.assigneeId === userId || item.ownerId === userId || item.createdById === userId || item.developerId === userId;
 }
 
 /** Whether the item is within the person's data scope. Page ticks decide where it is shown, not whether it is theirs. */

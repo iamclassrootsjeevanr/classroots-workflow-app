@@ -152,6 +152,15 @@ describe('developer', () => {
     expect(design?.state).not.toBe('paused');
     expect(design?.next?.by).toContain('DEVELOPER');
   });
+  it('sees only the journeys assigned to them as developer', () => {
+    const dev = base.roles!.find(r => r.key === 'developer')!;
+    expect(dev.dataScope).toBe('OWN');
+    const access = buildAccess('me', false, [WT], new Map([['wt', { roles: [roleLite('developer')] }]]));
+    const item = { assigneeId: 'kapil', ownerId: 'arjun', createdById: null };
+    expect(canSeeItem(access, 'journey-applet', { ...item, developerId: 'me' })).toBe(true);
+    expect(canSeeItem(access, 'journey-applet', { ...item, developerId: 'someone' })).toBe(false);
+    expect(canSeeItem(access, 'journey-applet', item)).toBe(false);
+  });
   it('lets the item’s developer, and only them among editors, press Design done', () => {
     const base = { isAdmin: false, capabilities: new Set<never>(), isAssignee: false, canEdit: true };
     expect(actorMatches(['DEVELOPER', 'assign'], { ...base, isDeveloper: true })).toBe(true);

@@ -35,17 +35,18 @@ export async function loadTeams(client: Client, workTypeIds: string[]): Promise<
 }
 
 /** Chapter stewards: for each group, the people whose membership names it and whose role assigns work there. */
-export async function loadStewards(client: Client, workTypeIds: string[]): Promise<Map<string, { userId: string; name: string }[]>> {
-  const out = new Map<string, { userId: string; name: string }[]>();
+export async function loadStewards(client: Client, workTypeIds: string[]): Promise<Map<string, { userId: string; name: string; admin: boolean }[]>> {
+  const out = new Map<string, { userId: string; name: string; admin: boolean }[]>();
   if (!workTypeIds.length) return out;
   const rows = await client.workTypeMember.findMany({
     where: { workTypeId: { in: workTypeIds }, NOT: { groupKeys: { isEmpty: true } }, user: { active: true }, roles: { some: { role: { capAssign: true, canEdit: true } } } },
-    select: { workTypeId: true, groupKeys: true, userId: true, user: { select: { name: true, email: true } } },
+    select: { workTypeId: true, groupKeys: true, userId: true, user: { select: { name: true, email: true, isAdmin: true } } },
   });
   for (const r of rows) {
     for (const g of r.groupKeys) {
       const key = `${r.workTypeId}:${g}`;
-      out.set(key, [...(out.get(key) ?? []), { userId: r.userId, name: who(r.user) }].sort((a, b) => a.name.localeCompare(b.name)));
+      // The chapter's own steward comes first; an admin who also steers it follows.
+      out.set(key, [...(out.get(key) ?? []), { userId: r.userId, name: who(r.user), admin: r.user.isAdmin }].sort((a, b) => Number(a.admin) - Number(b.admin) || a.name.localeCompare(b.name)));
     }
   }
   return out;
