@@ -21,3 +21,4 @@
 - 2026-11-13T06:53Z | claude-code | Journey developer handoff on review close; db:pull copies parents first
 - 2026-11-13T13:22Z | claude-code | RELAY live pull sync, Journey design loop, developer dropdown and My work, Steward naming, chapter walkthrough doc
 - 2026-11-16T07:17Z | claude-code | Handoff: PR #19 merged to development (relay board, feedback tickets, confirm dialogs); relay sync applied locally; next Render rollout
+- 2026-11-16T10:59Z | claude-code | Handoff: PR #20/#21 merged (relay stewards, steward creators, Change steward, relay reassign/teams, developer own data); next Render relay sync
