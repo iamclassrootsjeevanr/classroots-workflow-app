@@ -44,6 +44,73 @@ export function parseAllocations(reply: unknown): RelayAllocation[] {
   return [...out.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/** Chapter-level allocations: the chapter's steward on the relay (`owner`). Later rows for the same chapter win. */
+export function parseChapterStewards(reply: unknown): { code: string; email: string }[] {
+  const root = Array.isArray(reply) ? { allocations: reply } : rec(reply);
+  const out = new Map<string, string>();
+  for (const raw of list(root.allocations ?? root.items ?? root.rows)) {
+    const a = rec(raw);
+    const code = str(a.key)?.toUpperCase();
+    const email = str(a.owner)?.toLowerCase();
+    if (a.level !== 'chapter' || !code || !/^G\d{2}(P\d)?C\d{2}$/.test(code) || !email?.includes('@')) continue;
+    out.set(code, email);
+  }
+  return [...out.entries()].map(([code, email]) => ({ code, email })).sort((a, b) => a.code.localeCompare(b.code));
+}
+
+export type StewardMember = { userId: string; email: string | null; groupKeys: string[]; coordinator: boolean };
+export type StewardPlan = {
+  /** Chapter codes to add to a coordinator's chapters. */
+  add: { userId: string; code: string }[];
+  /** A chapter handed to someone else on the relay: taken off the old steward (never their last chapter). */
+  remove: { userId: string; code: string }[];
+  /** Reported, nothing changed. */
+  unknown: { code: string; email: string }[];
+  notCoordinator: { code: string; email: string }[];
+  /** Their chapter list is empty, which means every chapter: adding one would narrow it. */
+  steersAll: { code: string; email: string }[];
+  keptLast: { code: string; userId: string }[];
+};
+
+/**
+ * Make the dashboard's stewards follow the relay's chapter owners. The steward is a coordinator whose chapter list holds the code.
+ * Never grants a role, never empties a list (empty = every chapter), never touches people the relay does not name for a chapter.
+ */
+export function planStewards(stewards: { code: string; email: string }[], members: StewardMember[]): StewardPlan {
+  const plan: StewardPlan = { add: [], remove: [], unknown: [], notCoordinator: [], steersAll: [], keptLast: [] };
+  const byEmail = new Map(members.filter(m => m.email).map(m => [m.email!.toLowerCase(), m]));
+  const keys = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
+  for (const { code, email } of stewards) {
+    const m = byEmail.get(email);
+    if (!m) {
+      plan.unknown.push({ code, email });
+      continue;
+    }
+    if (!m.coordinator) {
+      plan.notCoordinator.push({ code, email });
+      continue;
+    }
+    const mine = keys.get(m.userId)!;
+    if (!mine.length) plan.steersAll.push({ code, email });
+    else if (!mine.includes(code)) {
+      plan.add.push({ userId: m.userId, code });
+      mine.push(code);
+    }
+    for (const other of members) {
+      if (other.userId === m.userId || !other.coordinator) continue;
+      const theirs = keys.get(other.userId)!;
+      if (!theirs.includes(code)) continue;
+      if (theirs.length === 1) {
+        plan.keptLast.push({ code, userId: other.userId });
+        continue;
+      }
+      plan.remove.push({ userId: other.userId, code });
+      keys.set(other.userId, theirs.filter(k => k !== code));
+    }
+  }
+  return plan;
+}
+
 const when = (v: unknown): Date | null => {
   const d = new Date(String(v ?? ''));
   return Number.isNaN(d.getTime()) ? null : d;

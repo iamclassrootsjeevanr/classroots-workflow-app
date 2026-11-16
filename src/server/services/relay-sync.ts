@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
-import { currentCreationStage, nameFromEmail, parseAllocations, parseStatus, parseStatusMeta, type RelayAllocation } from '@/lib/relay-map';
+import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, planStewards, type RelayAllocation } from '@/lib/relay-map';
 import { shortKey } from '@/lib/notifications-core';
 import { db } from '../db';
 import { workCalendar } from '../settings';
@@ -32,11 +32,15 @@ export type RelayReport = {
   dashboardAhead: { key: string; dashboard: string; relay: string }[];
   /** Dashboard journeys the relay has no allocation for (old tracker imports). */
   notOnRelay: string[];
+  /** Chapter stewards from the relay's chapter owners: added to (and handed over from) coordinators' chapter lists. */
+  stewards: { code: string; steward: string; change: 'added' | 'removed' }[];
+  /** Chapter owners the dashboard could not apply (reported, nothing changed). */
+  stewardIssues: string[];
   skipped: string[];
   errors: { key: string; error: string }[];
 };
 
-const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], eventsAdded: 0, unknownPeople: [], creatorDiffers: [], dashboardAhead: [], notOnRelay: [], skipped: [], errors: [] });
+const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], eventsAdded: 0, unknownPeople: [], creatorDiffers: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
 
 export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string } = {}): Promise<RelayReport> {
@@ -49,7 +53,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     return report;
   }
   const only = opts.key ? journeyKeyOf(opts.key) : null;
-  const allocations = parseAllocations(await client.allocations()).filter(a => !only || a.key === only);
+  const allocReply = await client.allocations();
+  const allocations = parseAllocations(allocReply).filter(a => !only || a.key === only);
   report.allocated = allocations.length;
 
   const [items, users, chapters, cal] = await Promise.all([
@@ -67,6 +72,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   const chapterByCode = new Map(chapters.map(c => [c.code, c.id]));
   const relayKeys = new Set(allocations.map(a => a.key));
   if (!only) report.notOnRelay = items.filter(i => !i.archivedAt && !relayKeys.has(i.externalKey.toUpperCase()) && parseJourneyKey(i.externalKey)).map(i => i.externalKey).sort();
+
+  if (!only) await syncStewards(wt.id, parseChapterStewards(allocReply), report, dryRun);
 
   for (const a of allocations) {
     try {
@@ -151,4 +158,30 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue }, update: { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue } });
   }
   return report;
+}
+
+/** The relay's chapter owner is the chapter's steward: a coordinator whose chapter list holds the code (see `planStewards`). */
+async function syncStewards(workTypeId: string, stewards: { code: string; email: string }[], report: RelayReport, dryRun: boolean) {
+  if (!stewards.length) return;
+  const rows = await db.workTypeMember.findMany({
+    where: { workTypeId, user: { active: true } },
+    select: { userId: true, groupKeys: true, user: { select: { email: true, name: true } }, roles: { select: { role: { select: { capAssign: true, canEdit: true } } } } },
+  });
+  const members = rows.map(r => ({ userId: r.userId, email: r.user.email, groupKeys: r.groupKeys, coordinator: r.roles.some(x => x.role.capAssign && x.role.canEdit) }));
+  const nameOf = new Map(rows.map(r => [r.userId, r.user.name ?? r.user.email ?? r.userId]));
+  const plan = planStewards(stewards, members);
+  for (const u of plan.unknown) report.stewardIssues.push(`${u.code}: ${u.email} has no Journey access (give them the Steward role in People)`);
+  for (const u of plan.notCoordinator) report.stewardIssues.push(`${u.code}: ${u.email} is in Journey without the Steward role`);
+  for (const u of plan.steersAll) report.stewardIssues.push(`${u.code}: ${u.email} already steers every chapter (no chapter list), left as is`);
+  for (const k of plan.keptLast) report.stewardIssues.push(`${k.code}: still on ${nameOf.get(k.userId)}, their only chapter`);
+  for (const a of plan.add) report.stewards.push({ code: a.code, steward: nameOf.get(a.userId) ?? a.userId, change: 'added' });
+  for (const r of plan.remove) report.stewards.push({ code: r.code, steward: nameOf.get(r.userId) ?? r.userId, change: 'removed' });
+  if (dryRun) return;
+  const next = new Map(members.map(m => [m.userId, [...m.groupKeys]]));
+  for (const a of plan.add) next.get(a.userId)!.push(a.code);
+  for (const r of plan.remove) next.set(r.userId, next.get(r.userId)!.filter(k => k !== r.code));
+  const changed = new Set([...plan.add, ...plan.remove].map(x => x.userId));
+  for (const userId of changed) {
+    await db.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId } }, data: { groupKeys: [...new Set(next.get(userId))].sort() } });
+  }
 }

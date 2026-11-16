@@ -39,7 +39,7 @@ export default async function SyncPage() {
       )}
 
       <div className="space-y-4">
-        <Card title="Journey relay (live)" description="The relay feeds creation: who holds each journey, its Creation stage and approvals. Review and everything after it stay here. Pulled every few minutes by the scheduler.">
+        <Card title="Journey relay (live)" description="The relay feeds creation: chapter stewards, who holds each journey, its Creation stage and approvals. Review and everything after it stay here. Pulled when the scheduled job calls /api/cron/run, or when you press Sync RELAY now.">
           {!relayOn && <p className="note-warn mb-3">RELAY_URL, RELAY_CF_CLIENT_ID and RELAY_CF_CLIENT_SECRET are not set in .env, so the relay can’t be read.</p>}
           <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -69,6 +69,12 @@ export default async function SyncPage() {
               )}
             </div>
           </div>
+          {relayReport && (relayReport.stewards?.length ?? 0) > 0 && (
+            <p className="mt-3 text-xs text-muted">Chapter stewards from the relay: {relayReport.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : 'taken from'} ${x.steward}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.stewardIssues?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-warn">Stewards to check: {relayReport.stewardIssues.join('; ')}</p>
+          )}
           {relayReport && relayReport.unknownPeople.length > 0 && (
             <p className="mt-3 text-xs text-muted">Add these people in People (their email must match the relay), then sync again: {[...new Set(relayReport.unknownPeople.map(p => p.email))].join(', ')}</p>
           )}

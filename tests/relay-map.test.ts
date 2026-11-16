@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseStatus, parseStatusMeta, nameFromEmail } from '@/lib/relay-map';
+import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, nameFromEmail, planStewards } from '@/lib/relay-map';
 
 describe('relay allocations', () => {
   it('keeps journeys, normalises keys and emails, drops chapters and subtopics', () => {
@@ -74,4 +74,46 @@ describe('the live relay shapes', () => {
 it('spells a name from an email', () => {
   expect(nameFromEmail('krishna.rander@classrootsedu.com')).toBe('krishna rander');
   expect(nameFromEmail('Kapil@x.com')).toBe('kapil');
+});
+
+describe('relay chapter stewards', () => {
+  const reply = {
+    allocations: [
+      { key: 'G06C07', level: 'chapter', owner: 'old@x.com' },
+      { key: 'G06C07', level: 'chapter', owner: 'Vinay@x.com' },
+      { key: 'G07P1C03', level: 'chapter', owner: 'dj@x.com' },
+      { key: 'G05C02ST1', level: 'subtopic', owner: 'aswin@x.com' },
+      { key: 'G04C05ST1J1', level: 'journey', owner: 'kapil@x.com' },
+    ],
+  };
+  it('reads chapter owners, latest row wins', () => {
+    expect(parseChapterStewards(reply)).toEqual([
+      { code: 'G06C07', email: 'vinay@x.com' },
+      { code: 'G07P1C03', email: 'dj@x.com' },
+    ]);
+  });
+  it('adds, hands over, and never narrows or grants', () => {
+    const members = [
+      { userId: 'vinay', email: 'vinay@x.com', groupKeys: ['G06C01'], coordinator: true },
+      { userId: 'dj', email: 'dj@x.com', groupKeys: [], coordinator: true },
+      { userId: 'old', email: 'old@x.com', groupKeys: ['G06C07', 'G05C02'], coordinator: true },
+      { userId: 'last', email: 'last@x.com', groupKeys: ['G07P1C03'], coordinator: true },
+      { userId: 'kapil', email: 'kapil@x.com', groupKeys: [], coordinator: false },
+    ];
+    const plan = planStewards(
+      [
+        { code: 'G06C07', email: 'vinay@x.com' },
+        { code: 'G07P1C03', email: 'dj@x.com' },
+        { code: 'G04C05', email: 'kapil@x.com' },
+        { code: 'G08P2C01', email: 'nobody@x.com' },
+      ],
+      members,
+    );
+    expect(plan.add).toEqual([{ userId: 'vinay', code: 'G06C07' }]);
+    expect(plan.remove).toEqual([{ userId: 'old', code: 'G06C07' }]);
+    expect(plan.steersAll).toEqual([{ code: 'G07P1C03', email: 'dj@x.com' }]);
+    expect(plan.keptLast).toEqual([{ code: 'G07P1C03', userId: 'last' }]);
+    expect(plan.notCoordinator).toEqual([{ code: 'G04C05', email: 'kapil@x.com' }]);
+    expect(plan.unknown).toEqual([{ code: 'G08P2C01', email: 'nobody@x.com' }]);
+  });
 });

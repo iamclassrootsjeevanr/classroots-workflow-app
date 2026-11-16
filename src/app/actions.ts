@@ -648,6 +648,8 @@ export async function syncRelayAction(dryRun: boolean) {
     const r = await syncRelay(httpRelayClient(), { dryRun });
     revalidatePath('/admin/sync');
     const bits = [`${r.allocated} journeys on the relay`, `${r.created.length} ${dryRun ? 'to add' : 'added'}`, `${r.stageChanges.length} Creation stage ${dryRun ? 'changes to make' : 'changes'}`];
+    if (r.stewards.length) bits.push(`${r.stewards.length} chapter steward ${dryRun ? 'changes to make' : 'changes'} (${r.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : '✕'} ${x.steward}`).join(', ')})`);
+    if (r.stewardIssues.length) bits.push(`stewards to check: ${r.stewardIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
     return (dryRun ? 'Dry run (nothing changed): ' : '') + bits.join(' · ');
