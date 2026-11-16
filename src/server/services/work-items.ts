@@ -3,7 +3,7 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
-import { landingStage, nextActiveAfter } from '@/lib/stages';
+import { developerStage, landingStage, nextActiveAfter } from '@/lib/stages';
 import { lowerLabel, matchOption } from '@/lib/text';
 import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
@@ -12,6 +12,7 @@ import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
 import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -191,6 +192,38 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   await notifyStage(tx, item, mod, actor, landing);
   if (item.parentId) await rollupVersionTx(tx, item.parentId, actor, now, cal);
+  const hand = mod.developerHandoff;
+  if (hand && landing === hand.after) await handOffToDeveloperTx(tx, item.id, actor, now, cal);
+}
+
+/**
+ * Journey: the review is closed. The journey moves on to the next stage (design standardization) and a developer is assigned to
+ * check it: the one already on it, else the developer with the fewest journeys waiting in that stage.
+ */
+async function handOffToDeveloperTx(tx: Tx, itemId: string, actor: ChangeActor, now: Date, cal: WorkCalendar) {
+  const item = await loadItem(tx, itemId);
+  const mod = requireModule(item.workType.key);
+  const hand = mod.developerHandoff;
+  const next = hand && nextActiveAfter(mod.statuses, hand.after);
+  if (!hand || !next) return;
+  const system = { ...actor, ctx: null };
+  // A paused design standardization stage only collects journeys: nobody is assigned until it is active again.
+  const developerId = item.developerId ?? (!developerStage(mod.statuses, hand).paused ? await pickDeveloper(tx, item.workTypeId, hand.role, next) : null);
+  if (developerId && developerId !== item.developerId) await setPersonTx(tx, item, system, 'developer', developerId, now);
+  await changeStatusTx(tx, await loadItem(tx, itemId), system, next, now, cal);
+}
+
+/** The person of `role` with the fewest open journeys in `stage` (ties: by name). Null when nobody has the role. */
+async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: string): Promise<string | null> {
+  const people = await tx.user.findMany({
+    where: { active: true, memberships: { some: { workTypeId, roles: { some: { role: { key: role, workTypeId, canEdit: true } } } } } },
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+  });
+  if (!people.length) return null;
+  const load = await tx.workItem.groupBy({ by: ['developerId'], where: { workTypeId, status: stage, archivedAt: null, developerId: { in: people.map(p => p.id) } }, _count: true });
+  const busy = (id: string) => load.find(l => l.developerId === id)?._count ?? 0;
+  return [...people].sort((a, b) => busy(a.id) - busy(b.id) || (a.name ?? '').localeCompare(b.name ?? ''))[0].id;
 }
 
 /**
@@ -214,6 +247,16 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   }
   if (mod.notifyOn.approved && marks.includes('approved') && item.assigneeId && item.assigneeId !== actor.userId) {
     await notify(tx, item.assigneeId, { kind: 'item.approved', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  // Design loop: Design done goes to the creator for the last look; sent back with feedback goes to the developer.
+  const hand = mod.developerHandoff;
+  const design = hand && nextActiveAfter(mod.statuses, hand.after);
+  const look = design && nextActiveAfter(mod.statuses, design);
+  if (look && to === look && item.assigneeId && item.assigneeId !== actor.userId) {
+    await notify(tx, item.assigneeId, { kind: 'item.last-look', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  if (design && to === design && item.developerId && item.developerId !== actor.userId && item.status === look) {
+    await notify(tx, item.developerId, { kind: 'item.developer', title: `Sent back to design: ${shortKey(item.externalKey)}`, body: item.title, href });
   }
 }
 
@@ -285,21 +328,27 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
   });
 }
 
-type PersonSlot = 'owner' | 'peer';
+type PersonSlot = 'owner' | 'peer' | 'developer';
 
-const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : (mod.labels?.peer ?? 'Peer reviewer'));
+const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : slot === 'developer' ? (mod.developerHandoff?.label ?? 'Developer') : (mod.labels?.peer ?? 'Peer reviewer'));
 
 /** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
 async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
   const mod = requireModule(item.workType.key);
-  if (actor.ctx && !hasCap(actor.ctx, 'assign')) throw new ForbiddenError('You don’t have permission to assign work here.');
-  const current = slot === 'owner' ? item.ownerId : item.peerReviewerId;
+  // The developer can also be changed by the item's own creator (assignee); owner and peer reviewer stay with coordinators.
+  const may = actor.ctx && (hasCap(actor.ctx, 'assign') || (slot === 'developer' && actor.ctx.isAssignee && hasCap(actor.ctx, 'work')));
+  if (actor.ctx && !may) throw new ForbiddenError(slot === 'developer' ? 'Only the steward or the SME creator can change the developer.' : 'You don’t have permission to assign work here.');
+  // The developer is only assigned or changed while the journey is in the design standardization stage (and it is not paused).
+  if (slot === 'developer' && actor.ctx && !developerStage(mod.statuses, mod.developerHandoff, item.status).open) {
+    throw new ForbiddenError('The developer can be set only while the journey is in design standardization.');
+  }
+  const current = slot === 'owner' ? item.ownerId : slot === 'developer' ? item.developerId : item.peerReviewerId;
   if (current === userId) return false;
   const [from, to] = await Promise.all([
     current ? tx.user.findUnique({ where: { id: current }, select: { name: true } }) : null,
     userId ? tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null,
   ]);
-  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : { peerReviewerId: userId });
+  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : slot === 'developer' ? { developerId: userId } : { peerReviewerId: userId });
   const label = slotLabel(mod, slot);
   await tx.workItemEvent.create({
     data: { itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: label, fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
@@ -309,7 +358,7 @@ async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot:
     if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   }
   if (!quiet && userId && userId !== actor.userId && actor.source === 'APP') {
-    await notify(tx, userId, { kind: 'item.owner', title: `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+    await notify(tx, userId, { kind: slot === 'developer' ? 'item.developer' : 'item.owner', title: slot === 'developer' ? `Check design standardization: ${shortKey(item.externalKey)}` : `${label} of ${shortKey(item.externalKey)}: you`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
   return true;
 }
@@ -320,6 +369,15 @@ export async function setOwner(actor: ChangeActor, itemId: string, ownerId: stri
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     await setPersonTx(tx, item, actor, 'owner', ownerId, new Date());
+  });
+}
+
+/** Set the item's developer (Journey: who checks design standardization). Same permission as assigning. */
+export async function setDeveloper(actor: ChangeActor, itemId: string, userId: string | null) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    guardActive(item, actor);
+    await setPersonTx(tx, item, actor, 'developer', userId, new Date());
   });
 }
 
@@ -555,24 +613,26 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
 export async function addFeedback(
   actor: ChangeActor,
   itemId: string,
-  input: { body: string; category?: string; severity?: string; requestCorrections?: boolean },
+  input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean },
 ) {
   const body = input.body.trim();
-  if (!body) throw new Error('Feedback cannot be empty');
+  if (!body) throw new Error('Describe the ticket first');
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     const mod = requireModule(item.workType.key);
     const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
-    if (actor.ctx && !canGiveFeedback(mod, actor.ctx) && !sendsBack) throw new ForbiddenError(`Only the ${lowerLabel(mod.labels?.owner ?? 'reviewer')} of this ${mod.itemNoun} can give feedback. Use a comment instead.`);
+    if (actor.ctx && !canChat(actor.ctx) && !sendsBack) throw new ForbiddenError(`Only people working on this ${mod.itemNoun} can raise a ticket.`);
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
-    await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
+    const toId = counterpart(actor.userId, item);
+    const ticket = await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, title: ticketTitle(input.title, body), toId, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
-    if (item.assigneeId && item.assigneeId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, item.assigneeId, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
+    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator.
+    if (toId && toId !== actor.userId && actor.source === 'APP') {
+      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: ticket.title, href: `/w/${item.workType.key}/${item.id}/feedback` });
     }
     if (input.requestCorrections) {
       const fresh = await loadItem(tx, itemId);
@@ -591,20 +651,38 @@ export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: Acto
   return move && !mod.transitions.includes(move) ? { ...move, label: `Send back (${statusDef(mod, move.to).label})` } : move;
 }
 
+const ticketOf = (feedbackId: string) =>
+  db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { select: { id: true, externalKey: true, workType: { select: { key: true } } } } } });
+
+/** Close a ticket, or reopen it. Only the person who raised it (or an admin). The other side is told. */
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { include: { workType: { select: { key: true } } } } } });
-  const mod = requireModule(fb.item.workType.key);
-  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
-  await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
+  const fb = await ticketOf(feedbackId);
+  if (actor.ctx && !canCloseTicket(actor.ctx, fb, actor.userId)) throw new ForbiddenError('Only the person who raised this ticket can close it.');
+  const closing = !fb.resolvedAt;
+  await db.$transaction(async tx => {
+    await tx.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: closing ? new Date() : null, closedById: closing ? actor.userId : null } });
+    if (actor.source !== 'APP') return;
+    for (const userId of ticketAudience(fb, actor.userId)) {
+      await notify(tx, userId, { kind: closing ? 'feedback.closed' : 'feedback.reopened', title: `${ticketCode(fb.ticketNo)} ${closing ? 'closed' : 'reopened'} on ${shortKey(fb.item.externalKey)}`, body: fb.title, href: `/w/${fb.item.workType.key}/${fb.item.id}/feedback` });
+    }
+  });
 }
 
-/** The creator's reply to one feedback point (empty clears it). Only the item's assignee (or an admin). */
-export async function noteFeedback(actor: ChangeActor, feedbackId: string, note: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId } });
-  if (actor.ctx && !actor.ctx.isAdmin && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work'))) throw new ForbiddenError('Only the person working on it can reply to feedback.');
-  const text = note.trim();
-  await db.feedback.update({ where: { id: feedbackId }, data: { note: text || null, noteById: text ? actor.userId : null, noteAt: text ? new Date() : null } });
-  if (text) await db.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `Reply to feedback: ${text}`, source: actor.source } });
+/** One chat message on a ticket. Both sides (and anyone working on the item) can write; a closed ticket must be reopened first. */
+export async function replyFeedback(actor: ChangeActor, feedbackId: string, body: string) {
+  const text = body.trim();
+  if (!text) throw new Error('Write a message first');
+  const fb = await ticketOf(feedbackId);
+  if (actor.ctx && !canChat(actor.ctx, fb, actor.userId)) throw new ForbiddenError('Only people working on this journey can reply.');
+  if (fb.resolvedAt) throw new Error('This ticket is closed. Reopen it to continue.');
+  await db.$transaction(async tx => {
+    await tx.feedbackMessage.create({ data: { feedbackId, authorId: actor.userId, body: text } });
+    await tx.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `${ticketCode(fb.ticketNo)}: ${text}`, source: actor.source } });
+    if (actor.source !== 'APP') return;
+    for (const userId of ticketAudience(fb, actor.userId)) {
+      await notify(tx, userId, { kind: 'feedback.reply', title: `${ticketCode(fb.ticketNo)} · new reply on ${shortKey(fb.item.externalKey)}`, body: text, href: `/w/${fb.item.workType.key}/${fb.item.id}/feedback` });
+    }
+  });
 }
 
 export async function addComment(actor: ChangeActor, itemId: string, body: string) {
@@ -725,4 +803,4 @@ export async function createItem(actor: ChangeActor, workTypeId: string, input: 
 }
 
 // Internal building blocks for the sync engine (same rules, inside its own transaction).
-export const internals = { setVersionClosedTx, ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };
+export const internals = { handOffToDeveloperTx, setVersionClosedTx, ensureVersionItemTx, rollupVersionTx, loadItem, changeStatusTx, assignTx, updateFieldsTx, saveItem, enqueue, setPersonTx };

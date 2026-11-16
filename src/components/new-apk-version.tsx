@@ -3,6 +3,7 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState, useTransition } from 'react';
 import { createApkVersionAction, createItemAction, deleteApkVersionAction, loadVersionCasesAction, updateApkVersionAction, type ActionResult } from '@/app/actions';
+import { ConfirmDialog } from './confirm';
 import { ActionMessage, type PersonOption } from './controls';
 import { Checkbox, Field, GroupLabel, OptionList } from './form';
 import { Modal } from './modal';
@@ -321,32 +322,25 @@ export function DeleteApkVersionButton({ workTypeId, version, count }: { workTyp
         <Trash2 size={14} aria-hidden="true" />
       </button>
       {open && (
-        <Modal title={`Delete ${version}?`} subtitle={`This removes the version and its ${count} test${count === 1 ? '' : 's'} from every list, chart and report.`} onClose={() => setOpen(false)}>
-          <p className="text-sm text-muted">The history is kept. You can undo this for 30 minutes from your Inbox.</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn-danger"
-              disabled={pending}
-              onClick={() =>
-                exec(
-                  async () => {
-                    const r = await deleteApkVersionAction(workTypeId, version);
-                    if (r.ok && r.id) rememberVersionDeletion(workTypeId, version, r.id);
-                    return r;
-                  },
-                  () => setOpen(false),
-                )
-              }
-            >
-              {pending ? 'Deleting…' : 'Delete version'}
-            </button>
-            <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-            <ActionMessage result={result} />
-          </div>
-        </Modal>
+        <ConfirmDialog
+          title={`Delete ${version}?`}
+          description={`This removes the version and its ${count} test${count === 1 ? '' : 's'} from every list, chart and report. The history is kept, and you can undo it for 30 minutes from your Inbox.`}
+          confirmLabel="Delete version"
+          pending={pending}
+          pendingLabel="Deleting…"
+          error={result && !result.ok ? result.error : null}
+          onCancel={() => setOpen(false)}
+          onConfirm={() =>
+            exec(
+              async () => {
+                const r = await deleteApkVersionAction(workTypeId, version);
+                if (r.ok && r.id) rememberVersionDeletion(workTypeId, version, r.id);
+                return r;
+              },
+              () => setOpen(false),
+            )
+          }
+        />
       )}
     </>
   );

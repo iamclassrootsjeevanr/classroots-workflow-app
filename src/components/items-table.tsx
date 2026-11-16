@@ -18,6 +18,11 @@ type Props = {
   /** Ids of items the viewer may delete; those rows get a Delete button. */
   deletable?: ReadonlySet<string>;
   people?: PersonOption[];
+  /** Ids of items whose developer (a handoff role) the viewer may change; those rows get a dropdown in the Developer column. */
+  developerEdits?: ReadonlySet<string>;
+  developerOptions?: PersonOption[];
+  /** Tint of the developer dropdown. */
+  developerColor?: string;
   /** Ids of items the viewer may assign (default: all, when `people` is given). */
   assignable?: ReadonlySet<string>;
   showWorkType?: boolean;
@@ -36,7 +41,7 @@ type Props = {
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, developerEdits, developerOptions, developerColor, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
   if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
@@ -79,6 +84,11 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
     ) : (
       (it.assigneeName ?? <span className="text-muted">Unassigned</span>)
     );
+  /** The Developer column: a dropdown for those who may change it, else the name. */
+  const extraCell = (it: ItemRow, field: string, compact: boolean) =>
+    field === 'developer' && developerOptions && developerEdits?.has(it.id) ? (
+      <AssignSelect compact={compact} developer color={developerColor} itemId={it.id} assigneeId={it.developerId} people={developerOptions} label="Change developer" none="Not assigned" />
+    ) : null;
   const title = (it: ItemRow, className: string) =>
     canOpen(it) ? (
       <Link href={`/w/${it.workTypeKey}/${it.id}`} className={`${className} hover:text-brand`}>
@@ -143,11 +153,11 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                     </div>
                   )}
                   {extra
-                    .filter(c => text(it, c.field))
+                    .filter(c => text(it, c.field) || extraCell(it, c.field, false))
                     .map(c => (
                       <div key={c.field} className="col-span-2 min-w-0">
                         <dt className="text-muted">{c.label}</dt>
-                        <dd className="mt-0.5 line-clamp-3 text-sm whitespace-pre-wrap">{text(it, c.field)}</dd>
+                        <dd className="mt-0.5 line-clamp-3 text-sm whitespace-pre-wrap">{extraCell(it, c.field, false) ?? text(it, c.field)}</dd>
                       </div>
                     ))}
                   {showUpdated && (
@@ -231,13 +241,13 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                   <td>{status(it, true)}</td>
                   {extra.map(c => (
                     <td key={c.field} className="max-w-56 text-xs">
-                      {text(it, c.field) ? (
+                      {extraCell(it, c.field, true) ?? (text(it, c.field) ? (
                         <div className="truncate" title={text(it, c.field)}>
                           {text(it, c.field)}
                         </div>
                       ) : (
                         <span className="text-muted">—</span>
-                      )}
+                      ))}
                     </td>
                   ))}
                   {showUpdated && <td className="whitespace-nowrap text-xs text-muted tabular-nums">{formatDateTime(it.updatedAt, tz)}</td>}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildAccess, canSeeItem, capabilitiesIn, type RoleLite } from '@/lib/access-core';
 import { applyStageConfig } from '@/lib/stages';
-import { allowedTransitions, canDeleteItem, canEditField, canGiveFeedback, hasCap, type ActorContext } from '@/lib/workflow';
+import { actorMatches, allowedTransitions, canDeleteItem, canEditField, canGiveFeedback, hasCap, type ActorContext } from '@/lib/workflow';
 import { journeyApplet as base } from '@/modules/journey-applet/definition';
 import { rightsDrift, rolesForModule, templateColumns } from '@/modules/roles';
 
@@ -104,7 +104,7 @@ describe('Coordinator', () => {
   });
   it('moves the after-steps (not the last look) and sends a journey back from QA with feedback', () => {
     expect(moves(inChapter, 'closed')).toEqual(['design_standardization']);
-    expect(moves(inChapter, 'design_standardization')).toEqual([]); // paused until the design document is ready
+    expect(moves(inChapter, 'design_standardization')).toEqual(['last_look']); // a coordinator may also press Design done (the developer does by default)
     expect(moves(inChapter, 'last_look')).toEqual([]);
     expect(moves(inChapter, 'video_replacement')).toEqual(['uat_to_prod']);
     expect(moves(inChapter, 'uat_to_prod')).toEqual(['published_prod']);
@@ -140,5 +140,47 @@ describe('built-in roles vs the flow', () => {
     expect(rightsDrift(saved, template('coordinator'))).toEqual(['edit details']);
     expect(rightsDrift({ ...templateColumns(template('sme-creator')), dataScope: 'OWN' }, template('sme-creator'))).toEqual(['which items they see']);
     expect(rightsDrift(templateColumns(template('sme-reviewer')), template('sme-reviewer'))).toEqual([]);
+  });
+});
+
+describe('developer', () => {
+  it('has a Developer role that can make changes and is the design-check actor', () => {
+    const dev = base.roles?.find(r => r.key === 'developer');
+    expect(dev?.canEdit).toBe(true);
+    expect(base.developerHandoff).toEqual({ after: 'closed', role: 'developer', label: 'Developer' });
+    const design = base.statuses.find(s => s.key === 'design_standardization');
+    expect(design?.state).not.toBe('paused');
+    expect(design?.next?.by).toContain('DEVELOPER');
+  });
+  it('lets the item’s developer, and only them among editors, press Design done', () => {
+    const base = { isAdmin: false, capabilities: new Set<never>(), isAssignee: false, canEdit: true };
+    expect(actorMatches(['DEVELOPER', 'assign'], { ...base, isDeveloper: true })).toBe(true);
+    expect(actorMatches(['DEVELOPER', 'assign'], { ...base, isDeveloper: false })).toBe(false);
+    expect(actorMatches(['DEVELOPER'], { ...base, isDeveloper: true, canEdit: false })).toBe(false);
+  });
+});
+
+describe('developer stage window', () => {
+  const hand = { after: 'closed' };
+  it('is open only in design standardization, and not when that stage is paused', async () => {
+    const { developerStage } = await import('@/lib/stages');
+    expect(developerStage(base.statuses, hand, 'design_standardization')).toMatchObject({ stage: 'design_standardization', open: true });
+    expect(developerStage(base.statuses, hand, 'closed').open).toBe(false);
+    expect(developerStage(base.statuses, hand, 'last_look').open).toBe(false);
+    const paused = base.statuses.map(s => (s.key === 'design_standardization' ? { ...s, state: 'paused' as const } : s));
+    expect(developerStage(paused, hand, 'design_standardization')).toMatchObject({ paused: true, open: false });
+  });
+});
+
+describe('design loop', () => {
+  const creator = ctxFor(['sme-creator'], { assignee: true });
+  const developer = { ...ctxFor(['developer']), isDeveloper: true };
+  it('the creator sends a journey back from the last look with feedback; the developer cannot', () => {
+    const back = allowedTransitions(mod, 'last_look', creator).find(t => t.to === 'design_standardization');
+    expect(back?.requires).toBe('feedback');
+    expect(moves(developer, 'last_look')).toEqual([]);
+  });
+  it('the developer presses Design done to send it to the creator again', () => {
+    expect(moves(developer, 'design_standardization')).toEqual(['last_look']);
   });
 });

@@ -3,6 +3,7 @@
 import { ArrowRight, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { addStageAction, removeStageAction, saveStageAction, type ActionResult } from '@/app/actions';
+import { ConfirmDialog } from './confirm';
 import { ActionMessage } from './controls';
 import { Checkbox, Field, OptionList, Segmented } from './form';
 import { Modal } from './modal';
@@ -33,13 +34,14 @@ const STATE_HELP: Record<StageState, string> = {
 };
 const STATE_TONE: Record<StageState, 'ok' | 'warn' | 'muted'> = { active: 'ok', paused: 'warn', skipped: 'muted' };
 
-export type ActorLabels = { assignee: string; owner: string };
+export type ActorLabels = { assignee: string; owner: string; developer?: string };
 
 function actorOptions(l: ActorLabels): { value: Actor; label: string; help: string }[] {
   return [
     { value: 'ASSIGNEE', label: `The assigned ${l.assignee}`, help: 'Only on items assigned to them' },
     { value: 'OWNER', label: `The item’s ${l.owner}`, help: 'Only on items where they are set, and they need a reviewing role' },
-    { value: 'assign', label: 'Coordinators', help: 'Anyone whose role assigns people' },
+    ...(l.developer ? [{ value: 'DEVELOPER' as Actor, label: `The item’s ${l.developer}`, help: 'Only on items where they are set' }] : []),
+    { value: 'assign', label: 'Stewards', help: 'Anyone whose role assigns people' },
     { value: 'review', label: 'Any reviewer', help: 'Anyone whose role reviews' },
     { value: 'work', label: 'Anyone who does the work', help: 'On every item, not only their own' },
     { value: 'manageFields', label: 'Anyone who edits details', help: '' },
@@ -187,27 +189,32 @@ export function StageEditor({ workTypeId, stages, labels, noun }: { workTypeId: 
                   </button>
                 )}
                 {!s.locked && (s.custom || s.pipeline) && s.state !== 'skipped' &&
-                  (removing === s.key ? (
-                    <span className="confirm inline-flex items-center gap-1.5 text-xs">
-                      <span className="text-muted">{s.custom && !s.used ? 'Remove?' : 'Skip it?'}</span>
-                      <button type="button" className="btn-danger min-h-7 px-2.5 py-0.5 text-xs" disabled={pending} onClick={() => exec(() => removeStageAction(workTypeId, s.key), () => setRemoving(null))}>
-                        {s.custom && !s.used ? 'Remove' : 'Skip'}
-                      </button>
-                      <button type="button" className="btn-ghost min-h-7 px-2.5 py-0.5 text-xs" onClick={() => setRemoving(null)}>
-                        Cancel
-                      </button>
-                    </span>
-                  ) : (
-                    <button type="button" className="btn-icon hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${s.label}`} title={s.custom && !s.used ? 'Remove stage' : 'Has history: skip instead of remove'} onClick={() => (clear(), setRemoving(s.key))}>
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
-                  ))}
+                  <button type="button" className="btn-icon hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${s.label}`} title={s.custom && !s.used ? 'Remove stage' : 'Has history: skip instead of remove'} onClick={() => (clear(), setRemoving(s.key))}>
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>}
               </div>
             </div>
           </li>
         ))}
       </ol>
-      {!editing && !adding && <ActionMessage result={result} />}
+      {!editing && !adding && !removing && <ActionMessage result={result} />}
+
+      {removing && (() => {
+        const st = stages.find(x => x.key === removing);
+        if (!st) return null;
+        const hard = st.custom && !st.used;
+        return (
+          <ConfirmDialog
+            title={hard ? `Remove ${st.label}?` : `Skip ${st.label}?`}
+            description={hard ? 'The stage is deleted. Nothing has used it yet.' : 'It has history, so it is skipped instead: journeys pass over it, and its past stays in reports.'}
+            confirmLabel={hard ? 'Remove' : 'Skip'}
+            pending={pending}
+            error={result && !result.ok ? result.error : null}
+            onCancel={() => setRemoving(null)}
+            onConfirm={() => exec(() => removeStageAction(workTypeId, st.key), () => setRemoving(null))}
+          />
+        );
+      })()}
 
       {editing && (
         <Modal title={`Edit stage: ${editing.label}`} subtitle={`Key ${editing.key} · stays the same, so history and reports keep working.`} onClose={() => setEditing(null)}>

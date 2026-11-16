@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { deleteRoleAction, resetRoleAction, saveRoleAction, type ActionResult, type RoleInput } from '@/app/actions';
 import { CAPABILITIES, CAPABILITY_LABELS, PAGE_LABELS, type Capability, type PageKey } from '@/lib/access-core';
 import { rolePreview, type FlowLite } from '@/lib/role-preview';
+import { useConfirm } from './confirm';
 import { ActionMessage } from './controls';
 import { Checkbox, GroupLabel, OptionList, Radio, Segmented } from './form';
 import { StatusBadge } from './ui';
@@ -65,6 +66,7 @@ export function RoleForm({
   const [v, setV] = useState<RoleInput>(initial ?? { ...blank, workTypeId });
   const [open, setOpen] = useState(!isNew);
   const [pending, start] = useTransition();
+  const { confirm, dialog } = useConfirm();
   const [result, setResult] = useState<ActionResult | null>(null);
   const caps = capsOf(v);
 
@@ -180,8 +182,8 @@ export function RoleForm({
             type="button"
             className="btn-danger"
             disabled={pending}
-            onClick={() => {
-              if (!window.confirm(`Remove the role “${v.name}”?`)) return;
+            onClick={async () => {
+              if (!(await confirm({ title: `Remove the role “${v.name}”?`, description: 'People who hold it lose its access.', confirmLabel: 'Remove role' }))) return;
               start(async () => setResult(await deleteRoleAction(v.id!)));
             }}
           >
@@ -194,8 +196,8 @@ export function RoleForm({
             type="button"
             className="btn-ghost"
             disabled={pending}
-            onClick={() => {
-              if (!window.confirm(`Put “${v.name}” back to the flow’s default? Your changes to this role are replaced.`)) return;
+            onClick={async () => {
+              if (!(await confirm({ title: `Reset “${v.name}” to default?`, description: 'Your changes to this role are replaced by the flow’s default.', confirmLabel: 'Reset', tone: 'warn' }))) return;
               start(async () => setResult(await resetRoleAction(v.id!)));
             }}
           >
@@ -211,6 +213,7 @@ export function RoleForm({
         {drift && drift.length > 0 && <span className="text-xs text-warn">Differs from the flow’s default: {drift.join(', ')}</span>}
         <ActionMessage result={result} />
       </div>
+      {dialog}
     </form>
   );
 }

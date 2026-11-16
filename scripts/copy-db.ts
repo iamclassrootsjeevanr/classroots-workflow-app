@@ -51,6 +51,23 @@ async function tablesInOrder(db: PrismaClient) {
   return order;
 }
 
+/** Rows that point at a row of the same table (WorkItem.parentId) must come after it, so sort them parents first. */
+async function parentsFirst(db: PrismaClient, t: string, rows: { r: unknown }[]) {
+  const cols = await db.$queryRawUnsafe<{ col: string }[]>(
+    `SELECT a.attname AS col FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+     WHERE c.contype = 'f' AND c.conrelid = c.confrelid AND c.conrelid = $1::regclass`,
+    q(t),
+  );
+  if (!cols.length) return rows;
+  const byId = new Map(rows.map(x => [(x.r as Record<string, unknown>).id, x.r as Record<string, unknown>]));
+  const depth = (r: Record<string, unknown>, seen = 0): number => {
+    if (seen > 50) return seen;
+    const up = cols.map(c => byId.get(r[c.col])).filter((x): x is Record<string, unknown> => Boolean(x));
+    return up.length ? 1 + Math.max(...up.map(u => depth(u, seen + 1))) : 0;
+  };
+  return rows.map(x => ({ x, d: depth(x.r as Record<string, unknown>) })).sort((a, b) => a.d - b.d).map(v => v.x);
+}
+
 async function count(db: PrismaClient, t: string) {
   const [r] = await db.$queryRawUnsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM ${q(t)}`);
   return r.n;
@@ -92,7 +109,7 @@ async function main() {
       async tx => {
         if (replace) await tx.$executeRawUnsafe(`TRUNCATE ${[...order, ...SKIP].filter(t => t !== '_prisma_migrations').map(q).join(', ')} CASCADE`);
         for (const t of order) {
-          const rows = await src.$queryRawUnsafe<{ r: unknown }[]>(`SELECT row_to_json(x) AS r FROM ${q(t)} x`);
+          const rows = await parentsFirst(src, t, await src.$queryRawUnsafe<{ r: unknown }[]>(`SELECT row_to_json(x) AS r FROM ${q(t)} x`));
           for (let i = 0; i < rows.length; i += BATCH) {
             const chunk = JSON.stringify(rows.slice(i, i + BATCH).map(x => x.r));
             await tx.$executeRawUnsafe(`INSERT INTO ${q(t)} SELECT * FROM json_populate_recordset(NULL::${q(t)}, $1::json)`, chunk);

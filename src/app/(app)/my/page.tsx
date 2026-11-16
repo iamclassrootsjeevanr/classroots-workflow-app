@@ -32,7 +32,7 @@ const openable = (types: WorkTypeAccess[]) => new Set(types.filter(t => t.pages.
 async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: WorkTypeAccess[]; tz: string }) {
   const now = new Date();
   const cal = await workCalendar();
-  const mine = await loadItems({ workTypeKeys: keys(types), assigneeId: user.id }, { includePausedTypes: false });
+  const mine = await loadItems({ workTypeKeys: keys(types), involvedId: user.id }, { includePausedTypes: false });
   const mineGroups = types.some(t => getModule(t.workTypeKey)?.groupSummary) ? await loadItems({ workTypeKeys: keys(types), assigneeId: user.id, level: 'groups' }, { includePausedTypes: false }) : [];
   const open = mine.filter(i => i.category !== 'done');
   const [options, edits, deletable, meVsTeam, recent] = await Promise.all([
@@ -140,7 +140,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
     ),
     items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
-        <ItemsTables items={mine} moreFilter={{ dev: user.id }} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={false} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
+        <ItemsTables items={mine} moreFilter={{ dev: user.id }} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={mine.some(i => i.assigneeId !== user.id)} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
       </Card>
     ),
   } satisfies Part;
@@ -280,7 +280,11 @@ export default async function MyDashboard({ searchParams }: { searchParams: Prom
   const { wt } = await searchParams;
   const types = wt ? allTypes.filter(t => t.workTypeKey === wt) : allTypes;
 
-  const workTypes = types.filter(t => t.capabilities.has('work'));
+  // A developer (Journey design standardization) has no "work" capability but holds journeys: they get "My work" too.
+  const heldAsDeveloper = new Set(
+    (await db.workItem.findMany({ where: { developerId: user.id, archivedAt: null, workType: { key: { in: keys(types) } } }, select: { workType: { select: { key: true } } }, distinct: ['workTypeId'] })).map(r => r.workType.key),
+  );
+  const workTypes = types.filter(t => t.capabilities.has('work') || heldAsDeveloper.has(t.workTypeKey));
   const reviewTypes = types.filter(t => t.capabilities.has('review') && t.canEdit);
   const teamTypes = types.filter(t => t.dataScope === 'ALL');
   const nothingElse = !workTypes.length && !reviewTypes.length && !teamTypes.length;

@@ -32,13 +32,12 @@ describe('applyStageConfig with code defaults', () => {
     expect(moves(mod, 'done')).toEqual([]);
   });
 
-  it('starts Design standardization paused: items wait there as on hold', () => {
+  it('starts Design standardization active: a developer is assigned and checks it', () => {
     const ds = mod.statuses.find(s => s.key === 'design_standardization')!;
-    expect(ds.state).toBe('paused');
-    expect(ds.category).toBe('hold');
-    expect(ds.baseCategory).toBe('active');
+    expect(ds.state).toBe('active');
+    expect(ds.category).toBe('active');
     expect(moves(mod, 'closed')).toEqual(['Send to design standardization→design_standardization']);
-    expect(moves(mod, 'design_standardization')).toEqual([]);
+    expect(moves(mod, 'design_standardization')).toEqual(['Design done→last_look']);
   });
 
   it('locks first, last, side and marked stages; APK stages have no forward move so all are locked', () => {

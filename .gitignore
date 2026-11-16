@@ -9,3 +9,6 @@ next-env.d.ts
 legacy/.env
 .pgdata/
 *.env.txt
+
+# Local secret files (relay tokens etc.)
+docs/*.env

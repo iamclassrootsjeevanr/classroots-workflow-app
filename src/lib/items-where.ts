@@ -25,7 +25,7 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
     const team = teams.find(t => t.id === f.team);
     and.push(team ? { assigneeId: { in: teamPeople(team) } } : { id: '__none__' });
   }
-  if (f.scope === 'mine') and.push({ OR: [{ assigneeId: userId }, { ownerId: userId }, ...(mod.teams ? [{ peerReviewerId: userId }] : [])] });
+  if (f.scope === 'mine') and.push({ OR: [{ assigneeId: userId }, { ownerId: userId }, ...(mod.teams ? [{ peerReviewerId: userId }] : []), ...(mod.developerHandoff ? [{ developerId: userId }] : [])] });
   // My team: the items of the team I coordinate or belong to.
   if (f.scope === 'team') {
     const mine = teams.filter(t => t.coordinatorId === userId);

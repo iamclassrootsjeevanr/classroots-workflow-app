@@ -3,6 +3,7 @@
 import { Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { addChapterAction, removeChapterAction, type ActionResult } from '@/app/actions';
+import { useConfirm } from './confirm';
 import { ActionMessage, type PersonOption } from './controls';
 
 function useAction() {
@@ -62,7 +63,7 @@ export function AddChapterForm({ workTypeId, known, stewards, example = 'G04C05'
           <label>
             <span className="label">Steward</span>
             <select className="input" required value={v.stewardId} onChange={e => setV(s => ({ ...s, stewardId: e.target.value }))}>
-              <option value="">Choose a coordinator</option>
+              <option value="">Choose a steward</option>
               {stewards.map(p => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -88,19 +89,21 @@ export function AddChapterForm({ workTypeId, known, stewards, example = 'G04C05'
 /** Take an empty chapter off the list (one with journeys says how many must go first). */
 export function RemoveChapterButton({ workTypeId, code }: { workTypeId: string; code: string }) {
   const { pending, result, exec } = useAction();
+  const { confirm, dialog } = useConfirm();
   return (
     <span className="inline-flex flex-col items-end">
       <button
         className="btn-ghost text-bad"
         disabled={pending}
         title={`Remove ${code}`}
-        onClick={() => {
-          if (confirm(`Remove ${code} from the chapters?`)) exec(() => removeChapterAction(workTypeId, code));
+        onClick={async () => {
+          if (await confirm({ title: `Remove ${code}?`, description: 'Only a chapter without journeys can be removed.', confirmLabel: 'Remove' })) exec(() => removeChapterAction(workTypeId, code));
         }}
       >
         <Trash2 size={14} aria-hidden="true" />
         Remove
       </button>
+      {dialog}
       {result && !result.ok && <ActionMessage result={result} />}
     </span>
   );

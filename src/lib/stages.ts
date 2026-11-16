@@ -22,7 +22,7 @@ export type StageRow = {
 
 export const NEXT_TO = '@next:';
 /** Who can be allowed to press a stage's button. */
-export const ACTORS: Actor[] = ['ASSIGNEE', 'OWNER', 'work', 'review', 'assign', 'manageFields', 'create'];
+export const ACTORS: Actor[] = ['ASSIGNEE', 'OWNER', 'DEVELOPER', 'work', 'review', 'assign', 'manageFields', 'create'];
 export const STAGE_STATES: StageState[] = ['active', 'paused', 'skipped'];
 export const CATEGORIES: StatusCategory[] = ['queue', 'active', 'review', 'feedback', 'approved', 'done', 'hold'];
 
@@ -46,6 +46,17 @@ export function nextActiveAfter(statuses: StatusDef[], key: string): string | un
   const i = main.findIndex(s => s.key === key);
   if (i < 0) return undefined;
   return main.slice(i + 1).find(s => s.state !== 'skipped')?.key;
+}
+
+/**
+ * Journey developer handoff: the stage where a developer checks the design (the next one after the review closes) and whether
+ * the developer may be assigned or changed now: only while the journey is in that stage and the stage is active (not paused).
+ */
+export function developerStage(statuses: StatusDef[], hand: { after: string } | undefined, status?: string): { stage?: string; color?: string; paused: boolean; open: boolean } {
+  const stage = hand ? nextActiveAfter(statuses, hand.after) : undefined;
+  const def = statuses.find(s => s.key === stage);
+  const paused = def?.state === 'paused';
+  return { stage, color: def?.color, paused, open: Boolean(stage) && status === stage && !paused };
 }
 
 /** Where a move into `to` lands for this item: stages whose `skipWhen` matches its data are passed on to the next stage. */

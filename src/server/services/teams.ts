@@ -32,7 +32,7 @@ async function hasRight(workTypeId: string, userId: string, right: 'capWork' | '
 export async function saveTeam(workTypeId: string, input: { id?: string; name: string; coordinatorId: string }) {
   const name = input.name.trim();
   if (!name) throw new Error('Name the team.');
-  if (!(await hasRight(workTypeId, input.coordinatorId, 'capAssign'))) throw new Error('The coordinator needs a role that assigns work here (Coordinator).');
+  if (!(await hasRight(workTypeId, input.coordinatorId, 'capAssign'))) throw new Error('The steward needs a role that assigns work here (Steward).');
   const clash = await db.team.findFirst({ where: { workTypeId, name: { equals: name, mode: 'insensitive' }, ...(input.id ? { NOT: { id: input.id } } : {}) } });
   if (clash) throw new Error(`A team called “${clash.name}” already exists.`);
   if (input.id) {
@@ -106,7 +106,7 @@ export async function addChapter(workTypeId: string, input: { code: string; titl
   const title = input.title.trim() || known?.title || '';
   if (!title) throw new Error('Give the chapter a name.');
   const member = await db.workTypeMember.findUnique({ where: { workTypeId_userId: { workTypeId, userId: input.stewardId } } });
-  if (!member || !(await hasRight(workTypeId, input.stewardId, 'capAssign'))) throw new Error('The steward needs the Coordinator role here.');
+  if (!member || !(await hasRight(workTypeId, input.stewardId, 'capAssign'))) throw new Error('The steward needs the Steward role here.');
   const taken = await db.workTypeMember.findFirst({ where: { workTypeId, groupKeys: { has: code }, NOT: { userId: input.stewardId } }, include: { user: { select: { name: true } } } });
   if (taken) throw new ForbiddenError(`${code} is already ${taken.user.name ?? 'someone'}’s chapter. An admin can move it (People → their access).`);
   const grade = Number(/^G(\d+)C/.exec(code)?.[1]) || null;

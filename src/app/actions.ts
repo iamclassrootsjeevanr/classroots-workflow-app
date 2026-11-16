@@ -9,11 +9,14 @@ import { isUserError } from '@/server/errors';
 import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { startViewAs, stopViewAs } from '@/server/view-as';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
+import { httpRelayClient, relayConfigured } from '@/server/relay/client';
+import { syncRelay } from '@/server/services/relay-sync';
 import { addStage, removeStage, saveStage, type StageInput } from '@/server/stages';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
 import type { NotificationView } from '@/lib/notifications-core';
@@ -61,12 +64,23 @@ export async function setVersionClosedAction(itemId: string, closed: boolean) {
   return run(async () => setVersionClosed(await itemActor(itemId), itemId, closed));
 }
 
+export async function viewAsAction(userId: string | null) {
+  return run(async () => {
+    if (userId) await startViewAs(userId);
+    else await stopViewAs();
+  });
+}
+
 export async function assignAction(itemId: string, assigneeId: string | null) {
   return run(async () => assign(await itemActor(itemId), itemId, assigneeId));
 }
 
 export async function setOwnerAction(itemId: string, ownerId: string | null) {
   return run(async () => setOwner(await itemActor(itemId), itemId, ownerId));
+}
+
+export async function setDeveloperAction(itemId: string, userId: string | null) {
+  return run(async () => setDeveloper(await itemActor(itemId), itemId, userId));
 }
 
 export async function setPeerReviewerAction(itemId: string, userId: string | null) {
@@ -134,25 +148,26 @@ export async function restoreItemAction(itemId: string) {
   });
 }
 
-export async function feedbackAction(itemId: string, input: { body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
+export async function feedbackAction(itemId: string, input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
   return run(async () => {
     await addFeedback(await itemActor(itemId), itemId, input);
-    return input.requestCorrections ? 'Feedback sent and changes asked' : 'Feedback added';
+    return input.requestCorrections ? 'Ticket raised and changes asked' : 'Ticket raised';
   });
 }
 
+/** Close a ticket, or reopen it (only the person who raised it). */
 export async function resolveFeedbackAction(feedbackId: string) {
   return run(async () => {
-    const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
+    const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true, resolvedAt: true } });
     await resolveFeedback(await itemActor(fb.itemId), feedbackId);
+    return fb.resolvedAt ? 'Ticket reopened' : 'Ticket closed';
   });
 }
 
-export async function noteFeedbackAction(feedbackId: string, note: string) {
+export async function replyFeedbackAction(feedbackId: string, body: string) {
   return run(async () => {
     const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
-    await noteFeedback(await itemActor(fb.itemId), feedbackId, note);
-    return note.trim() ? 'Reply saved' : 'Reply removed';
+    await replyFeedback(await itemActor(fb.itemId), feedbackId, body);
   });
 }
 
@@ -281,7 +296,7 @@ async function teamsActor(workTypeId: string) {
   return { user, access, wt, mod, isAdmin: access.isAdmin, coordinator };
 }
 
-/** Only the team's coordinator (with the Coordinator role) or an admin changes a team. */
+/** Only the team's coordinator (with the Steward role) or an admin changes a team. */
 async function teamActor(teamId: string) {
   const team = await db.team.findUniqueOrThrow({ where: { id: teamId }, select: { id: true, name: true, workTypeId: true, coordinatorId: true } });
   const a = await teamsActor(team.workTypeId);
@@ -292,7 +307,7 @@ async function teamActor(teamId: string) {
 export async function saveTeamAction(workTypeId: string, input: { id?: string; name: string; coordinatorId: string }) {
   return run(async () => {
     const a = await teamsActor(workTypeId);
-    if (!a.isAdmin) throw new ForbiddenError('Only an admin adds teams or changes their coordinator.');
+    if (!a.isAdmin) throw new ForbiddenError('Only an admin adds teams or changes their steward.');
     const id = await saveTeam(workTypeId, input);
     return { message: input.id ? 'Team saved' : `Added ${input.name.trim()}`, id };
   });
@@ -349,7 +364,7 @@ export async function fillReviewersAction(teamId: string) {
 export async function addChapterAction(workTypeId: string, input: { code: string; title: string; stewardId?: string }) {
   return run(async () => {
     const a = await teamsActor(workTypeId);
-    if (!a.isAdmin && !(a.coordinator && a.wt.capabilities.has('create'))) throw new ForbiddenError('Only a coordinator or an admin adds chapters.');
+    if (!a.isAdmin && !(a.coordinator && a.wt.capabilities.has('create'))) throw new ForbiddenError('Only a steward or an admin adds chapters.');
     const code = input.code.trim().toUpperCase();
     if (a.mod.groupFromKey && a.mod.groupFromKey(`${code}ST1J1`) !== code) throw new Error('A chapter code looks like G04C05.');
     const stewardId = a.isAdmin ? input.stewardId || '' : a.user.id;
@@ -622,6 +637,20 @@ export async function syncNowAction(workTypeId: string) {
       return `Wrote ${r.pushed} cells, read ${r.pulled} rows${r.created ? `, ${r.created} rows to add` : ''}${r.missing ? `, ${r.missing} rows only in the sheet (left alone)` : ''}`;
     }
     return `Pushed ${r.pushed}, read ${r.pulled} rows, created ${r.created}, conflicts ${r.conflicts}${r.missing ? `, ${r.missing} missing from sheet` : ''}`;
+  });
+}
+
+/** Admin: pull the journey relay now (`dryRun` only reports what would change). */
+export async function syncRelayAction(dryRun: boolean) {
+  return run(async () => {
+    await requireAdmin();
+    if (!relayConfigured()) throw new Error('The relay is not configured (RELAY_URL, RELAY_CF_CLIENT_ID, RELAY_CF_CLIENT_SECRET).');
+    const r = await syncRelay(httpRelayClient(), { dryRun });
+    revalidatePath('/admin/sync');
+    const bits = [`${r.allocated} journeys on the relay`, `${r.created.length} ${dryRun ? 'to add' : 'added'}`, `${r.stageChanges.length} Creation stage ${dryRun ? 'changes to make' : 'changes'}`];
+    if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
+    if (r.errors.length) bits.push(`${r.errors.length} errors`);
+    return (dryRun ? 'Dry run (nothing changed): ' : '') + bits.join(' · ');
   });
 }
 

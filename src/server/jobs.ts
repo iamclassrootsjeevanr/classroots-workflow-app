@@ -6,6 +6,8 @@ import { appTz } from './settings';
 import { syncAll } from './sync/google-sheet';
 import { refreshStages } from './stages';
 import { notifyOverdue } from './services/overdue';
+import { httpRelayClient, relayConfigured } from './relay/client';
+import { syncRelay } from './services/relay-sync';
 
 /** Store today's load per person (one row per user per day; re-running updates it). */
 export async function snapshotWorkload(now = new Date()) {
@@ -27,11 +29,23 @@ export async function snapshotWorkload(now = new Date()) {
   return loads.length;
 }
 
-/** Everything the scheduler runs: sheet sync for each work type, the workload snapshot, overdue messages. */
+/** Pull the journey relay (when it is configured). A relay outage must not stop the other jobs. */
+async function relayJob() {
+  if (!relayConfigured()) return null;
+  try {
+    const r = await syncRelay(httpRelayClient());
+    return { created: r.created.length, stageChanges: r.stageChanges.length, eventsAdded: r.eventsAdded, errors: r.errors.length };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Everything the scheduler runs: sheet sync for each work type, the journey relay, the workload snapshot, overdue messages. */
 export async function runJobs() {
   await refreshStages(true);
   const sync = await syncAll();
+  const relay = await relayJob();
   const snapshots = await snapshotWorkload();
   const overdue = await notifyOverdue();
-  return { sync, snapshots, overdue };
+  return { sync, relay, snapshots, overdue };
 }

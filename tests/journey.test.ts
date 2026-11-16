@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addWorkingDays, creationStageFor, daysTaken, parseJourneyKey, splitJourneyCell, workingDaysInclusive } from '@/lib/journey';
+import { addWorkingDays, creationStageFor, daysTaken, journeyKeyOf, parseJourneyKey, splitJourneyCell, workingDaysInclusive } from '@/lib/journey';
 import { journeyApplet as base, journeyPart } from '@/modules/journey-applet/definition';
 import { applyStageConfig, landingStage } from '@/lib/stages';
 import { halfOfDay } from '@/lib/time';
@@ -102,6 +102,11 @@ describe('journey keys', () => {
   it('parses GxxCxxSTnJn and the tracker cell', () => {
     expect(parseJourneyKey('G04C05ST3J1')).toEqual({ grade: 4, chapter: 'G04C05', subtopic: 'ST3', journey: 1 });
     expect(parseJourneyKey('G07C04J01')).toBeNull();
+    // Relay forms: grades 7-8 name a part, a _slug may follow, other ids are not journeys.
+    expect(parseJourneyKey('G07P1C03ST2J1')).toEqual({ grade: 7, chapter: 'G07P1C03', subtopic: 'ST2', journey: 1, part: 1 });
+    expect(journeyKeyOf('g04c05st1j1_halves')).toBe('G04C05ST1J1');
+    expect(journeyKeyOf('sim:123e4567-e89b')).toBeNull();
+    expect(journeyKeyOf('G07C04')).toBeNull();
     expect(splitJourneyCell('G04C05ST1J1 · halves')).toEqual({ key: 'G04C05ST1J1', name: 'halves' });
     expect(splitJourneyCell('G06C07ST1J2')).toEqual({ key: 'G06C07ST1J2', name: 'G06C07ST1J2' });
   });

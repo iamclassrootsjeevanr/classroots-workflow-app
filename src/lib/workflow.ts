@@ -9,6 +9,8 @@ export type ActorContext = {
   isAssignee: boolean;
   /** The acting user is the item's owner (e.g. its reviewer). */
   isOwner?: boolean;
+  /** The acting user is the item's developer (Journey: checks design standardization). */
+  isDeveloper?: boolean;
   /** False = view only in this work type. */
   canEdit: boolean;
 };
@@ -21,7 +23,7 @@ export function actorMatches(by: Actor[], ctx: ActorContext): boolean {
   if (ctx.isAdmin) return true;
   if (!ctx.canEdit) return false;
   return by.some(a =>
-    a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : a === 'OWNER' ? Boolean(ctx.isOwner) && ctx.capabilities.has('review') : ctx.capabilities.has(a),
+    a === 'ASSIGNEE' ? ctx.isAssignee && ctx.capabilities.has('work') : a === 'OWNER' ? Boolean(ctx.isOwner) && ctx.capabilities.has('review') : a === 'DEVELOPER' ? Boolean(ctx.isDeveloper) : ctx.capabilities.has(a),
   );
 }
 

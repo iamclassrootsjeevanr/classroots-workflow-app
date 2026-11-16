@@ -58,13 +58,14 @@ export function scopeWhere(access: Access, types: WorkTypeAccess[]): Prisma.Work
  * What the person may do on this item. `groupKey` is required: steward rights stop at the groups a membership is limited to,
  * except on items assigned to someone in a team they coordinate.
  */
-export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null; groupKey: string | null }): ActorContext {
+export function actorContextFor(access: Access, workTypeKey: string, item: { assigneeId: string | null; ownerId?: string | null; developerId?: string | null; groupKey: string | null }): ActorContext {
   const a = access.byKey.get(workTypeKey);
   return {
     isAdmin: access.isAdmin,
     capabilities: a ? capabilitiesIn(a, item.groupKey, item.assigneeId) : new Set(),
     isAssignee: item.assigneeId === access.userId,
     isOwner: Boolean(item.ownerId) && item.ownerId === access.userId,
+    isDeveloper: Boolean(item.developerId) && item.developerId === access.userId,
     canEdit: Boolean(a?.canEdit),
   };
 }
@@ -74,7 +75,7 @@ export async function itemActorContext(user: CurrentUser, itemId: string) {
   const access = await getAccess(user);
   const item = await db.workItem.findUniqueOrThrow({
     where: { id: itemId },
-    select: { workTypeId: true, assigneeId: true, ownerId: true, createdById: true, groupKey: true, workType: { select: { key: true } } },
+    select: { workTypeId: true, assigneeId: true, ownerId: true, developerId: true, createdById: true, groupKey: true, workType: { select: { key: true } } },
   });
   if (!canSeeItem(access, item.workType.key, item as ItemOwnership)) throw new ForbiddenError('You don’t have access to this item.');
   return { access, item, ctx: actorContextFor(access, item.workType.key, item) };

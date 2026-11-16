@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldSelect, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FieldSelect, FieldsForm, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
@@ -11,8 +11,7 @@ import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
 import { eventWho, lowerLabel } from '@/lib/text';
-import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
-import { correctionsMove } from '@/server/services/work-items';
+import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
 import { versionCloseBlocker } from '@/lib/apk-rollup';
 import { hydrateApkData, hydrateVersion } from '@/lib/apk-data';
 import { loadVersionOptions } from '@/server/apk/queries';
@@ -22,9 +21,11 @@ import { db } from '@/server/db';
 import { actorContextFor, requireAccess, requireWorkTypePage } from '@/server/access';
 import { appTz, workCalendar } from '@/server/settings';
 import { loadItems } from '@/server/services/analytics';
-import { assignableItemsFor, assignablePeople, deletableItemsFor, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
+import { assignableItemsFor, assignablePeople, deletableItemsFor, developerPeople, editableItemsFor, fieldsOf, isApkVersion, reviewPeople, statusOptions, statusOptionsFor } from '@/server/view';
 import { reviewDefaults } from '@/lib/teams';
+import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
+import { approvalLabel } from '@/lib/relay-map';
 
 const EVENT_TEXT: Record<string, string> = {
   CREATED: 'created',
@@ -46,23 +47,33 @@ export async function generateMetadata({ params }: { params: Promise<{ workType:
   return { title: item && canSeeItem(access, workType, item) ? `${item.externalKey} ${item.title}` : 'Not found' };
 }
 
+/** The item id for a link: the id itself, else the item of this work type whose key is the link's last part. */
+async function resolveItemId(workTypeKey: string, idOrKey: string) {
+  if (await db.workItem.findUnique({ where: { id: idOrKey }, select: { id: true } })) return idOrKey;
+  const byKey = await db.workItem.findFirst({ where: { workType: { key: workTypeKey }, externalKey: decodeURIComponent(idOrKey).toUpperCase(), archivedAt: null }, select: { id: true } });
+  return byKey?.id ?? idOrKey;
+}
+
 export default async function ItemPage({ params }: { params: Promise<{ workType: string; itemId: string }> }) {
   const { workType: key, itemId } = await params;
   const { user, access } = await requireWorkTypePage(key, 'items');
   const mod = getModule(key);
+  // A link from an old notification may carry a journey's key, or an id from before a re-import: fall back to the key.
+  const wanted = await resolveItemId(key, itemId);
   const item = await db.workItem.findUnique({
-    where: { id: itemId },
+    where: { id: wanted },
     include: {
       workType: true,
       ...APK_INCLUDE,
       assignee: { select: { id: true, name: true } },
       owner: { select: { name: true } },
       peerReviewer: { select: { name: true } },
+      developer: { select: { name: true } },
       chapter: true,
       parent: { select: { id: true, externalKey: true } },
       intervals: { orderBy: { enteredAt: 'asc' }, include: { assignee: { select: { name: true } } } },
       events: { orderBy: { at: 'desc' }, take: 200, include: { actor: { select: { name: true, email: true } } } },
-      feedback: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
+      feedback: { orderBy: { createdAt: 'desc' }, select: { id: true, title: true, body: true, resolvedAt: true } },
     },
   });
   if (!mod || !item || item.archivedAt || item.workType.key !== key) notFound();
@@ -78,6 +89,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const transitions = editable && !isVersion ? statusOptions(mod, item.status, ctx) : [];
   const canAssign = hasCap(ctx, 'assign') && editable;
   const showOwner = !mod.table?.hide?.includes('owner');
+  const hand = mod.developerHandoff;
+  // The coordinator and the journey's own SME creator can change the developer.
+  const devStage = developerStage(mod.statuses, hand, item.status);
+  const canPickDeveloper = Boolean(hand) && editable && devStage.open && (hasCap(ctx, 'assign') || (ctx.isAssignee && hasCap(ctx, 'work')));
+  const developers = hand && canPickDeveloper ? await developerPeople(key, hand.role, nextActiveAfter(mod.statuses, hand.after), item.developerId) : null;
   const [people, owners] = await Promise.all([
     canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
     canAssign && showOwner ? reviewPeople(key) : null,
@@ -113,12 +129,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     value: f.key === 'dueAt' ? instantToDateKey(item.dueAt, tz) : data[f.key] == null ? '' : String(data[f.key]),
     editable: editable && !f.computed && canEditField(f, ctx),
   }));
-  const isReviewer = canGiveFeedback(mod, ctx);
-  const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
-  const canReply = editable && (ctx.isAdmin || (ctx.isAssignee && hasCap(ctx, 'work')));
-  const replyAuthors = new Map(
-    (await db.user.findMany({ where: { id: { in: item.feedback.map(f => f.noteById).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map(u => [u.id, u.name]),
-  );
+  // Journey: what the live relay recorded for it (approvals and steps), when any have been synced.
+  const relayEvents = mod.teams ? await db.relayEvent.findMany({ where: { itemId: item.id }, orderBy: { at: 'asc' } }) : [];
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 
@@ -231,6 +243,14 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
               {peers ? <AssignSelect peer none="None" itemId={item.id} assigneeId={item.peerReviewerId} people={peers} label={`Choose ${lowerLabel(mod.labels?.peer ?? 'peer reviewer')}`} /> : <div className="py-1.5 text-sm">{item.peerReviewer?.name ?? '—'}</div>}
             </div>
           )}
+          {hand && (
+            <div className="min-w-52">
+              <span className="label">{hand.label}</span>
+              {developers ? <AssignSelect developer color={devStage.color} none="Nobody yet" itemId={item.id} assigneeId={item.developerId} people={developers} label={`Choose ${hand.label.toLowerCase()}`} /> : <div className="py-1.5 text-sm">{item.developer?.name ?? '—'}</div>}
+              {developers && <p className="mt-1 text-2xs text-muted">Assigned automatically (fewest waiting). Change it if needed.</p>}
+              {!developers && !devStage.open && !item.developer && <p className="mt-1 text-2xs text-muted">{devStage.paused ? 'Design standardization is paused: no developer for now.' : 'Assigned when the review closes.'}</p>}
+            </div>
+          )}
           {mod.teams && (
             <div>
               <span className="label">{mod.labels?.accountable ?? 'Owner'}</span>
@@ -266,6 +286,24 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             </Card>
           )}
 
+          {relayEvents.length > 0 && (
+            <Card title="RELAY" description="Creation progress recorded on the relay. Review stays here.">
+              <ol className="space-y-2 text-sm">
+                {relayEvents.map(e => (
+                  <li key={e.id} className={e.withdrawn ? 'text-muted line-through' : ''}>
+                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.what || e.kind}</span>
+                    <span className="text-muted">
+                      {' '}
+                      · {e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}
+                      {e.version ? ` · v${e.version}` : ''}
+                      {e.approver ? ` · ${e.approver}` : ''} · {formatDateTime(e.at, tz)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          )}
+
           <Card title="Stage timeline" actions={<span className="text-xs text-muted">business hours: {cal.startHour}:00–{cal.endHour}:00</span>}>
             <StageTimeline intervals={intervals} now={now} tz={tz} assigneeLabel={mod.labels?.assignee} />
           </Card>
@@ -291,30 +329,14 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <FieldsForm itemId={item.id} fields={detailFields} />
           </Card>
 
-          <Card title={`Feedback (${item.feedback.length})`}>
-            {(isReviewer || sendBack) && editable && (
-              <div className="mb-4">
-                <FeedbackForm itemId={item.id} canRequestCorrections={Boolean(sendBack)} correctionsLabel={sendBack?.label} />
-              </div>
-            )}
+          <Card title="Feedback" actions={<Link href={`/w/${key}/${item.id}/feedback`} className="btn-ghost">Open feedback</Link>}>
             {item.feedback.length ? (
-              <ul className="space-y-3">
-                {item.feedback.map(f => (
-                  <li key={f.id} className={`rounded-md border p-3 ${f.resolvedAt ? 'border-line bg-surface-2/60' : 'border-bad/20 bg-bad-soft/60'}`}>
-                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <b className="text-ink">{f.author?.name ?? 'Reviewer'}</b>· round {f.round} · {formatDateTime(f.createdAt, tz)}
-                      {f.category && <span className="rounded-md bg-surface px-1.5 ring-1 ring-line">{f.category}</span>}
-                      {f.severity && <span className={`rounded-md px-1.5 ring-1 ${f.severity === 'Blocker' ? 'bg-bad-soft text-bad ring-bad/20' : 'bg-surface ring-line'}`}>{f.severity}</span>}
-                      {f.resolvedAt && <span className="text-ok">resolved {formatDateTime(f.resolvedAt, tz)}</span>}
-                      <span className="ml-auto">{(ctx.isAssignee || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap">{f.body}</p>
-                    {(f.note || canReply) && <FeedbackReply id={f.id} note={f.note} by={f.noteById ? replyAuthors.get(f.noteById) : null} editable={canReply} />}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-muted">
+                <b className="text-ink">{item.feedback.filter(f => !f.resolvedAt).length} open</b> of {item.feedback.length} ticket{item.feedback.length === 1 ? '' : 's'}.
+                {item.feedback.some(f => !f.resolvedAt) && <> Latest: {item.feedback.find(f => !f.resolvedAt)?.title || item.feedback.find(f => !f.resolvedAt)?.body.split('\n')[0]}</>}
+              </p>
             ) : (
-              <p className="text-sm text-muted">No feedback yet.</p>
+              <p className="text-sm text-muted">No tickets yet. Raise one from the feedback page.</p>
             )}
           </Card>
         </div>

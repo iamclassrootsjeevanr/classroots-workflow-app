@@ -34,7 +34,7 @@ const TEAM: { name: string; email: string; roles: string[]; chapters?: string[];
   { name: 'Vinay M R', email: 'vinay@classrootsedu.com', roles: ['coordinator', 'sme-reviewer', 'sme-creator'], chapters: ['G06C07'] },
   { name: 'Kapil Sankhwar', email: 'kapil@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Animesh Mittal', email: 'animesh@classrootsedu.com', roles: ['sme-creator'] },
-  { name: 'Krishna Rander', email: 'krishna@classrootsedu.com', roles: ['sme-creator'] },
+  { name: 'Krishna Rander', email: 'krishna.rander@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Manasa K', email: 'manasa@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Preethi Esther', email: 'preethi@classrootsedu.com', roles: ['sme-creator'] },
   { name: 'Vaishali Rathore', email: 'vaishali@classrootsedu.com', roles: ['sme-creator'] },

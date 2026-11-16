@@ -60,12 +60,23 @@ export function addWorkingDays(from: unknown, days: number, cal: Pick<WorkCalend
   return dayString(d);
 }
 
-export type JourneyKey = { grade: number; chapter: string; subtopic: string; journey: number };
+export type JourneyKey = { grade: number; chapter: string; subtopic: string; journey: number; /** Grades 7 and 8 name a book part: G07P1C03ST2J1. */ part?: number };
 
-/** GxxCxxSTnJn → grade, chapter (GxxCxx), subtopic (STn) and journey number. */
+/**
+ * GxxCxxSTnJn (grades 7-8: GxxPnCxxSTnJn) → grade, chapter (GxxCxx / GxxPnCxx), subtopic (STn) and journey number.
+ * The relay may append a `_slug` (G04C05ST1J1_halves); it is ignored. Anything else (uuid, `sim:` keys) is not a journey key.
+ */
 export function parseJourneyKey(key: string): JourneyKey | null {
-  const m = key.trim().match(/^G(\d{2})C(\d{2})ST(\d+)J(\d+)$/i);
-  return m ? { grade: Number(m[1]), chapter: `G${m[1]}C${m[2]}`, subtopic: `ST${m[3]}`, journey: Number(m[4]) } : null;
+  const m = key.trim().match(/^G(\d{2})(?:P(\d))?C(\d{2})ST(\d+)J(\d+)(?:_[\w-]+)?$/i);
+  if (!m) return null;
+  const [, grade, part, chapter, subtopic, journey] = m;
+  return { grade: Number(grade), chapter: `G${grade}${part ? `P${part}` : ''}C${chapter}`, subtopic: `ST${subtopic}`, journey: Number(journey), ...(part ? { part: Number(part) } : {}) };
+}
+
+/** The key without a `_slug`, upper-cased: G04C05ST1J1_halves → G04C05ST1J1. Null when it is not a journey key. */
+export function journeyKeyOf(raw: string): string | null {
+  const k = parseJourneyKey(raw);
+  return k ? `${k.chapter}${k.subtopic}J${k.journey}` : null;
 }
 
 /** The tracker's Journey cell "G04C05ST1J1 · halves" → key and name (the name is the key when absent). */

@@ -34,7 +34,7 @@ export default async function StagesPage({ params }: { params: Promise<{ key: st
         }
       />
       <div className="grid gap-5 xl:grid-cols-[1fr_20rem]">
-        <StageEditor workTypeId={wt.id} stages={stages} noun={mod.itemNoun} labels={{ assignee: mod.labels?.assignee ?? 'Assignee', owner: mod.labels?.owner ?? 'Owner' }} />
+        <StageEditor workTypeId={wt.id} stages={stages} noun={mod.itemNoun} labels={{ assignee: mod.labels?.assignee ?? 'Assignee', owner: mod.labels?.owner ?? 'Owner', developer: mod.developerHandoff?.label }} />
         <div className="space-y-5">
           <Card title="How it works">
             <ul className="list-disc space-y-1.5 pl-4 text-sm text-muted">

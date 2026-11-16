@@ -62,7 +62,7 @@ export type StatusDef = {
  * 'ASSIGNEE' = has the "work" capability and the item is assigned to them.
  * 'OWNER' = has the "review" capability and is the item's owner (e.g. its reviewer). Admins may do anything.
  */
-export type Actor = Capability | 'ASSIGNEE' | 'OWNER';
+export type Actor = Capability | 'ASSIGNEE' | 'OWNER' | 'DEVELOPER';
 
 /** `to` is a status key, or `@next:<key>` = the next active main-line stage after <key>. */
 export type Transition = {
@@ -212,6 +212,12 @@ export type WorkTypeDefinition = {
    * (reviewer), the assignee's buddy is its peer reviewer, and groups have stewards. Adds the Teams page.
    */
   teams?: boolean;
+  /**
+   * A person of `role` is assigned (least busy first) when an item enters the stage after `after`, and the item moves on at once.
+   * Journey: when the review closes, a developer checks design standardization. The slot is `WorkItem.developerId`; the actor
+   * 'DEVELOPER' is the person in it.
+   */
+  developerHandoff?: { after: string; role: string; label: string };
   /** Role keys given to people created from the sheet / import (assignee column, owner column). */
   importRoles?: { assignee: string; owner?: string };
   /** Roles of this work type. Omit to derive them from the flow (who moves statuses, who edits fields). */
@@ -237,7 +243,9 @@ export type WorkTypeDefinition = {
   /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
   runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
-  pages?: { groups?: string; items?: string; cases?: string; teams?: string };
+  pages?: { groups?: string; items?: string; cases?: string; teams?: string; board?: string };
+  /** Journey: a Relay board tab (people × creation stage, days in stage). Needs the reports page. */
+  relayBoard?: boolean;
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */
   versions?: boolean;
   /** Item pages show a time log (status changes, bug and remark edits, time per status). */
