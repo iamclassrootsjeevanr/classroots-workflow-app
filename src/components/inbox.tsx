@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, MessageSquare, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { Bell, CheckCircle2, MessageSquare, RotateCcw, Trash2, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
@@ -17,6 +17,9 @@ const ICONS: Record<string, typeof Bell> = {
   'version.restored': RotateCcw,
   'item.assigned': UserPlus,
   'item.feedback': MessageSquare,
+  'feedback.reply': MessageSquare,
+  'feedback.closed': CheckCircle2,
+  'feedback.reopened': RotateCcw,
 };
 
 /** One inbox message: icon, title, text, time, unread dot and (for a deleted row) an Undo button while the 30 minutes last. */

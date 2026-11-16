@@ -12,6 +12,7 @@ import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
 import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -612,27 +613,26 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
 export async function addFeedback(
   actor: ChangeActor,
   itemId: string,
-  input: { body: string; category?: string; severity?: string; requestCorrections?: boolean },
+  input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean },
 ) {
   const body = input.body.trim();
-  if (!body) throw new Error('Feedback cannot be empty');
+  if (!body) throw new Error('Describe the ticket first');
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     const mod = requireModule(item.workType.key);
     const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
-    if (actor.ctx && !canGiveFeedback(mod, actor.ctx) && !sendsBack) throw new ForbiddenError(`Only the ${lowerLabel(mod.labels?.owner ?? 'reviewer')} of this ${mod.itemNoun} can give feedback. Use a comment instead.`);
+    if (actor.ctx && !canChat(actor.ctx) && !sendsBack) throw new ForbiddenError(`Only people working on this ${mod.itemNoun} can raise a ticket.`);
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
-    await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, category: input.category || null, severity: input.severity || null, createdAt: now } });
+    const toId = counterpart(actor.userId, item);
+    const ticket = await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, title: ticketTitle(input.title, body), toId, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
-    // Feedback from the creator (the last look after design) goes to the developer; every other feedback goes to the creator.
-    const fromCreator = Boolean(actor.userId) && actor.userId === item.assigneeId && Boolean(item.developerId);
-    const to = fromCreator ? item.developerId : item.assigneeId;
-    if (to && to !== actor.userId && actor.source === 'APP') {
-      await notify(tx, to, { kind: 'item.feedback', title: `New feedback on ${shortKey(item.externalKey)}`, body, href: `/w/${item.workType.key}/${item.id}` });
+    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator.
+    if (toId && toId !== actor.userId && actor.source === 'APP') {
+      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: ticket.title, href: `/w/${item.workType.key}/${item.id}/feedback` });
     }
     if (input.requestCorrections) {
       const fresh = await loadItem(tx, itemId);
@@ -651,20 +651,38 @@ export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: Acto
   return move && !mod.transitions.includes(move) ? { ...move, label: `Send back (${statusDef(mod, move.to).label})` } : move;
 }
 
+const ticketOf = (feedbackId: string) =>
+  db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { select: { id: true, externalKey: true, workType: { select: { key: true } } } } } });
+
+/** Close a ticket, or reopen it. Only the person who raised it (or an admin). The other side is told. */
 export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, include: { item: { include: { workType: { select: { key: true } } } } } });
-  const mod = requireModule(fb.item.workType.key);
-  if (actor.ctx && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work')) && !actor.ctx.isDeveloper && !canGiveFeedback(mod, actor.ctx)) throw new ForbiddenError();
-  await db.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: fb.resolvedAt ? null : new Date() } });
+  const fb = await ticketOf(feedbackId);
+  if (actor.ctx && !canCloseTicket(actor.ctx, fb, actor.userId)) throw new ForbiddenError('Only the person who raised this ticket can close it.');
+  const closing = !fb.resolvedAt;
+  await db.$transaction(async tx => {
+    await tx.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: closing ? new Date() : null, closedById: closing ? actor.userId : null } });
+    if (actor.source !== 'APP') return;
+    for (const userId of ticketAudience(fb, actor.userId)) {
+      await notify(tx, userId, { kind: closing ? 'feedback.closed' : 'feedback.reopened', title: `${ticketCode(fb.ticketNo)} ${closing ? 'closed' : 'reopened'} on ${shortKey(fb.item.externalKey)}`, body: fb.title, href: `/w/${fb.item.workType.key}/${fb.item.id}/feedback` });
+    }
+  });
 }
 
-/** The reply to one feedback point (empty clears it): the item's creator, its developer (design fixes) or an admin. */
-export async function noteFeedback(actor: ChangeActor, feedbackId: string, note: string) {
-  const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId } });
-  if (actor.ctx && !actor.ctx.isAdmin && !actor.ctx.isDeveloper && !(actor.ctx.isAssignee && hasCap(actor.ctx, 'work'))) throw new ForbiddenError('Only the person working on it can reply to feedback.');
-  const text = note.trim();
-  await db.feedback.update({ where: { id: feedbackId }, data: { note: text || null, noteById: text ? actor.userId : null, noteAt: text ? new Date() : null } });
-  if (text) await db.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `Reply to feedback: ${text}`, source: actor.source } });
+/** One chat message on a ticket. Both sides (and anyone working on the item) can write; a closed ticket must be reopened first. */
+export async function replyFeedback(actor: ChangeActor, feedbackId: string, body: string) {
+  const text = body.trim();
+  if (!text) throw new Error('Write a message first');
+  const fb = await ticketOf(feedbackId);
+  if (actor.ctx && !canChat(actor.ctx, fb, actor.userId)) throw new ForbiddenError('Only people working on this journey can reply.');
+  if (fb.resolvedAt) throw new Error('This ticket is closed. Reopen it to continue.');
+  await db.$transaction(async tx => {
+    await tx.feedbackMessage.create({ data: { feedbackId, authorId: actor.userId, body: text } });
+    await tx.workItemEvent.create({ data: { itemId: fb.itemId, actorId: actor.userId, type: 'COMMENTED', note: `${ticketCode(fb.ticketNo)}: ${text}`, source: actor.source } });
+    if (actor.source !== 'APP') return;
+    for (const userId of ticketAudience(fb, actor.userId)) {
+      await notify(tx, userId, { kind: 'feedback.reply', title: `${ticketCode(fb.ticketNo)} · new reply on ${shortKey(fb.item.externalKey)}`, body: text, href: `/w/${fb.item.workType.key}/${fb.item.id}/feedback` });
+    }
+  });
 }
 
 export async function addComment(actor: ChangeActor, itemId: string, body: string) {

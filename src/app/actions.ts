@@ -10,7 +10,7 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { startViewAs, stopViewAs } from '@/server/view-as';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, noteFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
@@ -148,25 +148,26 @@ export async function restoreItemAction(itemId: string) {
   });
 }
 
-export async function feedbackAction(itemId: string, input: { body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
+export async function feedbackAction(itemId: string, input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
   return run(async () => {
     await addFeedback(await itemActor(itemId), itemId, input);
-    return input.requestCorrections ? 'Feedback sent and changes asked' : 'Feedback added';
+    return input.requestCorrections ? 'Ticket raised and changes asked' : 'Ticket raised';
   });
 }
 
+/** Close a ticket, or reopen it (only the person who raised it). */
 export async function resolveFeedbackAction(feedbackId: string) {
   return run(async () => {
-    const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
+    const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true, resolvedAt: true } });
     await resolveFeedback(await itemActor(fb.itemId), feedbackId);
+    return fb.resolvedAt ? 'Ticket reopened' : 'Ticket closed';
   });
 }
 
-export async function noteFeedbackAction(feedbackId: string, note: string) {
+export async function replyFeedbackAction(feedbackId: string, body: string) {
   return run(async () => {
     const fb = await db.feedback.findUniqueOrThrow({ where: { id: feedbackId }, select: { itemId: true } });
-    await noteFeedback(await itemActor(fb.itemId), feedbackId, note);
-    return note.trim() ? 'Reply saved' : 'Reply removed';
+    await replyFeedback(await itemActor(fb.itemId), feedbackId, body);
   });
 }
 

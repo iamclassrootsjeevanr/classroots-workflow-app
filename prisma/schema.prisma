@@ -79,6 +79,7 @@ model User {
   ownedItems       WorkItem[]              @relation("owner")
   events           WorkItemEvent[]
   feedback         Feedback[]
+  feedbackMessages FeedbackMessage[]
   intervals        WorkItemStageInterval[]
   snapshots        WorkloadSnapshot[]
   createdItems     WorkItem[]              @relation("creator")
@@ -438,15 +439,37 @@ model Feedback {
   severity   String?
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
-  /// The creator's reply to this feedback point.
+  /// Legacy single reply, carried into `messages` by the 20261116090000 migration; no longer written.
   note       String?
   noteById   String?
   noteAt     DateTime?
+  /// Ticket number shown as TICK-00012.
+  ticketNo   Int       @unique @default(autoincrement())
+  title      String?
+  /// The other party of the ticket (the person the author is asking). The author can close it; both can chat.
+  toId       String?
+  /// `resolvedAt` is the close time; this is who closed it.
+  closedById String?
 
-  item   WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  author User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  item     WorkItem          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  author   User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  messages FeedbackMessage[]
 
   @@index([itemId, createdAt])
+}
+
+/// One chat message on a feedback ticket.
+model FeedbackMessage {
+  id         String   @id @default(cuid())
+  feedbackId String
+  authorId   String?
+  body       String
+  createdAt  DateTime @default(now())
+
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  author   User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([feedbackId, createdAt])
 }
 
 /// Daily per-person load, kept for long-range workload history.

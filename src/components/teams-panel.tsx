@@ -13,6 +13,7 @@ import {
   setTeamReviewerAction,
   type ActionResult,
 } from '@/app/actions';
+import { useConfirm } from './confirm';
 import { ActionMessage, type PersonOption } from './controls';
 import { Card } from './ui';
 
@@ -46,6 +47,7 @@ function useAction() {
 /** One team: its coordinator, the default SME reviewer, and each member with their peer reviewer. */
 export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, isAdmin, labels }: { workTypeId: string; team: TeamView; creators: (PersonOption & { teamName?: string })[]; reviewers: PersonOption[]; coordinators: PersonOption[]; isAdmin: boolean; labels: Labels }) {
   const { pending, result, exec } = useAction();
+  const { confirm, dialog } = useConfirm();
   const [add, setAdd] = useState('');
   const [editing, setEditing] = useState(false);
   const free = creators.filter(c => !c.teamName && c.id !== team.coordinatorId);
@@ -128,8 +130,8 @@ export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, 
                   className="btn-ghost text-bad"
                   disabled={pending}
                   title={`Remove ${m.name} from ${team.name}`}
-                  onClick={() => {
-                    if (confirm(`Remove ${m.name} from ${team.name}? Their ${labels.noun}s keep their reviewers.`)) exec(() => removeTeamMemberAction(team.id, m.userId));
+                  onClick={async () => {
+                    if (await confirm({ title: `Remove ${m.name} from ${team.name}?`, description: `Their ${labels.noun}s keep their reviewers.`, confirmLabel: 'Remove' })) exec(() => removeTeamMemberAction(team.id, m.userId));
                   }}
                 >
                   <Trash2 size={14} aria-hidden="true" />
@@ -167,8 +169,8 @@ export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, 
             <button
               className="btn-ghost text-bad sm:ml-auto"
               disabled={pending}
-              onClick={() => {
-                if (confirm(`Remove ${team.name}? Its ${labels.noun}s keep their reviewers.`)) exec(() => deleteTeamAction(team.id));
+              onClick={async () => {
+                if (await confirm({ title: `Remove ${team.name}?`, description: `Its ${labels.noun}s keep their reviewers.`, confirmLabel: 'Remove team' })) exec(() => deleteTeamAction(team.id));
               }}
             >
               Remove team
@@ -177,6 +179,7 @@ export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, 
         </div>
       )}
       <ActionMessage result={result} />
+      {dialog}
     </Card>
   );
 }

@@ -371,8 +371,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
     transition: opacity 120ms;
   }
   .sheet tr:hover .row-actions,
-  .sheet tr:focus-within .row-actions,
-  .sheet .row-actions:has(.confirm) {
+  .sheet tr:focus-within .row-actions {
     opacity: 1;
   }
   .table-wrap {

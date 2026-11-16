@@ -12,6 +12,7 @@ import {
   type ActionResult,
 } from '@/app/actions';
 import type { SyncDirection } from '@/server/services/work-items';
+import { useConfirm, type ConfirmOptions } from './confirm';
 import { ActionMessage, type PersonOption } from './controls';
 import { Segmented, Switch } from './form';
 
@@ -141,8 +142,9 @@ export function NewItemForm({
 
 export function WorkTypeStateButtons({ id, state }: { id: string; state: WorkTypeState }) {
   const { pending, result, exec } = useAction();
-  const go = (s: WorkTypeState, confirmText?: string) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+  const { confirm, dialog } = useConfirm();
+  const go = async (s: WorkTypeState, ask?: ConfirmOptions) => {
+    if (ask && !(await confirm(ask))) return;
     exec(() => setWorkTypeStateAction(id, s));
   };
   return (
@@ -153,16 +155,17 @@ export function WorkTypeStateButtons({ id, state }: { id: string; state: WorkTyp
         </button>
       )}
       {state === 'ACTIVE' && (
-        <button className="btn-ghost" disabled={pending} onClick={() => go('PAUSED', 'Pause this work type? People can still see it, but nobody can change items and sync stops.')}>
+        <button className="btn-ghost" disabled={pending} onClick={() => go('PAUSED', { title: 'Pause this work type?', description: 'People can still see it, but nobody can change items and sync stops.', confirmLabel: 'Pause', tone: 'warn' })}>
           Pause
         </button>
       )}
       {state !== 'ARCHIVED' && (
-        <button className="btn-danger" disabled={pending} onClick={() => go('ARCHIVED', 'Archive this work type? It disappears from navigation; its data stays in reports.')}>
+        <button className="btn-danger" disabled={pending} onClick={() => go('ARCHIVED', { title: 'Archive this work type?', description: 'It disappears from navigation; its data stays in reports.', confirmLabel: 'Archive' })}>
           Archive
         </button>
       )}
       <ActionMessage result={result} />
+      {dialog}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FeedbackForm, FeedbackReply, FieldSelect, FieldsForm, ResolveFeedbackButton, StatusSelect, type EditableField } from '@/components/controls';
+import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FieldSelect, FieldsForm, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
 import { TimeLog } from '@/components/time-log';
 import { buildTimeLog, timeLogTotals } from '@/lib/time-log';
@@ -11,8 +11,7 @@ import { delayDays } from '@/lib/analytics-core';
 import { businessMinutesBetween, formatDate, formatDateTime, formatDuration, instantToDateKey, withWorkDays } from '@/lib/time';
 import { canSeeItem } from '@/lib/access-core';
 import { eventWho, lowerLabel } from '@/lib/text';
-import { canDeleteItem, canEditField, canGiveFeedback, hasCap } from '@/lib/workflow';
-import { correctionsMove } from '@/server/services/work-items';
+import { canDeleteItem, canEditField, hasCap } from '@/lib/workflow';
 import { versionCloseBlocker } from '@/lib/apk-rollup';
 import { hydrateApkData, hydrateVersion } from '@/lib/apk-data';
 import { loadVersionOptions } from '@/server/apk/queries';
@@ -74,7 +73,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
       parent: { select: { id: true, externalKey: true } },
       intervals: { orderBy: { enteredAt: 'asc' }, include: { assignee: { select: { name: true } } } },
       events: { orderBy: { at: 'desc' }, take: 200, include: { actor: { select: { name: true, email: true } } } },
-      feedback: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
+      feedback: { orderBy: { createdAt: 'desc' }, select: { id: true, title: true, body: true, resolvedAt: true } },
     },
   });
   if (!mod || !item || item.archivedAt || item.workType.key !== key) notFound();
@@ -132,12 +131,6 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   }));
   // Journey: what the live relay recorded for it (approvals and steps), when any have been synced.
   const relayEvents = mod.teams ? await db.relayEvent.findMany({ where: { itemId: item.id }, orderBy: { at: 'asc' } }) : [];
-  const isReviewer = canGiveFeedback(mod, ctx);
-  const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
-  const canReply = editable && (ctx.isAdmin || ctx.isDeveloper || (ctx.isAssignee && hasCap(ctx, 'work')));
-  const replyAuthors = new Map(
-    (await db.user.findMany({ where: { id: { in: item.feedback.map(f => f.noteById).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map(u => [u.id, u.name]),
-  );
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 
@@ -336,30 +329,14 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
             <FieldsForm itemId={item.id} fields={detailFields} />
           </Card>
 
-          <Card title={`Feedback (${item.feedback.length})`}>
-            {(isReviewer || sendBack) && editable && (
-              <div className="mb-4">
-                <FeedbackForm itemId={item.id} canRequestCorrections={Boolean(sendBack)} correctionsLabel={sendBack?.label} />
-              </div>
-            )}
+          <Card title="Feedback" actions={<Link href={`/w/${key}/${item.id}/feedback`} className="btn-ghost">Open feedback</Link>}>
             {item.feedback.length ? (
-              <ul className="space-y-3">
-                {item.feedback.map(f => (
-                  <li key={f.id} className={`rounded-md border p-3 ${f.resolvedAt ? 'border-line bg-surface-2/60' : 'border-bad/20 bg-bad-soft/60'}`}>
-                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                      <b className="text-ink">{f.author?.name ?? 'Reviewer'}</b>· round {f.round} · {formatDateTime(f.createdAt, tz)}
-                      {f.category && <span className="rounded-md bg-surface px-1.5 ring-1 ring-line">{f.category}</span>}
-                      {f.severity && <span className={`rounded-md px-1.5 ring-1 ${f.severity === 'Blocker' ? 'bg-bad-soft text-bad ring-bad/20' : 'bg-surface ring-line'}`}>{f.severity}</span>}
-                      {f.resolvedAt && <span className="text-ok">resolved {formatDateTime(f.resolvedAt, tz)}</span>}
-                      <span className="ml-auto">{(ctx.isAssignee || ctx.isDeveloper || isReviewer) && <ResolveFeedbackButton id={f.id} resolved={Boolean(f.resolvedAt)} />}</span>
-                    </div>
-                    <p className="text-sm whitespace-pre-wrap">{f.body}</p>
-                    {(f.note || canReply) && <FeedbackReply id={f.id} note={f.note} by={f.noteById ? replyAuthors.get(f.noteById) : null} editable={canReply} />}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-sm text-muted">
+                <b className="text-ink">{item.feedback.filter(f => !f.resolvedAt).length} open</b> of {item.feedback.length} ticket{item.feedback.length === 1 ? '' : 's'}.
+                {item.feedback.some(f => !f.resolvedAt) && <> Latest: {item.feedback.find(f => !f.resolvedAt)?.title || item.feedback.find(f => !f.resolvedAt)?.body.split('\n')[0]}</>}
+              </p>
             ) : (
-              <p className="text-sm text-muted">No feedback yet.</p>
+              <p className="text-sm text-muted">No tickets yet. Raise one from the feedback page.</p>
             )}
           </Card>
         </div>

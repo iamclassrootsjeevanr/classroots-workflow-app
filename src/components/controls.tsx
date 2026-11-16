@@ -4,16 +4,14 @@ import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useEffect, useState, useTransition } from 'react';
+import { ConfirmDialog } from './confirm';
 import { rememberDeletion } from './undo-toasts';
 import {
   assignAction,
   changeStatusAction,
   deleteItemAction,
   commentAction,
-  feedbackAction,
   loadEditFieldsAction,
-  noteFeedbackAction,
-  resolveFeedbackAction,
   setOwnerAction,
   setDeveloperAction,
   setPeerReviewerAction,
@@ -218,6 +216,19 @@ function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
       () => setConfirming(false),
     );
 
+  const deleteDialog = confirming ? (
+    <ConfirmDialog
+      title={`Delete ${field.label}?`}
+      description="The value is cleared. You can type a new one any time."
+      confirmLabel="Delete"
+      pending={pending}
+      pendingLabel="Deleting…"
+      error={result && !result.ok ? result.error : null}
+      onConfirm={remove}
+      onCancel={() => setConfirming(false)}
+    />
+  ) : null;
+
   const display = !has ? (
     <span className="text-muted">—</span>
   ) : field.type === 'url' ? (
@@ -291,38 +302,25 @@ function FieldRow({ itemId, field }: { itemId: string; field: EditableField }) {
       </div>
       {field.editable && !editing && (
         <div className="order-2 ml-auto flex shrink-0 items-center gap-0.5 self-start sm:order-3 sm:ml-0 sm:pt-0.5">
-          {confirming ? (
-            <>
-              <span className="mr-1 text-xs text-muted">Delete this value?</span>
-              <button type="button" className="btn-danger min-h-8 px-2.5 text-xs" disabled={pending} onClick={remove}>
-                {pending ? 'Deleting…' : 'Delete'}
-              </button>
-              <button type="button" className="btn-ghost min-h-8 px-2.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} title="Edit" disabled={pending} onClick={startEdit}>
-                <Pencil size={15} aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="btn-icon hover:bg-bad-soft hover:text-bad"
-                aria-label={`Delete ${field.label}`}
-                title="Delete"
-                disabled={pending || !has}
-                onClick={() => {
-                  clear();
-                  setConfirming(true);
-                }}
-              >
-                <Trash2 size={15} aria-hidden="true" />
-              </button>
-            </>
-          )}
+          <button type="button" className="btn-icon" aria-label={`Edit ${field.label}`} title="Edit" disabled={pending} onClick={startEdit}>
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="btn-icon hover:bg-bad-soft hover:text-bad"
+            aria-label={`Delete ${field.label}`}
+            title="Delete"
+            disabled={pending || !has}
+            onClick={() => {
+              clear();
+              setConfirming(true);
+            }}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
         </div>
       )}
+      {deleteDialog}
     </li>
   );
 }
@@ -359,15 +357,31 @@ export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { ite
   const { pending, result, exec, clear } = useAction();
   const [confirming, setConfirming] = useState(false);
   const router = useRouter();
-  if (confirming) {
-    return (
-      <span className="confirm inline-flex items-center gap-1.5 text-xs">
-        <span className="text-muted">{compact ? 'Delete row?' : `Delete ${itemKey}?`}</span>
-        <button
-          type="button"
-          className="btn-danger min-h-7 px-2.5 py-0.5 text-xs"
-          disabled={pending}
-          onClick={() =>
+  return (
+    <>
+      <button
+        type="button"
+        className={compact ? 'btn-icon hover:bg-bad-soft hover:text-bad' : 'btn-danger min-h-8 gap-1 px-2.5 text-xs'}
+        aria-label={`Delete ${itemKey}`}
+        title={compact ? 'Delete row' : undefined}
+        onClick={() => {
+          clear();
+          setConfirming(true);
+        }}
+      >
+        <Trash2 size={14} aria-hidden="true" />
+        {!compact && 'Delete'}
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete ${itemKey}?`}
+          description="It leaves every list, chart and report."
+          confirmLabel="Delete"
+          pending={pending}
+          pendingLabel="Deleting…"
+          error={result && !result.ok ? result.error : null}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() =>
             exec(
               () => deleteItemAction(itemId),
               () => {
@@ -377,30 +391,9 @@ export function DeleteItemButton({ itemId, itemKey, compact, redirectTo }: { ite
               },
             )
           }
-        >
-          {pending ? 'Deleting…' : 'Delete'}
-        </button>
-        <button type="button" className="btn-ghost min-h-7 px-2.5 py-0.5 text-xs" disabled={pending} onClick={() => setConfirming(false)}>
-          Cancel
-        </button>
-        {result && !result.ok && <span className="text-bad">{result.error}</span>}
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className={compact ? 'btn-icon hover:bg-bad-soft hover:text-bad' : 'btn-danger min-h-8 gap-1 px-2.5 text-xs'}
-      aria-label={`Delete ${itemKey}`}
-      title={compact ? 'Delete row' : undefined}
-      onClick={() => {
-        clear();
-        setConfirming(true);
-      }}
-    >
-      <Trash2 size={14} aria-hidden="true" />
-      {!compact && 'Delete'}
-    </button>
+        />
+      )}
+    </>
   );
 }
 
@@ -472,95 +465,6 @@ export function EditItemButton({ itemId, itemKey, title, compact }: { itemId: st
           document.body,
         )}
     </>
-  );
-}
-
-export function FeedbackForm({ itemId, canRequestCorrections, correctionsLabel = 'Send back for corrections' }: { itemId: string; canRequestCorrections: boolean; correctionsLabel?: string }) {
-  const { pending, result, exec } = useAction();
-  const [body, setBody] = useState('');
-  const [category, setCategory] = useState('');
-  const [severity, setSeverity] = useState('');
-  const submit = (requestCorrections: boolean) =>
-    exec(() => feedbackAction(itemId, { body, category, severity, requestCorrections }), () => setBody(''));
-  return (
-    <div className="space-y-2">
-      <textarea className="input min-h-20" placeholder="What needs to change?" value={body} onChange={e => setBody(e.target.value)} />
-      <div className="flex flex-wrap items-center gap-2">
-        <select className="input w-auto" value={category} onChange={e => setCategory(e.target.value)} aria-label="Category">
-          <option value="">Category</option>
-          <option>Content</option>
-          <option>Design / UI</option>
-          <option>Interaction</option>
-          <option>Bug</option>
-          <option>Audio / Media</option>
-          <option>Other</option>
-        </select>
-        <select className="input w-auto" value={severity} onChange={e => setSeverity(e.target.value)} aria-label="Severity">
-          <option value="">Severity</option>
-          <option>Minor</option>
-          <option>Major</option>
-          <option>Blocker</option>
-        </select>
-        <button className="btn-ghost" disabled={pending || !body.trim()} onClick={() => submit(false)}>
-          Add feedback
-        </button>
-        {canRequestCorrections && (
-          <button className="btn-danger" disabled={pending || !body.trim()} onClick={() => submit(true)}>
-            {correctionsLabel}
-          </button>
-        )}
-      </div>
-      <ActionMessage result={result} />
-    </div>
-  );
-}
-
-export function ResolveFeedbackButton({ id, resolved }: { id: string; resolved: boolean }) {
-  const { pending, exec } = useAction();
-  return (
-    <button className="text-xs font-medium text-brand hover:underline disabled:opacity-50" disabled={pending} onClick={() => exec(() => resolveFeedbackAction(id))}>
-      {resolved ? 'Reopen' : 'Mark resolved'}
-    </button>
-  );
-}
-
-/** The creator's reply under one feedback point ("Their note" in the tracker). Read-only for everyone else. */
-export function FeedbackReply({ id, note, by, editable }: { id: string; note: string | null; by?: string | null; editable: boolean }) {
-  const { pending, result, exec } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(note ?? '');
-  if (!editing) {
-    return (
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 border-t border-line pt-2 text-sm">
-        {note ? (
-          <p className="min-w-0 flex-1 whitespace-pre-wrap">
-            <span className="text-xs font-medium text-muted">{by ?? 'Reply'}: </span>
-            {note}
-          </p>
-        ) : (
-          <span className="flex-1 text-xs text-muted">No reply yet.</span>
-        )}
-        {editable && (
-          <button type="button" className="text-xs font-medium text-brand hover:underline" onClick={() => setEditing(true)}>
-            {note ? 'Edit reply' : 'Reply'}
-          </button>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="mt-2 space-y-2 border-t border-line pt-2">
-      <textarea className="input min-h-16" aria-label="Your reply" placeholder="What you changed, or why not" value={text} onChange={e => setText(e.target.value)} />
-      <div className="flex gap-2">
-        <button type="button" className="btn-primary" disabled={pending} onClick={() => exec(() => noteFeedbackAction(id, text), () => setEditing(false))}>
-          {pending ? 'Saving…' : 'Save reply'}
-        </button>
-        <button type="button" className="btn-ghost" disabled={pending} onClick={() => setEditing(false)}>
-          Cancel
-        </button>
-      </div>
-      <ActionMessage result={result} />
-    </div>
   );
 }
 

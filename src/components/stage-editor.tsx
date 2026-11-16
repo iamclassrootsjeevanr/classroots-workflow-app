@@ -3,6 +3,7 @@
 import { ArrowRight, Lock, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { addStageAction, removeStageAction, saveStageAction, type ActionResult } from '@/app/actions';
+import { ConfirmDialog } from './confirm';
 import { ActionMessage } from './controls';
 import { Checkbox, Field, OptionList, Segmented } from './form';
 import { Modal } from './modal';
@@ -188,27 +189,32 @@ export function StageEditor({ workTypeId, stages, labels, noun }: { workTypeId: 
                   </button>
                 )}
                 {!s.locked && (s.custom || s.pipeline) && s.state !== 'skipped' &&
-                  (removing === s.key ? (
-                    <span className="confirm inline-flex items-center gap-1.5 text-xs">
-                      <span className="text-muted">{s.custom && !s.used ? 'Remove?' : 'Skip it?'}</span>
-                      <button type="button" className="btn-danger min-h-7 px-2.5 py-0.5 text-xs" disabled={pending} onClick={() => exec(() => removeStageAction(workTypeId, s.key), () => setRemoving(null))}>
-                        {s.custom && !s.used ? 'Remove' : 'Skip'}
-                      </button>
-                      <button type="button" className="btn-ghost min-h-7 px-2.5 py-0.5 text-xs" onClick={() => setRemoving(null)}>
-                        Cancel
-                      </button>
-                    </span>
-                  ) : (
-                    <button type="button" className="btn-icon hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${s.label}`} title={s.custom && !s.used ? 'Remove stage' : 'Has history: skip instead of remove'} onClick={() => (clear(), setRemoving(s.key))}>
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
-                  ))}
+                  <button type="button" className="btn-icon hover:bg-bad-soft hover:text-bad" aria-label={`Remove ${s.label}`} title={s.custom && !s.used ? 'Remove stage' : 'Has history: skip instead of remove'} onClick={() => (clear(), setRemoving(s.key))}>
+                    <Trash2 size={14} aria-hidden="true" />
+                  </button>}
               </div>
             </div>
           </li>
         ))}
       </ol>
-      {!editing && !adding && <ActionMessage result={result} />}
+      {!editing && !adding && !removing && <ActionMessage result={result} />}
+
+      {removing && (() => {
+        const st = stages.find(x => x.key === removing);
+        if (!st) return null;
+        const hard = st.custom && !st.used;
+        return (
+          <ConfirmDialog
+            title={hard ? `Remove ${st.label}?` : `Skip ${st.label}?`}
+            description={hard ? 'The stage is deleted. Nothing has used it yet.' : 'It has history, so it is skipped instead: journeys pass over it, and its past stays in reports.'}
+            confirmLabel={hard ? 'Remove' : 'Skip'}
+            pending={pending}
+            error={result && !result.ok ? result.error : null}
+            onCancel={() => setRemoving(null)}
+            onConfirm={() => exec(() => removeStageAction(workTypeId, st.key), () => setRemoving(null))}
+          />
+        );
+      })()}
 
       {editing && (
         <Modal title={`Edit stage: ${editing.label}`} subtitle={`Key ${editing.key} · stays the same, so history and reports keep working.`} onClose={() => setEditing(null)}>
