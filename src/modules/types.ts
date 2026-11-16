@@ -243,7 +243,9 @@ export type WorkTypeDefinition = {
   /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
   runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
-  pages?: { groups?: string; items?: string; cases?: string; teams?: string };
+  pages?: { groups?: string; items?: string; cases?: string; teams?: string; board?: string };
+  /** Journey: a Relay board tab (people × creation stage, days in stage). Needs the reports page. */
+  relayBoard?: boolean;
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */
   versions?: boolean;
   /** Item pages show a time log (status changes, bug and remark edits, time per status). */
