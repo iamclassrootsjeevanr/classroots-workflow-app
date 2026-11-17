@@ -43,7 +43,8 @@ describe('SME creator', () => {
     expect(moves(mine, 'allocated')).toEqual(['creating']);
     expect(moves(mine, 'creating')).toEqual(['ready_for_review']);
     expect(moves(mine, 'changes_asked')).toEqual(['correction_verification']);
-    expect(moves(mine, 'last_look').sort()).toEqual(['design_standardization', 'video_replacement']);
+    expect(moves(mine, 'last_look').sort()).toEqual(['design_check', 'design_standardization']);
+    expect(moves(mine, 'design_check')).toEqual([]);
     for (const s of ['ready_for_review', 'review_in_progress', 'correction_verification', 'closed', 'video_replacement', 'user_testing_qa']) expect(moves(mine, s), s).toEqual([]);
   });
   it('edits the creation stage and links of their own journey only; pick-up is the coordinator\'s, submitted is stamped (6 Nov 2026)', () => {
@@ -106,6 +107,7 @@ describe('Coordinator', () => {
     expect(moves(inChapter, 'closed')).toEqual(['design_standardization']);
     expect(moves(inChapter, 'design_standardization')).toEqual(['last_look']); // a coordinator may also press Design done (the developer does by default)
     expect(moves(inChapter, 'last_look')).toEqual([]);
+    expect(moves(inChapter, 'design_check').sort()).toEqual(['design_standardization', 'video_replacement']); // the steward checks the design with the reviewer
     expect(moves(inChapter, 'video_replacement')).toEqual(['uat_to_prod']);
     expect(moves(inChapter, 'uat_to_prod')).toEqual(['published_prod']);
     expect(moves(inChapter, 'published_prod')).toEqual(['user_testing_qa']);

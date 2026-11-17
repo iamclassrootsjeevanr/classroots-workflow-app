@@ -59,8 +59,8 @@ describe('applyStageConfig with code defaults', () => {
 describe('admin stage changes', () => {
   it('skipping a stage makes moves jump over it', () => {
     const mod = applyStageConfig(base, [row('video_replacement', { state: 'skipped' })]);
-    expect(moves(mod, 'last_look')).toEqual(['Send back to design→design_standardization', 'Last look done→uat_to_prod']);
-    expect(nextActiveAfter(mod.statuses, 'last_look')).toBe('uat_to_prod');
+    expect(moves(mod, 'design_check')).toEqual(['Send back to design→design_standardization', 'Design approved→uat_to_prod']);
+    expect(nextActiveAfter(mod.statuses, 'design_check')).toBe('uat_to_prod');
     // Items already sitting in the skipped stage can still move on.
     expect(moves(mod, 'video_replacement')).toEqual(['Videos replaced→uat_to_prod']);
   });
