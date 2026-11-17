@@ -1,7 +1,7 @@
 # Classroots Work: User Manual
 
 For everyone who uses the dashboard. Find your role, read that part, and you can start.
-Live address: **[add the live URL here]**
+Live address: **https://classroots-workflow-app.onrender.com**
 
 ---
 
@@ -53,10 +53,11 @@ RELAY (creation)                    DASHBOARD
                                     5. Closed → Design standardization (a developer is assigned)
                                     6. Developer: Design done
                                     7. Creator: Last look  (Last look done, or Send back to design)
-                                    8. Video replacement (only if needed)
-                                    9. UAT → prod migration → Published on prod
-                                   10. User testing and QA  (Mark done, or Send back for a fix)
-                                   11. Done
+                                    8. Reviewer or Steward: Design check  (Design approved, or Send back to design)
+                                    9. Video replacement (only if needed)
+                                   10. UAT → prod migration → Published on prod
+                                   11. User testing and QA  (Mark done, or Send back for a fix)
+                                   12. Done
 ```
 
 - **Creation progress comes from RELAY by itself.** Creators do not type it in the dashboard. It updates every few minutes.

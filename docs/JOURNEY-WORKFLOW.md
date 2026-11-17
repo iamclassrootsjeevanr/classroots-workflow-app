@@ -95,6 +95,9 @@ Design standardization (the developer checks it)
 Last look after design
   ├─ Creator sends back with feedback → Design standardization (developer fixes, marks design done again)
   ↓ Creator marks last look done
+Design check
+  ├─ SME reviewer or Steward sends back with feedback → Design standardization (developer fixes, then last look and design check again)
+  ↓ Reviewer or Steward marks design approved
 Video replacement (skipped when not needed)
   ↓ Steward marks videos replaced
 UAT → prod migration
@@ -163,6 +166,7 @@ Once a Journey is **Closed**, the coordinator moves it through the delivery step
 | Closed                 | (automatic)            | Moves on to design standardization at once and a developer is assigned. A coordinator can still press **Send to design standardization** if one is stuck here.                                          |
 | Design standardization | Developer (or Steward) | The developer checks and fixes the design, then presses **Design done**.                                                                                                                                |
 | Last look after design | SME creator            | **Last look done**. If something is wrong, write feedback and **Send back to design**: the developer gets the feedback, fixes it and presses **Design done** again. Repeats until the creator is happy. |
+| Design check           | SME reviewer or Steward | **Design approved**. If something is wrong, write feedback and **Send back to design**: the developer fixes it and the journey goes through the creator's last look and this check again. |
 | Video replacement      | Steward                | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`.                                                                                                        |
 | UAT → prod migration   | Steward                | Advance after Engineering has migrated it.                                                                                                                                                              |
 | Published on prod      | Steward                | Start user testing.                                                                                                                                                                                     |
@@ -202,7 +206,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 3. Fill the CMS and AI Tutor links.
 4. Press **Submit for review** when ready, even if the creation stage is still progressing.
 5. When feedback arrives, fix it and press **Corrections done**.
-6. After design, complete **Last look done** or send it back to design if necessary.
+6. After design, complete **Last look done** or send it back to design if necessary. The SME reviewer or steward then does the **Design check**.
 
 ### SME reviewer
 

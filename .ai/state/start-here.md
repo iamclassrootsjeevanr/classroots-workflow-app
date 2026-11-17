@@ -1,43 +1,37 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-16T10:58:44Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-17T07:05:00Z · by: claude-code · owner: Jeevan
 
 ## Goal
-Run the Journey workflow on the deployed `development` site (Render) from RELAY data: stewards, creators, teams, developers.
+Run the Journey workflow on the deployed `development` site (Render) from RELAY data: stewards, creators, teams, developers. Keep Dashboard and RELAY in sync (relay feeds creation; dashboard owns review and after).
 
 ## Done this stretch
-- **PR #20 merged** (acb5082): relay sync sets chapter stewards from relay chapter rows (`parseChapterStewards`, `planStewards` in `src/lib/relay-map.ts`; `syncStewards` in `src/server/services/relay-sync.ts`).
-- **PR #21 merged** (936ad5f), all in `development`:
-  - Admins named by the relay (Vinay G06C07, Aswin G08P2C01) get the Steward role in Journey and those chapters; an admin never displaces a non-admin steward (`keptCurrent`).
-  - Steward role gets `work` (stewards build their own journeys); own journeys count like team ones in `capabilitiesIn` (self added to `teamUserIds`). Migration `20261116120000_steward_can_work`.
-  - Chapters tab: **Change steward** (`moveChapter` in `services/teams.ts`, `moveChapterAction`, `ChangeStewardButton`); admins can be picked, also on Add chapter.
-  - Relay sync follows reassignments: `relayHolderWins(relay at, last APP assignment)`; new holder notified. Report `reassigned`, `creatorDiffers` = changed here later (kept).
-  - Relay teams: `planTeams` moves a creator to the team all their relay journeys share; split people reported (`teamIssues`).
-  - Developer role = own data; own data includes `developerId` (`isOwnItem`, `scopeWhere`). Migration `20261116130000_developer_own_data`.
-- Local DB: relay sync applied (5 journeys moved, Animesh → Team Devjyoti); re-run dry run is clean. 230 tests pass.
-- `docs/USER-MANUAL.md` (WIP, committed by this handoff): Steward section updated with relay chapters, Change steward and reassignment rules. Still has `[add the live URL here]`.
+- Surveyed both projects. RELAY = fix seat on remote buildjourneyrelay (applet fixes to Canvas 2.4.0; `journeys/` is its own git repo `relay-journeys`). Dashboard pulls from the relay via `syncRelay`.
+- Render cron is live: `RelaySyncState.lastRunAt` 2026-11-17 06:50 UTC, ok, zero changes (no drift); a workload snapshot exists for 2026-11-17. Render deploy has the latest migrations (`20261116130000_developer_own_data`).
+- Commits 8ba0b8c / ade85b7 (subtopic-held journeys follow holder; teams are defaults, nobody moved) are in `development`; `start-here` is level with it.
+- Docs: README relay-sync wording now says cron, not 5–10 min timer; README Render section gained a "Schedule" step (Cron Job calling `/api/cron/run`); `docs/USER-MANUAL.md` has the live URL https://classroots-workflow-app.onrender.com; LEARNINGS cron note updated.
+- New Journey stage **Design check** after Last look (`definition.ts`): SME reviewer or steward approves or sends back to the developer with feedback. Docs, tests and DECISIONS updated. Journeys sitting at Last look move on to it. 232 tests pass.
+- Krishna's email already krishna.rander@classrootsedu.com on Render. `npm run typecheck` and 232 tests pass.
 
 ## In progress
-Nothing mid-edit. Code is not broken. Render redeploy of 936ad5f not yet confirmed.
+Nothing mid-edit. Code is not broken.
 
 ## Next steps
-1. Render: confirm the deploy of `936ad5f` is Live (migrations run on start).
-2. Live site: Admin → Sheet sync → Journey relay → Dry run. Expect stewards G06C07 → Vinay, G08P2C01 → Aswin; moved G05C02ST5J1/J2 → Animesh, G06C07ST1J1 → Vaishali, G06C07ST1J2/J3 → Kapil; Animesh → Team Devjyoti; Krishna, Vaishali, Supriya in both teams (left). Then Sync RELAY now.
-3. Spot-check signed in: Chapters tab stewards + Change steward; View as Jeevan R / Swathi (developers) shows only their journeys; a steward can Start/Submit their own journey (375px + desktop, light + dark).
-4. Admin → People: Krishna's email → krishna.rander@classrootsedu.com.
-5. Put https://classroots-workflow-app.onrender.com in `docs/USER-MANUAL.md`.
-6. Fix README wording that says the relay syncs every 5–10 minutes (needs a cron).
-7. Optional: Render cron calling `/api/cron/run` with `CRON_SECRET` (Jeevan chose manual sync for now).
-8. Later: promote development → staging → main; ticket attachments; more screen redesigns.
+1. Live site: Admin → Sheet sync → Journey relay → Dry run, spot-check stewards (G06C07 → Vinay, G08P2C01 → Aswin), Change steward, and View as Jeevan R / Swathi (developers see only theirs). 375px + desktop, light + dark.
+2. Applet-fix visibility: the fix loops are the Journey's own two loops (creator↔reviewer, developer↔creator/reviewer), so no new work type. Show the relay's fix activity on the journey: pull `journey_status` version bumps/reopens as RelayEvents (already stored) and show them in the journey history; Jeevan has RELAY_KEY (Dashboard `.env` has it) for the `/api/relay` push if the seat should call it. Open: what exactly should the seat push at route step 7 (upload / re-link)?
+2b. Merge to development (PR, merge commit) so Render gets Design check, then test it on live.
+3. Cross-reference notes: add a short pointer in RELAY `memory/` to this Dashboard and its `/api/relay` door, and in `.ai/LEARNINGS.md` the reverse (done here only for cron).
+4. Promote development → staging → main when ready; ticket attachments; more screen redesigns.
 
 ## Blockers / open questions
 - Render DB password was exposed in an earlier session: Jeevan should rotate it.
-- Krishna, Vaishali, Supriya work in both relay teams: dashboard keeps one team each (choose in Teams tab if needed).
-- Journey: 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
+- Krishna, Vaishali, Supriya work in both relay teams: dashboard keeps one team each.
+- 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
+- Cron interval on Render not verified from here (only that one run ran at 06:50 UTC); check the Cron Job's schedule in Render.
 
 ## Key files
-- `src/lib/relay-map.ts`, `src/server/services/relay-sync.ts`, `src/server/services/teams.ts`
-- `src/lib/access-core.ts`, `src/server/access.ts`, `src/modules/journey-applet/definition.ts`
-- `src/components/chapters-panel.tsx`, `src/app/(app)/w/[workType]/(tabs)/versions/page.tsx`, `src/app/(app)/admin/sync/page.tsx`
-- `docs/USER-MANUAL.md`
+- `src/lib/relay-map.ts`, `src/server/services/relay-sync.ts`, `src/server/relay/client.ts`, `src/server/jobs.ts`
+- `src/app/api/cron/run/route.ts`, `src/app/api/relay/**` (push door, unused)
+- `README.md` (Render section), `docs/USER-MANUAL.md`
+- RELAY side: `RELAY/CLAUDE.md`, `RELAY/applets/INDEX.md`, `RELAY/journeys/README.md`

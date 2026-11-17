@@ -152,3 +152,7 @@ By: claude-code
 Decision: the Relay board (creators x creation stage) is visible to roles with the `reports` page and shows only what their data scope allows. Risky actions use the shared centered `ConfirmDialog` (`useConfirm` replaces `window.confirm`).
 Why: one place and one look for confirmations; the board is analytics, so it reuses the reports permission. Rejected: inline confirm rows (cramped in tables, inconsistent).
 By: claude-code
+
+## 2026-11-17 — Journey: Design check after the creator's last look
+Decision: a new stage `design_check` (Design check) follows Last look after design. SME reviewer (OWNER) or steward (`assign`) presses **Design approved**, or **Send back to design** with feedback to the developer; the loop then runs developer → creator last look → design check again. Existing journeys at Last look move on to Design check. The relay's fix loop (applet fixed by RELAY seat, creator ↔ reviewer, then developer ↔ reviewer/steward) is the same two loops in the dashboard; no separate applet-fix work type.
+Why: Jeevan: the developer's fix is checked by both the creator and the reviewer/steward.

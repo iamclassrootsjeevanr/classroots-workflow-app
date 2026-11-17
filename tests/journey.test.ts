@@ -143,8 +143,13 @@ describe('who presses which button', () => {
 
   it('after-steps belong to the coordinator, except the last look', () => {
     expect(canTransition(mod, 'closed', 'design_standardization', coordinator)).toBe(true);
-    expect(canTransition(mod, 'last_look', 'video_replacement', creator)).toBe(true);
-    expect(canTransition(mod, 'last_look', 'video_replacement', coordinator)).toBe(false);
+    expect(canTransition(mod, 'last_look', 'design_check', creator)).toBe(true);
+    expect(canTransition(mod, 'last_look', 'design_check', coordinator)).toBe(false);
+    expect(canTransition(mod, 'design_check', 'video_replacement', coordinator)).toBe(true);
+    expect(canTransition(mod, 'design_check', 'video_replacement', creator)).toBe(false);
+    expect(canTransition(mod, 'design_check', 'video_replacement', reviewer)).toBe(true);
+    expect(allowedTransitions(mod, 'design_check', reviewer).find(t => t.to === 'design_standardization')?.requires).toBe('feedback');
+    expect(canTransition(mod, 'design_check', 'design_standardization', creator)).toBe(false);
     expect(canTransition(mod, 'user_testing_qa', 'done', coordinator)).toBe(true);
   });
 
@@ -187,7 +192,7 @@ describe('tracker columns from the stage', () => {
   });
   it('places every stage in one part of the journey', () => {
     expect(mod.statuses.map(s => journeyPart(mod, s.key))).toEqual([
-      'not_started', 'creating', 'review', 'review', 'changes', 'review', 'closed', 'after', 'after', 'after', 'after', 'after', 'after', 'done',
+      'not_started', 'creating', 'review', 'review', 'changes', 'review', 'closed', 'after', 'after', 'after', 'after', 'after', 'after', 'after', 'done',
     ]);
   });
 });
