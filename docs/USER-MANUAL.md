@@ -1,7 +1,7 @@
 # Classroots Work: User Manual
 
 For everyone who uses the dashboard. Find your role, read that part, and you can start.
-Live address: **[add the live URL here]**
+Live address: **https://classroots-workflow-app.onrender.com**
 
 ---
 
