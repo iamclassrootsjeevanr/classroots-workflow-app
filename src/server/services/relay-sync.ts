@@ -7,7 +7,7 @@ import { db } from '../db';
 import { workCalendar } from '../settings';
 import type { RelayClient } from '../relay/client';
 import { notify } from './notifications';
-import { addTeamMember, removeTeamMember } from './teams';
+import { addTeamMember } from './teams';
 import { assign, createItemTx, updateFields, type ChangeActor } from './work-items';
 
 /**
@@ -32,7 +32,7 @@ export type RelayReport = {
   reassigned: { key: string; from: string | null; to: string }[];
   /** The dashboard reassigned the journey after the relay's allocation: kept, reported. */
   creatorDiffers: { key: string; dashboard: string | null; relay: string }[];
-  /** Creators put in the team the relay allocates their journeys under. */
+  /** People with no team put in the team of their latest relay journey (teams are defaults; nobody is moved). */
   teamChanges: { person: string; team: string; from: string | null }[];
   teamIssues: string[];
   /** The dashboard is ahead of the relay (e.g. Published): not changed. */
@@ -100,7 +100,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         // Teams follow journey allocations only: a subtopic row's team can name a person ("Aswin"), not a team.
         own.flatMap(a => {
           const userId = a.email ? personFor(a.email) : null;
-          return userId ? [{ userId, team: a.team }] : [];
+          return userId ? [{ userId, team: a.team, at: a.at }] : [];
         }),
         nameById,
         report,
@@ -255,26 +255,21 @@ async function syncStewards(workTypeId: string, stewards: { code: string; email:
   }
 }
 
-/** Creators join the team their relay journeys are allocated under (only when all of them agree). */
-async function syncTeams(workTypeId: string, holders: { userId: string; team: string | null }[], nameById: Map<string, string>, report: RelayReport, dryRun: boolean) {
+/** Teams are defaults: the relay only puts people with no team into the team of their latest relay journey. */
+async function syncTeams(workTypeId: string, holders: { userId: string; team: string | null; at: Date | null }[], nameById: Map<string, string>, report: RelayReport, dryRun: boolean) {
   const teams = await db.team.findMany({ where: { workTypeId }, select: { id: true, name: true, coordinatorId: true, coordinator: { select: { name: true } }, members: { select: { userId: true } } } });
   if (!teams.length) return;
   const memberOf = new Map(teams.flatMap(t => t.members.map(m => [m.userId, t.id] as const)));
   const plan = planTeams(holders, teams.map(t => ({ id: t.id, name: t.name, coordinatorId: t.coordinatorId, coordinatorName: t.coordinator.name })), memberOf);
   const teamName = new Map(teams.map(t => [t.id, t.name]));
-  for (const m of plan.mixed) {
-    const here = memberOf.get(m.userId);
-    report.teamIssues.push(`${nameById.get(m.userId)} has journeys in ${m.teams.join(' and ')} on the relay: team left as is${here ? ` (${teamName.get(here)})` : ''}`);
-  }
   for (const t of plan.unknownTeams) report.teamIssues.push(`${t} is on the relay but not in Teams: add it in the Teams tab`);
-  for (const mv of plan.moves) {
-    report.teamChanges.push({ person: nameById.get(mv.userId) ?? mv.userId, team: teamName.get(mv.teamId)!, from: mv.fromTeamId ? teamName.get(mv.fromTeamId)! : null });
+  for (const j of plan.joins) {
+    report.teamChanges.push({ person: nameById.get(j.userId) ?? j.userId, team: teamName.get(j.teamId)!, from: null });
     if (dryRun) continue;
     try {
-      if (mv.fromTeamId) await removeTeamMember(mv.fromTeamId, mv.userId);
-      await addTeamMember(null, mv.teamId, mv.userId);
+      await addTeamMember(null, j.teamId, j.userId);
     } catch (e) {
-      report.teamIssues.push(`${nameById.get(mv.userId)}: ${e instanceof Error ? e.message : String(e)}`);
+      report.teamIssues.push(`${nameById.get(j.userId)}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 }

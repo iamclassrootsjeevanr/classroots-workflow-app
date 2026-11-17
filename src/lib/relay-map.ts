@@ -279,41 +279,33 @@ export function teamForRelayName(relayTeam: string, teams: TeamLiteForRelay[]): 
 }
 
 export type TeamPlan = {
-  /** Put in this team (removed from their old one first when `fromTeamId` is set). */
-  moves: { userId: string; teamId: string; fromTeamId: string | null }[];
-  /** The relay allocates their journeys under more than one team: left as is. */
-  mixed: { userId: string; teams: string[] }[];
+  /** People with no team yet: put in the team of their latest relay journey (a default; stewards change it in Teams). */
+  joins: { userId: string; teamId: string }[];
   /** A relay team with no dashboard team. */
   unknownTeams: string[];
 };
 
 /**
- * Each creator's team from the relay: the team all their relay journeys are allocated under. A creator split across teams,
- * a team's own coordinator, and teams the dashboard does not have are left alone.
+ * Teams are defaults, not limits: anyone may hold any steward's journeys, and a member's team (its reviewer, else its steward)
+ * is their default SME reviewer wherever the journey came from. So the relay only fills a missing team: a person with no team
+ * joins the team of their latest relay journey allocation. Nobody already in a team is moved; team coordinators are skipped.
  */
-export function planTeams(
-  holders: { userId: string; team: string | null }[],
-  teams: TeamLiteForRelay[],
-  memberOf: Map<string, string>,
-): TeamPlan {
-  const plan: TeamPlan = { moves: [], mixed: [], unknownTeams: [] };
-  const byUser = new Map<string, Set<string>>();
-  for (const h of holders) if (h.team) byUser.set(h.userId, (byUser.get(h.userId) ?? new Set()).add(h.team));
+export function planTeams(holders: { userId: string; team: string | null; at?: Date | null }[], teams: TeamLiteForRelay[], memberOf: Map<string, string>): TeamPlan {
+  const plan: TeamPlan = { joins: [], unknownTeams: [] };
+  const coordinators = new Set(teams.map(t => t.coordinatorId));
+  const latest = new Map<string, { team: string; at: number }>();
+  for (const h of holders) {
+    if (!h.team || memberOf.has(h.userId) || coordinators.has(h.userId)) continue;
+    const at = h.at?.getTime() ?? 0;
+    const was = latest.get(h.userId);
+    if (!was || at >= was.at) latest.set(h.userId, { team: h.team, at });
+  }
   const unknown = new Set<string>();
-  for (const [userId, names] of byUser) {
-    if (names.size > 1) {
-      plan.mixed.push({ userId, teams: [...names].sort() });
-      continue;
-    }
-    const name = [...names][0];
+  for (const [userId, { team: name }] of latest) {
     const team = teamForRelayName(name, teams);
-    if (!team) {
-      // A person's own name ("Aswin") is a solo seat on the relay, not a team.
-      if (/^team\s/i.test(name)) unknown.add(name);
-      continue;
-    }
-    if (team.coordinatorId === userId || memberOf.get(userId) === team.id) continue;
-    plan.moves.push({ userId, teamId: team.id, fromTeamId: memberOf.get(userId) ?? null });
+    if (team) plan.joins.push({ userId, teamId: team.id });
+    // A person's own name ("Aswin") is a solo seat on the relay, not a team.
+    else if (/^team\s/i.test(name)) unknown.add(name);
   }
   plan.unknownTeams = [...unknown].sort();
   return plan;

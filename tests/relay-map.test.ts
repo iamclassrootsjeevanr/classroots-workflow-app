@@ -185,30 +185,24 @@ describe('relay reassignments and teams', () => {
     expect(teamForRelayName('Team Devjyoti', teams)?.id).toBe('td');
     expect(teamForRelayName('Team Vinay', teams)).toBeNull();
   });
-  it('moves creators whose relay journeys share one team; leaves split ones, coordinators and solo seats', () => {
+  it('teams are defaults: only people with no team join, by their latest relay journey; nobody is moved', () => {
     const plan = planTeams(
       [
-        { userId: 'kapil', team: 'Team Arjun' },
-        { userId: 'kapil', team: 'Team Arjun' },
+        { userId: 'kapil', team: 'Team Arjun', at: d('2026-11-01') },
+        { userId: 'vaishali', team: 'Team Arjun', at: d('2026-11-12') },
+        { userId: 'vaishali', team: 'Team Devjyoti', at: d('2026-11-13') },
         { userId: 'manasa', team: 'Team Devjyoti' },
-        { userId: 'vaishali', team: 'Team Arjun' },
-        { userId: 'vaishali', team: 'Team Devjyoti' },
         { userId: 'arjun', team: 'Team Arjun' },
         { userId: 'aswin', team: 'Aswin' },
         { userId: 'x', team: 'Team Vinay' },
-        { userId: 'preethi', team: 'Team Arjun' },
       ],
       teams,
-      new Map([
-        ['manasa', 'ta'],
-        ['preethi', 'ta'],
-      ]),
+      new Map([['manasa', 'ta']]),
     );
-    expect(plan.moves).toEqual([
-      { userId: 'kapil', teamId: 'ta', fromTeamId: null },
-      { userId: 'manasa', teamId: 'td', fromTeamId: 'ta' },
+    expect(plan.joins).toEqual([
+      { userId: 'kapil', teamId: 'ta' },
+      { userId: 'vaishali', teamId: 'td' },
     ]);
-    expect(plan.mixed).toEqual([{ userId: 'vaishali', teams: ['Team Arjun', 'Team Devjyoti'] }]);
     expect(plan.unknownTeams).toEqual(['Team Vinay']);
   });
 });

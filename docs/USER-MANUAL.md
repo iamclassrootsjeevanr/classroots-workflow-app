@@ -107,7 +107,7 @@ RELAY (creation)                    DASHBOARD
 
 **Your job:** run a chapter and a team: add journeys, give them to creators, pick reviewers, push the after-review steps. You can also build your own journeys: follow the SME creator steps (3.1) for any journey given to you, in any chapter.
 
-Your chapters come from RELAY: the chapter's owner on RELAY is its steward here, updated at each relay sync. To hand a chapter to another steward, press **Change steward** on its row in the **Chapters** tab. Journeys reassigned on RELAY move to the new creator at the next sync, and creators join the team RELAY lists them under. A reassignment you make here after RELAY's stays.
+Your chapters come from RELAY: the chapter's owner on RELAY is its steward here, updated at each relay sync. To hand a chapter to another steward, press **Change steward** on its row in the **Chapters** tab. Journeys reassigned on RELAY move to the new creator at the next sync, and a creator with no team joins the team of their latest RELAY journey. A team is only a default: anyone can hold any steward's journeys, and the creator's own team steward (or the team's reviewer) is the default SME reviewer, whoever allocated the journey. A reassignment you make here after RELAY's stays.
 
 **Set up**
 1. **Chapters** tab: add a chapter with **+ New chapter**. You can remove one only when it has no journeys.
