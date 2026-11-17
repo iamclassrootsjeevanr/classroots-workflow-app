@@ -58,6 +58,32 @@ export function parseAllocations(reply: unknown): RelayAllocation[] {
   return [...out.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+/**
+ * Journeys held through their subtopic key (seats mode: "a subtopic key already allocated stands … with every journey under it").
+ * For each journey key with no journey allocation of its own, the holder of its subtopic key (`G05C02ST2` → its `owner`), as a
+ * journey allocation. A journey allocated on its own keeps its own holder. Later subtopic rows win (the list is oldest first).
+ */
+export function subtopicHeldJourneys(reply: unknown, journeyKeys: string[], allocated: Set<string>): RelayAllocation[] {
+  const root = Array.isArray(reply) ? { allocations: reply } : rec(reply);
+  const subs = new Map<string, { email: string; at: Date | null; team: string | null }>();
+  for (const raw of list(root.allocations ?? root.items ?? root.rows)) {
+    const a = rec(raw);
+    const code = str(a.key)?.toUpperCase();
+    const email = str(a.owner)?.toLowerCase();
+    if (a.level !== 'subtopic' || !code || !/^G\d{2}(P\d)?C\d{2}ST\d+$/.test(code)) continue;
+    if (!email?.includes('@')) subs.delete(code);
+    else subs.set(code, { email, at: when(a.at), team: str(a.team) });
+  }
+  const out: RelayAllocation[] = [];
+  for (const raw of journeyKeys) {
+    const key = journeyKeyOf(raw);
+    if (!key || allocated.has(key)) continue;
+    const sub = subs.get(key.replace(/J\d+$/, ''));
+    if (sub) out.push({ key, level: 'journey', email: sub.email, name: null, title: null, at: sub.at, team: sub.team });
+  }
+  return [...new Map(out.map(a => [a.key, a])).values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
 /** Chapter-level allocations: the chapter's steward on the relay (`owner`). Later rows for the same chapter win. */
 export function parseChapterStewards(reply: unknown): { code: string; email: string }[] {
   const root = Array.isArray(reply) ? { allocations: reply } : rec(reply);

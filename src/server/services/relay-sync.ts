@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
-  type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, type RelayAllocation } from '@/lib/relay-map';
+  type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
 import { shortKey } from '@/lib/notifications-core';
 import { db } from '../db';
 import { workCalendar } from '../settings';
@@ -61,15 +61,17 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   }
   const only = opts.key ? journeyKeyOf(opts.key) : null;
   const allocReply = await client.allocations();
-  const allocations = parseAllocations(allocReply).filter(a => !only || a.key === only);
-  report.allocated = allocations.length;
-
   const [items, users, chapters, cal] = await Promise.all([
     db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, archivedAt: true, assigneeId: true, data: true, assignee: { select: { name: true } } } }),
     db.user.findMany({ where: { active: true }, select: { id: true, email: true, name: true } }),
     db.chapter.findMany({ select: { id: true, code: true } }),
     workCalendar(),
   ]);
+  const own = parseAllocations(allocReply);
+  // Journeys here that the relay holds through their subtopic key follow that key's holder (and its reassignments) too.
+  const viaSubtopic = subtopicHeldJourneys(allocReply, items.filter(i => !i.archivedAt).map(i => i.externalKey), new Set(own.map(a => a.key)));
+  const allocations = [...own, ...viaSubtopic].filter(a => !only || a.key === only);
+  report.allocated = allocations.length;
   const byKey = new Map(items.map(i => [i.externalKey.toUpperCase(), i]));
   const userByEmail = new Map(users.filter(u => u.email).map(u => [u.email!.toLowerCase(), u.id]));
   // The relay's email may differ from the dashboard's (krishna.rander@ vs krishna@): fall back to the name the email spells, when it is unique.
@@ -95,7 +97,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     try {
       await syncTeams(
         wt.id,
-        allocations.flatMap(a => {
+        // Teams follow journey allocations only: a subtopic row's team can name a person ("Aswin"), not a team.
+        own.flatMap(a => {
           const userId = a.email ? personFor(a.email) : null;
           return userId ? [{ userId, team: a.team }] : [];
         }),
