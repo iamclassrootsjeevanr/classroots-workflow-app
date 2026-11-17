@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, nameFromEmail, planStewards, planTeams, relayHolderWins, teamForRelayName } from '@/lib/relay-map';
+import { approvalLabel, creationStageOfRelay, currentCreationStage, parseAllocations, parseChapterStewards, parseStatus, parseStatusMeta, nameFromEmail, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, teamForRelayName } from '@/lib/relay-map';
 
 describe('relay allocations', () => {
   it('keeps journeys, normalises keys and emails, drops chapters and subtopics', () => {
@@ -210,5 +210,31 @@ describe('relay reassignments and teams', () => {
     ]);
     expect(plan.mixed).toEqual([{ userId: 'vaishali', teams: ['Team Arjun', 'Team Devjyoti'] }]);
     expect(plan.unknownTeams).toEqual(['Team Vinay']);
+  });
+});
+
+describe('journeys held through their subtopic key', () => {
+  const reply = {
+    allocations: [
+      { key: 'G05C02ST2', level: 'subtopic', owner: 'devjyoti@x.com', at: '2026-10-26T08:00:00Z', team: 'Team Devjyoti' },
+      { key: 'G05C02ST5', level: 'subtopic', owner: 'devjyoti@x.com', at: '2026-10-27T08:00:00Z' },
+      { key: 'G05C02ST5J1', level: 'journey', owner: 'animesh@x.com', at: '2026-11-12T08:00:00Z' },
+      // The steward hands the subtopic on: the later row wins.
+      { key: 'G05C02ST2', level: 'subtopic', owner: 'Animesh@x.com', at: '2026-10-27T09:00:00Z', team: 'Team Devjyoti' },
+    ],
+  };
+  it('gives a journey with no allocation of its own the current holder of its subtopic', () => {
+    const own = parseAllocations(reply);
+    expect(own.map(a => a.key)).toEqual(['G05C02ST5J1']);
+    const held = subtopicHeldJourneys(reply, ['G05C02ST2J1_slug', 'G05C02ST5J1', 'G05C02ST5J2', 'G05C02ST9J1', 'not-a-key'], new Set(own.map(a => a.key)));
+    expect(held.map(a => [a.key, a.email])).toEqual([
+      ['G05C02ST2J1', 'animesh@x.com'],
+      ['G05C02ST5J2', 'devjyoti@x.com'],
+    ]);
+    expect(held[0].at?.toISOString()).toBe('2026-10-27T09:00:00.000Z');
+  });
+  it('a released subtopic holds nothing', () => {
+    const released = { allocations: [...reply.allocations, { key: 'G05C02ST2', level: 'subtopic', owner: null }] };
+    expect(subtopicHeldJourneys(released, ['G05C02ST2J1'], new Set())).toEqual([]);
   });
 });
