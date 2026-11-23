@@ -184,11 +184,13 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'dueAt', label: 'Closure due' },
   ],
   table: {
+    // After Name: SME creator, Creation stage, Status, SME reviewer, Steward, Peer reviewer, Developer; then the rest.
+    order: ['assignee', 'creationStage', 'status', 'owner', 'teamOwner', 'peerReviewer', 'developer'],
     extra: [
+      { field: 'creationStage', label: 'Creation stage' },
       { field: 'peerReviewer', label: 'Peer reviewer' },
       { field: 'teamOwner', label: 'Steward' },
       { field: 'developer', label: 'Developer' },
-      { field: 'creationStage', label: 'Creation stage' },
       { field: 'pickedUpAt', label: 'Picked up' },
       { field: 'submittedAt', label: 'Submitted for review' },
       { field: 'daysTaken', label: 'Days taken' },
