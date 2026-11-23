@@ -52,14 +52,14 @@ export default async function SyncPage() {
             </div>
             <div>
               <div className="label">Last changes</div>
-              {relayReport ? `${relayReport.stageChanges.length} stage changes · ${relayReport.eventsAdded} events` : '—'}
+              {relayReport ? `${relayReport.stageChanges.length} stage changes · ${relayReport.reviewMoves?.length ?? 0} submitted · ${relayReport.eventsAdded} events` : '—'}
             </div>
             <div>
               <div className="label">Needs a look</div>
               {relayReport ? (
-                relayReport.errors.length + relayReport.unknownPeople.length + relayReport.creatorDiffers.length + relayReport.dashboardAhead.length ? (
+                relayReport.errors.length + relayReport.unknownPeople.length + relayReport.creatorDiffers.length + relayReport.dashboardAhead.length + (relayReport.mismatches?.length ?? 0) ? (
                   <span className="text-warn">
-                    {relayReport.errors.length} errors · {relayReport.unknownPeople.length} creators not in People · {relayReport.creatorDiffers.length} reassigned here (kept) · {relayReport.dashboardAhead.length} ahead of the relay
+                    {relayReport.errors.length} errors · {relayReport.unknownPeople.length} creators not in People · {relayReport.creatorDiffers.length} reassigned here (kept) · {relayReport.dashboardAhead.length} ahead of the relay · {relayReport.mismatches?.length ?? 0} out of step with the relay status
                   </span>
                 ) : (
                   <span className="text-ok">nothing</span>
@@ -74,6 +74,21 @@ export default async function SyncPage() {
           )}
           {relayReport && (relayReport.reassigned?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Moved to the relay’s creator: {relayReport.reassigned.map(x => `${x.key} ${x.from ?? 'nobody'} → ${x.to}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.reviewMoves?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Up for review on the relay, moved here: {relayReport.reviewMoves.map(x => `${x.key} ${x.from} → ${x.to}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.mismatches?.length ?? 0) > 0 && (
+            <div className="mt-2 text-xs text-warn">
+              Out of step with the relay status:
+              <ul className="mt-1 space-y-0.5">
+                {relayReport.mismatches.map(x => (
+                  <li key={x.key}>
+                    {x.key}: {x.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {relayReport && (relayReport.teamChanges?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Teams from the relay: {relayReport.teamChanges.map(x => `${x.person} → ${x.team}${x.from ? ` (was ${x.from})` : ''}`).join(', ')}</p>

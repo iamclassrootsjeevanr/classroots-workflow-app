@@ -1,6 +1,7 @@
 import 'server-only';
 import { timingSafeEqual } from 'node:crypto';
 import { CREATION_STAGES, creationStageFor } from '@/lib/journey';
+import { appletFixesText } from '@/lib/relay-review';
 import { requireModule, statusDef } from '@/modules/registry';
 import { db } from '../db';
 import { env } from '../env';
@@ -91,4 +92,24 @@ export async function setCreationStage(key: string, stage: unknown, at?: unknown
   }
   await updateFields(RELAY_ACTOR, item.id, { creationStage: value }, { at: when });
   return { ...(await getRelayJourney(key)), changed: true };
+}
+
+/**
+ * The fix seat reports how many of a journey's applets are fixed (and, optionally, the review copy to play). Shown on the journey as
+ * "Applets fixed" and "Fix review journey"; the developer still presses Design done.
+ */
+export async function setAppletFixes(key: string, fixed: unknown, total: unknown, reviewUrl?: unknown): Promise<RelayJourney & { appletFixes: string; changed: boolean }> {
+  const r = appletFixesText(fixed, total);
+  if ('error' in r) throw new RelayError(r.error, 400);
+  const patch: Record<string, string> = { appletFixes: r.text };
+  if (reviewUrl != null && reviewUrl !== '') {
+    const url = String(reviewUrl).trim();
+    if (!/^https:\/\/[^\s]+$/.test(url) || url.length > 500) throw new RelayError('reviewUrl must be an https link', 400);
+    patch.fixReviewUrl = url;
+  }
+  const item = await findJourney(key);
+  const data = (item.data ?? {}) as Record<string, unknown>;
+  const changed = Object.entries(patch).some(([k, v]) => data[k] !== v);
+  if (changed) await updateFields(RELAY_ACTOR, item.id, patch);
+  return { ...(await getRelayJourney(key)), appletFixes: r.text, changed };
 }

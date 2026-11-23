@@ -226,6 +226,14 @@ async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: st
   return [...people].sort((a, b) => busy(a.id) - busy(b.id) || (a.name ?? '').localeCompare(b.name ?? ''))[0].id;
 }
 
+/** True when the journey is on the relay and its publish status there is not "ready for students" yet. */
+async function relayNotReady(tx: Tx, itemId: string): Promise<boolean> {
+  const any = await tx.relayEvent.findFirst({ where: { itemId }, select: { id: true } });
+  if (!any) return false;
+  const publish = await tx.relayEvent.findFirst({ where: { itemId, kind: 'publish' }, orderBy: { at: 'desc' }, select: { what: true } });
+  return publish?.what !== 'ready_for_student';
+}
+
 /**
  * Inbox messages a work type asks for: submitted → the owner (reviewer), or the group's coordinators when nobody owns it yet
  * (they pick the reviewer); approved → the assignee.
@@ -255,8 +263,22 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   if (look && to === look && item.assigneeId && item.assigneeId !== actor.userId) {
     await notify(tx, item.assigneeId, { kind: 'item.last-look', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
   }
-  if (design && to === design && item.developerId && item.developerId !== actor.userId && item.status === look) {
+  // After the last look the journey's reviewer (else the chapter's stewards) checks the design.
+  const check = look && nextActiveAfter(mod.statuses, look);
+  const checkedByOwner = check && to === check && statusDef(mod, check).next?.by.includes('OWNER');
+  if (checkedByOwner) {
+    for (const userId of item.ownerId ? [item.ownerId] : await stewardIds(tx, item.workTypeId, item.groupKey)) {
+      if (userId !== actor.userId) await notify(tx, userId, { kind: 'item.design-check', title: `${label}: ${shortKey(item.externalKey)}`, body: item.title, href });
+    }
+  }
+  if (design && to === design && item.developerId && item.developerId !== actor.userId && (item.status === look || item.status === check)) {
     await notify(tx, item.developerId, { kind: 'item.developer', title: `Sent back to design: ${shortKey(item.externalKey)}`, body: item.title, href });
+  }
+  // A journey built on the relay is finished there too: its stewards set the relay's publish status (the dashboard cannot write to the relay).
+  if (mod.relayBoard && marks.includes('completed') && (await relayNotReady(tx, item.id))) {
+    for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
+      await notify(tx, userId, { kind: 'item.relay-ready', title: `Done: ${shortKey(item.externalKey)}`, body: 'Set the relay status: ready for students', href });
+    }
   }
 }
 

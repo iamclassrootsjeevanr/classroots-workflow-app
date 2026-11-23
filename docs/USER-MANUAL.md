@@ -62,7 +62,8 @@ RELAY (creation)                    DASHBOARD
 
 - **Creation progress comes from RELAY by itself.** Creators do not type it in the dashboard. It updates every few minutes.
 - **Review and everything after it happens in the dashboard.**
-- Information flows one way: RELAY → dashboard. The dashboard never changes RELAY.
+- **"Up for review" on RELAY submits the journey here.** When you tell Claude the journey is up for review, the dashboard moves it to **Ready for review** at the next sync, and your reviewer gets a message. After corrections, "up for review" again moves it from **Changes asked** to **Correction verification**.
+- The dashboard reads RELAY and never changes it. When the two disagree, the journey's **RELAY** card says what to do (for example "Set the relay status: ready for students").
 
 ---
 
@@ -77,7 +78,7 @@ RELAY (creation)                    DASHBOARD
 2. Press **Change status → Start** when you begin. (If your pick-up date is empty, it is stamped now.)
 3. Build with Claude on RELAY. The **Creation stage** (3a · Spine, 3b · Script, 4 · Build, 5 · Ship) follows RELAY automatically.
 4. Add your links in **Details & links**: the CMS Journey link and the AI Tutor link. Use the pencil (Edit) next to a field, then Save.
-5. When it is ready, choose **→ Submit for review**. Reaching "5 · Ship" does **not** submit it. You must submit.
+5. When it is ready, tell Claude it is **up for review** on RELAY: the dashboard submits it for you at the next sync. Or choose **→ Submit for review** here. Reaching "5 · Ship" alone does **not** submit it.
 6. You will get an Inbox message when the reviewer asks for changes. See **Feedback** (section 4). Fix each point, then choose **→ Corrections done**.
 7. When the review is closed and the developer finishes design, you get a message: **do the last look**.
    - It is right: choose **→ Last look done**.
@@ -138,7 +139,7 @@ Your chapters come from RELAY: the chapter's owner on RELAY is its steward here,
 
 1. A journey is assigned to you automatically (the developer with the fewest waiting journeys). You get a message.
 2. Find it under **My dashboard** (journeys you hold as developer) or the Journeys list. Its status is **Design standardization**.
-3. Check and fix the design. When done, choose **→ Design done**. It goes to the creator for the last look.
+3. Check and fix the design (the applet fixes on RELAY). Your fix seat can report progress: **Applets fixed** (for example "23 of 27") and **Fix review journey** in Details & links. When done, choose **→ Design done**. It goes to the creator for the last look, then the reviewer or steward's design check.
 4. If the creator sends it back, you get a message with a ticket. Read it, fix it, answer in the ticket chat, and choose **→ Design done** again.
 
 ### 3.5 Program manager

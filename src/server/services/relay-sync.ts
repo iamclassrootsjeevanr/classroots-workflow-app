@@ -2,18 +2,24 @@ import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
+import { relayMismatch, reviewMoves } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
+import { journeyPart } from '@/modules/journey-applet/definition';
+import { requireModule, statusDef } from '@/modules/registry';
 import { db } from '../db';
 import { workCalendar } from '../settings';
+import { refreshStages } from '../stages';
 import type { RelayClient } from '../relay/client';
 import { notify } from './notifications';
 import { addTeamMember } from './teams';
-import { assign, createItemTx, updateFields, type ChangeActor } from './work-items';
+import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } from './work-items';
 
 /**
  * Pull the journey relay's ledger into the dashboard. The relay feeds creation (who holds a journey, its Creation stage, its approvals);
  * the dashboard keeps review and everything after it. Re-running is safe: journeys are matched by key, events by the relay's event id.
- * Never touched here: status after Creating, SME reviewer, peer reviewer, developer, feedback, dates, and any person other than the creator.
+ * The relay's publish status "up for review" submits the journey here (and moves Changes asked to Correction verification) when it is later than
+ * the last stage change made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
+ * Never touched here: any other stage, SME reviewer, peer reviewer, developer, feedback, and any person other than the creator.
  */
 const JOURNEY = 'journey-applet';
 const ACTOR: ChangeActor = { userId: null, ctx: null, source: 'RELAY' };
@@ -25,6 +31,10 @@ export type RelayReport = {
   /** Existing journeys with no creator that the relay holds for a known person: assigned. */
   assigned: string[];
   stageChanges: { key: string; from: string | null; to: string }[];
+  /** "Up for review" on the relay moved the journey here: submitted for review, or corrections sent for verification. */
+  reviewMoves: { key: string; from: string; to: string }[];
+  /** The relay's publish status and the stage here disagree: what to do. */
+  mismatches: { key: string; text: string }[];
   eventsAdded: number;
   /** The relay holds the journey for an email that is not a dashboard user (nobody is assigned until they are added). */
   unknownPeople: { key: string; email: string }[];
@@ -47,7 +57,7 @@ export type RelayReport = {
   errors: { key: string; error: string }[];
 };
 
-const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], eventsAdded: 0, unknownPeople: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
+const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
 
 export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string } = {}): Promise<RelayReport> {
@@ -59,10 +69,12 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     report.skipped.push('Journey is paused: nothing synced.');
     return report;
   }
+  await refreshStages(true);
+  const mod = requireModule(JOURNEY);
   const only = opts.key ? journeyKeyOf(opts.key) : null;
   const allocReply = await client.allocations();
   const [items, users, chapters, cal] = await Promise.all([
-    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, archivedAt: true, assigneeId: true, data: true, assignee: { select: { name: true } } } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, data: true, assignee: { select: { name: true } } } }),
     db.user.findMany({ where: { active: true }, select: { id: true, email: true, name: true } }),
     db.chapter.findMany({ select: { id: true, code: true } }),
     workCalendar(),
@@ -133,7 +145,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
           if (assigneeId) await notify(tx, assigneeId, { kind: 'item.assigned', title: `Journey allocated to you: ${shortKey(a.key)}`, body: row.title, href: `/w/${JOURNEY}/${row.id}` });
           return row;
         });
-        item = { id: created.id, externalKey: a.key, archivedAt: null, assigneeId, data: created.data, assignee: null };
+        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, data: created.data, assignee: null };
         byKey.set(a.key, item);
       }
     } else if (assigneeId && !item.assigneeId) {
@@ -181,17 +193,51 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     } else if (item == null) {
       report.eventsAdded += events.length;
     }
-    if (!stage || before === stage) return;
-    if (stageIndex(before) > stageIndex(stage)) {
-      report.dashboardAhead.push({ key: a.key, dashboard: String(before), relay: stage });
-      return;
+    await syncStage();
+    await syncReview();
+
+    async function syncStage() {
+      if (!stage || before === stage) return;
+      if (stageIndex(before) > stageIndex(stage)) {
+        report.dashboardAhead.push({ key: a.key, dashboard: String(before), relay: stage });
+        return;
+      }
+      report.stageChanges.push({ key: a.key, from: typeof before === 'string' ? before : null, to: stage });
+      if (dryRun || !item) return;
+      await updateFields(ACTOR, item.id, { creationStage: stage }, { at: await inOrder(item.id, at) });
     }
-    report.stageChanges.push({ key: a.key, from: typeof before === 'string' ? before : null, to: stage });
-    if (dryRun || !item) return;
-    // History stays in order: never dated before the journey's last recorded change, nor in the future.
-    const last = await db.workItemEvent.findFirst({ where: { itemId: item.id }, orderBy: { at: 'desc' }, select: { at: true } });
-    const when = at && at.getTime() <= Date.now() ? (last && at < last.at ? last.at : at) : undefined;
-    await updateFields(ACTOR, item.id, { creationStage: stage }, { at: when });
+
+    /** The relay's publish status against the stage here: "up for review" submits; anything still out of step is reported. */
+    async function syncReview() {
+      if (!item || !meta.publishStatus) return;
+      const publish = { status: meta.publishStatus, at: meta.publishAt };
+      const lastHere = await db.workItemEvent.findFirst({ where: { itemId: item.id, type: 'STATUS_CHANGED', source: 'APP' }, orderBy: { at: 'desc' }, select: { at: true } });
+      const moves = reviewMoves(item.status, publish, lastHere?.at ?? null);
+      let status = item.status;
+      if (moves.length) {
+        status = moves[moves.length - 1];
+        report.reviewMoves.push({ key: a.key, from: statusDef(mod, item.status).label, to: statusDef(mod, status).label });
+        if (!dryRun) {
+          const when = await inOrder(item.id, publish.at);
+          for (const to of moves) await changeStatus(ACTOR, item.id, to, { at: when, note: 'Up for review on the relay' });
+          // A paused or skipped stage may land it elsewhere.
+          status = (await db.workItem.findUniqueOrThrow({ where: { id: item.id }, select: { status: true } })).status;
+          const { id, ownerId, title } = item;
+          if (ownerId) await db.$transaction(tx => notify(tx, ownerId, { kind: 'item.submitted', title: `${statusDef(mod, status).label}: ${shortKey(a.key)}`, body: title, href: `/w/${JOURNEY}/${id}` }));
+          item = { ...item, status };
+          byKey.set(a.key, item);
+        }
+      }
+      const text = relayMismatch(status, journeyPart(mod, status), publish.status);
+      if (text) report.mismatches.push({ key: a.key, text });
+    }
+  }
+
+  /** History stays in order: never dated before the journey's last recorded change, nor in the future. */
+  async function inOrder(itemId: string, at: Date | null): Promise<Date | undefined> {
+    if (!at || at.getTime() > Date.now()) return undefined;
+    const last = await db.workItemEvent.findFirst({ where: { itemId }, orderBy: { at: 'desc' }, select: { at: true } });
+    return last && at < last.at ? last.at : at;
   }
 
   if (!dryRun) {

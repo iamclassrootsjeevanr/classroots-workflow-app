@@ -88,7 +88,7 @@ describe('Coordinator', () => {
 
   it('in their chapter: assigns, adds, edits every detail, deletes', () => {
     expect([hasCap(inChapter, 'assign'), hasCap(inChapter, 'create'), canDeleteItem(inChapter)]).toEqual([true, true, true]);
-    expect(editable(inChapter).sort()).toEqual(['creationStage', 'needsVideoReplacement', 'pickedUpAt', 'pickedUpHalf', 'reviewDate', ...LINKS].sort());
+    expect(editable(inChapter).sort()).toEqual(['appletFixes', 'creationStage', 'fixReviewUrl', 'needsVideoReplacement', 'pickedUpAt', 'pickedUpHalf', 'reviewDate', ...LINKS].sort());
   });
   it('nobody but an admin types the submitted date, and the Applet build link is gone', () => {
     const admin: ActorContext = { isAdmin: true, capabilities: new Set(), canEdit: true, isAssignee: false };
