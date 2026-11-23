@@ -18,6 +18,8 @@ export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for re
  *   are published);
  * - "ready for students": the review is over on the relay, so it is closed here too (submitted and reviewed on the way, so the dates are
  *   stamped). Closing hands the journey to a developer for design standardization, as any closed review does.
+ * - "corrections in progress": the relay's review asked for changes, so the journey goes to Changes asked here (submitted and review
+ *   started on the way); one in Correction verification goes back to Changes asked (asked again).
  * Only when the relay's status is later than the last stage change made here: a later change in the dashboard stands (a reviewer who asks
  * for changes, or QA sending a journey back, is not undone by an older relay status).
  */
@@ -28,6 +30,13 @@ export function reviewMoves(status: string, publish: RelayPublish | null, lastHe
     if (status === 'allocated') return ['creating', 'ready_for_review'];
     if (status === 'creating') return ['ready_for_review'];
     if (status === 'changes_asked') return ['correction_verification'];
+    return [];
+  }
+  if (publish.status === 'corrections_wip') {
+    const toChanges = ['creating', 'ready_for_review', 'review_in_progress', 'changes_asked'];
+    const at = ['allocated', ...toChanges].indexOf(status);
+    if (at >= 0 && status !== 'changes_asked') return toChanges.slice(at);
+    if (status === 'correction_verification') return ['changes_asked'];
     return [];
   }
   if (publish.status === 'ready_for_student') {
