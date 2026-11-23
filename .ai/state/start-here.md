@@ -1,10 +1,10 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-23T08:00:00Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-23T09:00:00Z · by: claude-code · owner: Jeevan
 
 ## Goal
-One flow across RELAY and the Dashboard: a journey is built on the relay, "up for review" there submits it here, review and the after-steps run here, and both end at ready for students.
+One flow across RELAY and the Dashboard: a journey is built on the relay, "up for review" there submits it here, the review runs here, and closing it lines up with "ready for students" on the relay (review over, final in UAT; not Done). Design, prod steps and Done are dashboard only.
 
 ## Done this stretch
 - PR #24 merged (Design check stage); `development` = db710ac.
@@ -12,7 +12,7 @@ One flow across RELAY and the Dashboard: a journey is built on the relay, "up fo
   - `src/lib/relay-review.ts` (pure, tested): `reviewMoves` (relay `up_for_review` → creating → ready_for_review; changes_asked → correction_verification; only when later than the last `source: APP` stage change), `relayMismatch` (what to do where relay status and stage disagree), `appletFixesText`.
   - `syncRelay` applies the moves (stamped with the relay's time, note "Up for review on the relay", reviewer notified) and reports `reviewMoves` / `mismatches`; it now calls `refreshStages(true)` itself.
   - Journey page RELAY card: relay status + the mismatch note. Admin → Sheet sync lists moves and mismatches.
-  - Notifications: design check → reviewer (else stewards); send-back from design check → developer; Done → stewards "Set the relay status: ready for students" (only when the relay is not there yet).
+  - Notifications: design check → reviewer (else stewards); send-back from design check → developer; Review closed → stewards "Set the relay status: ready for students" (only when the relay is not there yet).
   - `POST /api/relay/journeys/<key>/applet-fixes` `{fixed, total, reviewUrl?}` → fields **Applets fixed**, **Fix review journey** (no migration: JSON data).
   - RELAY side (not a git repo): `RELAY/bin/dash-push fixes|show`, CLAUDE.md step 7 line, `memory/classroots-work-dashboard.md`.
 - Verified: 242 tests + typecheck pass; local DB synced for real (10 moves, re-run moves 0); endpoint and `dash-push` tested against local dev. **Journey page not checked in a browser** (agents cannot sign in).
@@ -26,11 +26,11 @@ Nothing mid-edit. Code is not broken. `docs/JOURNEY-BRIEF.md` and `docs/JOURNEY-
 2. PR `start-here` → `development` (merge commit). Tell reviewers first: 10 journeys get submitted on the first sync.
 3. Render: confirm `RELAY_KEY` is set and equals the one `RELAY/bin/dash-push` reads (a 401 means it differs).
 4. Decide the 14 journeys that are ready for students on the relay but never reviewed here: review them here, or an admin sets their stage.
-5. Ask the relay admin whether the dashboard's token may call `publish_status` (then Ask for changes → `corrections_wip`, Done → `ready_for_student` can be written instead of reminded).
+5. Ask the relay admin whether the dashboard's token may call `publish_status` (then Ask for changes → `corrections_wip`, Review closed → `ready_for_student` can be written instead of reminded).
 6. Promote development → staging → main; ticket attachments; more screen redesigns.
 
 ## Blockers / open questions
-- When is a journey "ready for students"? On the relay it is set after the UAT look, before design and prod; here Done is after prod QA. Today: reminder at Done, no auto-close from the relay.
+- Settled 23 Nov: "ready for students" = review over, final in UAT = Review closed here; it is not Done. Open: should `ready_for_student` on the relay close the review here by itself? Today it only flags (14 journeys).
 - Render DB password was exposed in an earlier session: rotate it.
 - 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
 

@@ -2,13 +2,15 @@
  * The relay's publish status (human-record-16: up_for_review, corrections_wip, ready_for_student) against the dashboard's stage. Pure (no DB).
  * The relay says who has the next move on the published journey; the dashboard runs the review. "Up for review" on the relay submits the
  * journey here, and wherever the two still disagree the journey carries a note that says what to do.
+ * "Ready for students" on the relay is not Done: it means the review is over and the journey is final in UAT. It lines up with Review
+ * closed here; design standardization, the prod steps and Done come after it and live only in the dashboard.
  */
 export type RelayPublish = { status: string; at: Date | null };
 
 /** Where a journey sits here (journeyPart in the Journey definition). */
 export type ReviewPart = 'not_started' | 'creating' | 'review' | 'changes' | 'closed' | 'after' | 'done';
 
-export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for review', corrections_wip: 'Corrections in progress', ready_for_student: 'Ready for students' };
+export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for review', corrections_wip: 'Corrections in progress', ready_for_student: 'Ready for students (review over, final in UAT)' };
 
 /**
  * The stages the dashboard moves through because the relay says "up for review": a journey not yet submitted is submitted, and one in
@@ -31,14 +33,13 @@ export function relayMismatch(status: string, part: ReviewPart, publish: string 
   if (publish === 'up_for_review') {
     if (early) return 'Up for review on the relay. Submit for review here.';
     if (status === 'changes_asked') return 'Up for review on the relay. Press Corrections done here.';
-    if (part === 'closed' || part === 'after') return 'Review closed here. Set the relay status: ready for students.';
-    if (part === 'done') return 'Done here. Set the relay status: ready for students.';
+    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here. Set the relay status: ready for students.';
     return null;
   }
   if (publish === 'corrections_wip') {
     if (early) return 'In corrections on the relay. Submit for review here.';
     if (part === 'review') return 'In corrections on the relay. Ask for changes here, or set the relay status: up for review.';
-    if (part === 'closed' || part === 'after' || part === 'done') return 'Still in corrections on the relay. Set the relay status: ready for students.';
+    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here, still in corrections on the relay. Set the relay status: ready for students.';
     return null;
   }
   if (publish === 'ready_for_student') {

@@ -44,6 +44,11 @@ describe('relay status against the stage here', () => {
     expect(note('done', 'ready_for_student')).toBeNull();
     expect(note('creating', null)).toBeNull();
   });
+  it('ready for students lines up with Review closed, not with Done', () => {
+    for (const s of ['closed', 'design_standardization', 'last_look', 'design_check', 'video_replacement', 'uat_to_prod', 'published_prod', 'user_testing_qa', 'done']) expect(note(s, 'ready_for_student'), s).toBeNull();
+    expect(note('done', 'up_for_review')).toBe(note('closed', 'up_for_review'));
+    expect(note('closed', 'up_for_review')).toMatch(/^Review closed here/);
+  });
   it('says what to do when they differ', () => {
     expect(note('creating', 'up_for_review')).toMatch(/Submit for review/);
     expect(note('changes_asked', 'up_for_review')).toMatch(/Corrections done/);

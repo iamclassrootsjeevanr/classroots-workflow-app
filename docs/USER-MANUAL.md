@@ -63,7 +63,8 @@ RELAY (creation)                    DASHBOARD
 - **Creation progress comes from RELAY by itself.** Creators do not type it in the dashboard. It updates every few minutes.
 - **Review and everything after it happens in the dashboard.**
 - **"Up for review" on RELAY submits the journey here.** When you tell Claude the journey is up for review, the dashboard moves it to **Ready for review** at the next sync, and your reviewer gets a message. After corrections, "up for review" again moves it from **Changes asked** to **Correction verification**.
-- The dashboard reads RELAY and never changes it. When the two disagree, the journey's **RELAY** card says what to do (for example "Set the relay status: ready for students").
+- **"Ready for students" on RELAY is not Done.** It means the review is over and the journey is final in UAT. It matches **Closed** (review closed) here. Design standardization, the prod steps and **Done** come after it, in the dashboard only.
+- The dashboard reads RELAY and never changes it. When a review closes here, the steward gets a message: **Set the relay status: ready for students**. When the two disagree, the journey's **RELAY** card says what to do.
 
 ---
 
