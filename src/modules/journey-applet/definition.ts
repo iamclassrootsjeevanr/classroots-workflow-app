@@ -152,6 +152,9 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'subtopic', label: 'Subtopic', type: 'text', source: 'data', editableBy: [], computed: true },
     { key: 'cmsUrl', label: 'UAT CMS journey', type: 'url', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'], linkLabel: 'Open CMS' },
     { key: 'aiTutorUrl', label: 'AI Tutor', type: 'url', source: 'data', editableBy: ['ASSIGNEE', 'OWNER', 'manageFields'], linkLabel: 'Open AI Tutor' },
+    // Reported by the fix seat on the relay while the developer standardises the applets (POST /api/relay/journeys/<key>/applet-fixes).
+    { key: 'appletFixes', label: 'Applets fixed', type: 'text', source: 'data', editableBy: ['DEVELOPER', 'manageFields'] },
+    { key: 'fixReviewUrl', label: 'Fix review journey', type: 'url', source: 'data', editableBy: ['DEVELOPER', 'manageFields'], linkLabel: 'Open review copy' },
   ],
 
   dataSchema: z
@@ -167,6 +170,8 @@ export const journeyApplet: WorkTypeDefinition = {
       subtopic: z.string().optional(),
       cmsUrl: z.string().optional(),
       aiTutorUrl: z.string().optional(),
+      appletFixes: z.string().optional(),
+      fixReviewUrl: z.string().optional(),
     })
     .passthrough(),
 

@@ -1,37 +1,50 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-17T07:05:00Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-23T10:30:22Z · by: claude-code · owner: Jeevan
 
 ## Goal
-Run the Journey workflow on the deployed `development` site (Render) from RELAY data: stewards, creators, teams, developers. Keep Dashboard and RELAY in sync (relay feeds creation; dashboard owns review and after).
+One flow across RELAY and the Dashboard: a journey is built on the relay, "up for review" there submits it here, the review runs here, and "ready for students" on the relay (review over, final in UAT; not Done) closes the review here and sends the journey to design standardization. Design, prod steps and Done are dashboard only.
 
 ## Done this stretch
-- Surveyed both projects. RELAY = fix seat on remote buildjourneyrelay (applet fixes to Canvas 2.4.0; `journeys/` is its own git repo `relay-journeys`). Dashboard pulls from the relay via `syncRelay`.
-- Render cron is live: `RelaySyncState.lastRunAt` 2026-11-17 06:50 UTC, ok, zero changes (no drift); a workload snapshot exists for 2026-11-17. Render deploy has the latest migrations (`20261116130000_developer_own_data`).
-- Commits 8ba0b8c / ade85b7 (subtopic-held journeys follow holder; teams are defaults, nobody moved) are in `development`; `start-here` is level with it.
-- Docs: README relay-sync wording now says cron, not 5–10 min timer; README Render section gained a "Schedule" step (Cron Job calling `/api/cron/run`); `docs/USER-MANUAL.md` has the live URL https://classroots-workflow-app.onrender.com; LEARNINGS cron note updated.
-- New Journey stage **Design check** after Last look (`definition.ts`): SME reviewer or steward approves or sends back to the developer with feedback. Docs, tests and DECISIONS updated. Journeys sitting at Last look move on to it. 232 tests pass.
-- Krishna's email already krishna.rander@classrootsedu.com on Render. `npm run typecheck` and 232 tests pass.
+- PR #24 merged (Design check stage); `development` = db710ac, merged back into `start-here`.
+- **On `start-here`, not in `development` yet (3fe53e1, 7303979, 0b7c9d9). No PR open.**
+  - `src/lib/relay-review.ts` (pure, tested): `reviewMoves`, `relayMismatch`, `appletFixesText`.
+    - Relay `up_for_review`: allocated/creating → ready_for_review; changes_asked → correction_verification.
+    - Relay `ready_for_student`: walks submit → review → closed (dates stamped: submitted = first `up_for_review` time, review = `ready_for_student` time); closing hands off to design standardization with a developer, who is notified.
+    - Guard: only when the relay status is later than the last `source: APP` stage change. A later change here stands.
+  - `syncRelay` applies the moves, reports `reviewMoves` / `mismatches`, and calls `refreshStages(true)` itself.
+  - Journey page RELAY card: relay status + mismatch note. Admin → Sheet sync lists moves and mismatches.
+  - Notifications: design check → reviewer (else stewards); send-back from design check → developer; Review closed → stewards "Set the relay status: ready for students" (only when the relay is not there yet).
+  - `POST /api/relay/journeys/<key>/applet-fixes` `{fixed, total, reviewUrl?}` → fields **Applets fixed**, **Fix review journey** (no migration: JSON data).
+  - RELAY side (`../RELAY`, not a git repo): `bin/dash-push fixes|show`, CLAUDE.md step 7 line, `memory/classroots-work-dashboard.md`, `.dash.env` git-ignored.
+- Verified: 245 tests + typecheck pass; rule applied on the local DB (reviews closed, dates stamped, re-run moves 0); endpoint and `dash-push` tested against local dev only. **Journey page not checked in a browser** (agents cannot sign in).
+- Read-only dry run against Render (23 Nov): the first sync after deploy moves 24 journeys, 0 errors.
+  - 14 close → Design standardization, split between Jeevan R and Swathi: G04C05ST1J2, ST1J3, ST1J4, ST3J2, ST4J1, ST5J1; G05C02ST4J1, ST4J2; G06C07ST1J1, ST1J2, ST2J1, ST4J1, ST4J2, ST6J4.
+  - 9 → Ready for review: G06C07ST2J2, ST3J1, ST3J2, ST4J3, ST6J2, ST6J3; G07P1C03ST1J1, ST1J2; G05C02ST1J1.
+  - 1 → Correction verification: G04C05ST2J1.
+  - 4 stay flagged (in corrections on the relay, not submitted here): G06C07ST7J1, G07P1C08ST5J1, G05C02ST6J1, ST6J2.
 
 ## In progress
-Nothing mid-edit. Code is not broken.
+Nothing mid-edit. Code is not broken. The live site is unchanged: the 14 journeys close only after the PR is merged, Render deploys and the next sync runs.
 
 ## Next steps
-1. Live site: Admin → Sheet sync → Journey relay → Dry run, spot-check stewards (G06C07 → Vinay, G08P2C01 → Aswin), Change steward, and View as Jeevan R / Swathi (developers see only theirs). 375px + desktop, light + dark.
-2. Applet-fix visibility: the fix loops are the Journey's own two loops (creator↔reviewer, developer↔creator/reviewer), so no new work type. Show the relay's fix activity on the journey: pull `journey_status` version bumps/reopens as RelayEvents (already stored) and show them in the journey history; Jeevan has RELAY_KEY (Dashboard `.env` has it) for the `/api/relay` push if the seat should call it. Open: what exactly should the seat push at route step 7 (upload / re-link)?
-2b. Merge to development (PR, merge commit) so Render gets Design check, then test it on live.
-3. Cross-reference notes: add a short pointer in RELAY `memory/` to this Dashboard and its `/api/relay` door, and in `.ai/LEARNINGS.md` the reverse (done here only for cron).
-4. Promote development → staging → main when ready; ticket attachments; more screen redesigns.
+1. Jeevan: sign in locally (`npm run db:start`, `npm run dev`), open a journey with a relay status (e.g. G06C07ST3J1) and check the RELAY card at 375px + desktop, light + dark.
+2. Tell the team: the first sync moves 24 journeys (14 to the developers' design queue, 9 to reviewers, 1 to correction verification).
+3. PR `start-here` → `development`, **Create a merge commit**. Jeevan had not yet said yes to opening it.
+4. After deploy: Admin → Sheet sync, check the 24 moves match the list above and the 4 flags remain.
+5. Render: confirm `RELAY_KEY` is set and equals the one `RELAY/bin/dash-push` reads (a 401 means it differs). `dash-push` has not been run against the live site.
+6. Ask the relay admin whether the dashboard's token may call `publish_status` (then Ask for changes → `corrections_wip` and Review closed → `ready_for_student` can be written instead of reminded).
+7. Promote development → staging → main; ticket attachments; more screen redesigns.
 
 ## Blockers / open questions
-- Render DB password was exposed in an earlier session: Jeevan should rotate it.
-- Krishna, Vaishali, Supriya work in both relay teams: dashboard keeps one team each.
+- Render DB password was exposed in an earlier session: rotate it.
 - 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
-- Cron interval on Render not verified from here (only that one run ran at 06:50 UTC); check the Cron Job's schedule in Render.
+- Settled 23 Nov (in DECISIONS): "ready for students" = review over, final in UAT; it is not Done, and it closes the review here.
 
 ## Key files
-- `src/lib/relay-map.ts`, `src/server/services/relay-sync.ts`, `src/server/relay/client.ts`, `src/server/jobs.ts`
-- `src/app/api/cron/run/route.ts`, `src/app/api/relay/**` (push door, unused)
-- `README.md` (Render section), `docs/USER-MANUAL.md`
-- RELAY side: `RELAY/CLAUDE.md`, `RELAY/applets/INDEX.md`, `RELAY/journeys/README.md`
+- `src/lib/relay-review.ts`, `src/lib/relay-map.ts`, `src/server/services/relay-sync.ts`, `src/server/services/relay.ts`
+- `src/server/services/work-items.ts` (`notifyStage`, `relayNotReady`), `src/modules/journey-applet/definition.ts`
+- `src/app/api/relay/**`, `src/app/(app)/admin/sync/page.tsx`, `src/app/(app)/w/[workType]/[itemId]/page.tsx`
+- `tests/relay-review.test.ts`; `.ai/DECISIONS.md` (17 Nov, 23 Nov entries); `.ai/LEARNINGS.md` (remote dry-run wrapper)
+- RELAY: `bin/dash-push`, `CLAUDE.md`, `memory/classroots-work-dashboard.md`

@@ -220,10 +220,11 @@ export function parseStatus(reply: unknown): RelayEventRow[] {
 }
 
 /** The journey_status reply's own summary: its current stage (the relay computes it), the time of its last step, its publish status. */
-export function parseStatusMeta(reply: unknown): { stage: string | null; at: Date | null; publishStatus: string | null } {
+export function parseStatusMeta(reply: unknown): { stage: string | null; at: Date | null; publishStatus: string | null; publishAt: Date | null } {
   const root = rec(reply);
   const last = rec(root.last_step);
-  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(rec(root.publish_status).status) };
+  const publish = rec(root.publish_status);
+  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(publish.status), publishAt: when(publish.at) };
 }
 
 /**

@@ -26,6 +26,8 @@ import { reviewDefaults } from '@/lib/teams';
 import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
 import { approvalLabel } from '@/lib/relay-map';
+import { PUBLISH_LABEL, relayMismatch } from '@/lib/relay-review';
+import { journeyPart } from '@/modules/journey-applet/definition';
 
 const EVENT_TEXT: Record<string, string> = {
   CREATED: 'created',
@@ -131,6 +133,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   }));
   // Journey: what the live relay recorded for it (approvals and steps), when any have been synced.
   const relayEvents = mod.teams ? await db.relayEvent.findMany({ where: { itemId: item.id }, orderBy: { at: 'asc' } }) : [];
+  const relayPublish = [...relayEvents].reverse().find(e => e.kind === 'publish' && !e.withdrawn)?.what ?? null;
+  const relayNote = mod.relayBoard && !item.archivedAt ? relayMismatch(item.status, journeyPart(mod, item.status), relayPublish) : null;
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 
@@ -288,6 +292,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
 
           {relayEvents.length > 0 && (
             <Card title="RELAY" description="Creation progress recorded on the relay. Review stays here.">
+              {relayPublish && <p className="mb-3 text-sm text-muted">Relay status: <span className="font-medium text-ink">{PUBLISH_LABEL[relayPublish] ?? relayPublish.replace(/_/g, ' ')}</span></p>}
+              {relayNote && <p className="note-warn mb-3">{relayNote}</p>}
               <ol className="space-y-2 text-sm">
                 {relayEvents.map(e => (
                   <li key={e.id} className={e.withdrawn ? 'text-muted line-through' : ''}>
