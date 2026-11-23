@@ -2,8 +2,9 @@ import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
-import { relayMismatch, reviewMoves } from '@/lib/relay-review';
+import { relayMismatch, reviewMoves, SUBMIT_MOVES } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
+import { nextActiveAfter } from '@/lib/stages';
 import { journeyPart } from '@/modules/journey-applet/definition';
 import { requireModule, statusDef } from '@/modules/registry';
 import { db } from '../db';
@@ -17,8 +18,9 @@ import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } fr
 /**
  * Pull the journey relay's ledger into the dashboard. The relay feeds creation (who holds a journey, its Creation stage, its approvals);
  * the dashboard keeps review and everything after it. Re-running is safe: journeys are matched by key, events by the relay's event id.
- * The relay's publish status "up for review" submits the journey here (and moves Changes asked to Correction verification) when it is later than
- * the last stage change made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
+ * The relay's publish status "up for review" submits the journey here (and moves Changes asked to Correction verification), and "ready for
+ * students" closes its review here (which hands it to a developer for design standardization), when it is later than the last stage change
+ * made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
  * Never touched here: any other stage, SME reviewer, peer reviewer, developer, feedback, and any person other than the creator.
  */
 const JOURNEY = 'journey-applet';
@@ -31,7 +33,7 @@ export type RelayReport = {
   /** Existing journeys with no creator that the relay holds for a known person: assigned. */
   assigned: string[];
   stageChanges: { key: string; from: string | null; to: string }[];
-  /** "Up for review" on the relay moved the journey here: submitted for review, or corrections sent for verification. */
+  /** The relay's publish status moved the journey here: "up for review" submitted it (or sent corrections for verification), "ready for students" closed its review. */
   reviewMoves: { key: string; from: string; to: string }[];
   /** The relay's publish status and the stage here disagree: what to do. */
   mismatches: { key: string; text: string }[];
@@ -207,7 +209,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       await updateFields(ACTOR, item.id, { creationStage: stage }, { at: await inOrder(item.id, at) });
     }
 
-    /** The relay's publish status against the stage here: "up for review" submits; anything still out of step is reported. */
+    /** The relay's publish status against the stage here: "up for review" submits, "ready for students" closes the review; anything still out of step is reported. */
     async function syncReview() {
       if (!item || !meta.publishStatus) return;
       const publish = { status: meta.publishStatus, at: meta.publishAt };
@@ -215,18 +217,32 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       const moves = reviewMoves(item.status, publish, lastHere?.at ?? null);
       let status = item.status;
       if (moves.length) {
+        const from = item.status;
         status = moves[moves.length - 1];
-        report.reviewMoves.push({ key: a.key, from: statusDef(mod, item.status).label, to: statusDef(mod, status).label });
+        const closing = publish.status === 'ready_for_student';
+        const note = closing ? 'Ready for students on the relay' : 'Up for review on the relay';
+        // A closed review is handed on at once (design standardization): a dry run names that stage too.
+        const hand = mod.developerHandoff;
+        if (dryRun && hand && status === hand.after) status = nextActiveAfter(mod.statuses, hand.after) ?? status;
         if (!dryRun) {
-          const when = await inOrder(item.id, publish.at);
-          for (const to of moves) await changeStatus(ACTOR, item.id, to, { at: when, note: 'Up for review on the relay' });
-          // A paused or skipped stage may land it elsewhere.
-          status = (await db.workItem.findUniqueOrThrow({ where: { id: item.id }, select: { status: true } })).status;
+          // A review that ends on the relay was submitted when the creator first called it up for review there.
+          const firstUp = events.find(e => e.kind === 'publish' && e.what === 'up_for_review' && publish.at && e.at <= publish.at)?.at ?? publish.at;
+          for (const to of moves) await changeStatus(ACTOR, item.id, to, { at: await inOrder(item.id, closing && SUBMIT_MOVES.has(to) ? firstUp : publish.at), note });
+          // Closing hands it on to design standardization; a paused or skipped stage may land it elsewhere.
+          const now = await db.workItem.findUniqueOrThrow({ where: { id: item.id }, select: { status: true, developerId: true } });
+          status = now.status;
           const { id, ownerId, title } = item;
-          if (ownerId) await db.$transaction(tx => notify(tx, ownerId, { kind: 'item.submitted', title: `${statusDef(mod, status).label}: ${shortKey(a.key)}`, body: title, href: `/w/${JOURNEY}/${id}` }));
+          const href = `/w/${JOURNEY}/${id}`;
+          const tell = closing ? now.developerId : ownerId;
+          if (tell) {
+            await db.$transaction(tx =>
+              notify(tx, tell, closing ? { kind: 'item.developer', title: `Check design standardization: ${shortKey(a.key)}`, body: title, href } : { kind: 'item.submitted', title: `${statusDef(mod, status).label}: ${shortKey(a.key)}`, body: title, href }),
+            );
+          }
           item = { ...item, status };
           byKey.set(a.key, item);
         }
+        report.reviewMoves.push({ key: a.key, from: statusDef(mod, from).label, to: statusDef(mod, status).label });
       }
       const text = relayMismatch(status, journeyPart(mod, status), publish.status);
       if (text) report.mismatches.push({ key: a.key, text });

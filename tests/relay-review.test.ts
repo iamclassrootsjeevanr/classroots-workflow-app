@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { appletFixesText, relayMismatch, reviewMoves } from '@/lib/relay-review';
 import { parseStatusMeta } from '@/lib/relay-map';
+import { applyStageConfig } from '@/lib/stages';
 import { journeyApplet, journeyPart } from '@/modules/journey-applet/definition';
 
 const at = (s: string) => new Date(s);
@@ -22,13 +23,41 @@ describe('up for review on the relay moves the journey here', () => {
   it('moves nothing for other stages, other statuses or a status with no time', () => {
     for (const s of ['ready_for_review', 'review_in_progress', 'correction_verification', 'closed', 'design_standardization', 'done']) expect(reviewMoves(s, up, null), s).toEqual([]);
     expect(reviewMoves('creating', { status: 'corrections_wip', at: up.at }, null)).toEqual([]);
-    expect(reviewMoves('creating', { status: 'ready_for_student', at: up.at }, null)).toEqual([]);
     expect(reviewMoves('creating', { status: 'up_for_review', at: null }, null)).toEqual([]);
     expect(reviewMoves('creating', null, null)).toEqual([]);
   });
+  it('ready for students on the relay closes the review here, through submit and review', () => {
+    const ready = { status: 'ready_for_student', at: at('2026-11-20T10:00:00Z') };
+    expect(reviewMoves('allocated', ready, null)).toEqual(['creating', 'ready_for_review', 'review_in_progress', 'closed']);
+    expect(reviewMoves('creating', ready, null)).toEqual(['ready_for_review', 'review_in_progress', 'closed']);
+    expect(reviewMoves('ready_for_review', ready, null)).toEqual(['review_in_progress', 'closed']);
+    expect(reviewMoves('review_in_progress', ready, null)).toEqual(['closed']);
+    expect(reviewMoves('changes_asked', ready, null)).toEqual(['correction_verification', 'closed']);
+    expect(reviewMoves('correction_verification', ready, null)).toEqual(['closed']);
+    // Already closed or past it: nothing to do. Design, prod steps and Done have no relay status.
+    for (const s of ['closed', 'design_standardization', 'last_look', 'design_check', 'video_replacement', 'uat_to_prod', 'published_prod', 'user_testing_qa', 'done']) expect(reviewMoves(s, ready, null), s).toEqual([]);
+    // QA sent it back, or the reviewer asked for changes, after the relay said ready: that stands.
+    expect(reviewMoves('changes_asked', ready, at('2026-11-21T09:00:00Z'))).toEqual([]);
+    expect(reviewMoves('review_in_progress', ready, at('2026-11-21T09:00:00Z'))).toEqual([]);
+    expect(reviewMoves('creating', { status: 'ready_for_student', at: null }, null)).toEqual([]);
+  });
+  it('every move is one the Journey flow allows, so dates are stamped', () => {
+    const mod = applyStageConfig(journeyApplet, []);
+    const ready = { status: 'ready_for_student', at: at('2026-11-20T10:00:00Z') };
+    for (const start of ['allocated', 'creating', 'ready_for_review', 'review_in_progress', 'changes_asked', 'correction_verification']) {
+      let from = start;
+      for (const to of reviewMoves(start, ready, null)) {
+        expect(mod.transitions.some(t => t.from === from && t.to === to), `${from}→${to}`).toBe(true);
+        from = to;
+      }
+      expect(from).toBe('closed');
+    }
+    expect(mod.transitions.find(t => t.from === 'creating' && t.to === 'ready_for_review')?.stamp).toContain('submittedAt');
+    expect(mod.transitions.find(t => t.from === 'review_in_progress' && t.to === 'closed')?.stamp).toContain('reviewDate');
+  });
   it('only names stages the Journey flow has', () => {
     const keys = new Set(journeyApplet.statuses.map(s => s.key));
-    for (const s of ['allocated', 'creating', 'changes_asked']) for (const to of reviewMoves(s, up, null)) expect(keys.has(to), to).toBe(true);
+    for (const s of ['allocated', 'creating', 'changes_asked']) for (const p of [up, { ...up, status: 'ready_for_student' }]) for (const to of reviewMoves(s, p, null)) expect(keys.has(to), to).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * The relay's publish status (human-record-16: up_for_review, corrections_wip, ready_for_student) against the dashboard's stage. Pure (no DB).
- * The relay says who has the next move on the published journey; the dashboard runs the review. "Up for review" on the relay submits the
- * journey here, and wherever the two still disagree the journey carries a note that says what to do.
+ * The relay says who has the next move on the published journey. "Up for review" on the relay submits the journey here and "ready for
+ * students" closes its review here; wherever the two still disagree the journey carries a note that says what to do.
  * "Ready for students" on the relay is not Done: it means the review is over and the journey is final in UAT. It lines up with Review
  * closed here; design standardization, the prod steps and Done come after it and live only in the dashboard.
  */
@@ -13,18 +13,35 @@ export type ReviewPart = 'not_started' | 'creating' | 'review' | 'changes' | 'cl
 export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for review', corrections_wip: 'Corrections in progress', ready_for_student: 'Ready for students (review over, final in UAT)' };
 
 /**
- * The stages the dashboard moves through because the relay says "up for review": a journey not yet submitted is submitted, and one in
- * Changes asked goes to Correction verification (the corrections are published). Only when the relay's status is later than the last
- * stage change made here: a later change in the dashboard stands.
+ * The stages the dashboard moves through because of the relay's publish status, in order:
+ * - "up for review": a journey not yet submitted is submitted, and one in Changes asked goes to Correction verification (the corrections
+ *   are published);
+ * - "ready for students": the review is over on the relay, so it is closed here too (submitted and reviewed on the way, so the dates are
+ *   stamped). Closing hands the journey to a developer for design standardization, as any closed review does.
+ * Only when the relay's status is later than the last stage change made here: a later change in the dashboard stands (a reviewer who asks
+ * for changes, or QA sending a journey back, is not undone by an older relay status).
  */
 export function reviewMoves(status: string, publish: RelayPublish | null, lastHereAt: Date | null): string[] {
-  if (!publish || publish.status !== 'up_for_review' || !publish.at) return [];
+  if (!publish || !publish.at) return [];
   if (lastHereAt && publish.at.getTime() <= lastHereAt.getTime()) return [];
-  if (status === 'allocated') return ['creating', 'ready_for_review'];
-  if (status === 'creating') return ['ready_for_review'];
-  if (status === 'changes_asked') return ['correction_verification'];
+  if (publish.status === 'up_for_review') {
+    if (status === 'allocated') return ['creating', 'ready_for_review'];
+    if (status === 'creating') return ['ready_for_review'];
+    if (status === 'changes_asked') return ['correction_verification'];
+    return [];
+  }
+  if (publish.status === 'ready_for_student') {
+    const toClosed = ['creating', 'ready_for_review', 'review_in_progress', 'closed'];
+    const at = ['allocated', ...toClosed].indexOf(status);
+    if (at >= 0 && status !== 'closed') return toClosed.slice(at);
+    if (status === 'changes_asked') return ['correction_verification', 'closed'];
+    if (status === 'correction_verification') return ['closed'];
+  }
   return [];
 }
+
+/** Moves that happened when the creator first called the journey up for review (not when the review ended): they take that time. */
+export const SUBMIT_MOVES = new Set(['creating', 'ready_for_review']);
 
 /** What to do where the relay and the dashboard disagree, or null when they agree. `status` is the stage key, `part` its place in the line. */
 export function relayMismatch(status: string, part: ReviewPart, publish: string | null): string | null {
