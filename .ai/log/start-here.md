@@ -25,3 +25,4 @@
 - 2026-11-17T07:00Z | claude-code | Render relay cron confirmed live; README/manual cron + URL docs; RELAY/Dashboard sync map and next steps
 - 2026-11-17T07:33Z | claude-code | Journey: Design check stage (reviewer/steward) after last look; docs, tests, decision
 - 2026-11-23T07:41Z | claude-code | Relay publish status submits journeys here; mismatch notes; applet-fixes endpoint; RELAY bin/dash-push
+- 2026-11-23T10:30Z | claude-code | Handoff: relay ready-for-students closes review (on start-here, PR not open); development merged in
