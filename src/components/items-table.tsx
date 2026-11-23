@@ -49,8 +49,10 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
   const anyActions = Boolean(fieldEdits?.size || deletable?.size);
   const hide = new Set(table?.hide ?? []);
   const allExtra = table?.extra ?? [];
-  const early = allExtra.filter(c => c.afterTitle);
-  const extra = allExtra.filter(c => !c.afterTitle);
+  const order = table?.order ?? [];
+  const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
+  const early = allExtra.filter(c => order.includes(c.field)).sort((a, b) => rank(a.field) - rank(b.field));
+  const extra = allExtra.filter(c => !order.includes(c.field));
   const showOwner = !hide.has('owner');
   const showExpected = !hide.has('expected');
   const showDelay = !hide.has('delay');
@@ -111,6 +113,15 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
       <span className={className}>{it.title}</span>
     );
 
+  // Right after Title: people, Status and the extra columns the work type orders (`table.order`), then the rest as usual.
+  const midColumns = [
+    ...(showOwner ? [{ id: 'owner', label: ownerLabel, cell: (it: ItemRow) => <td key="owner" className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td> }] : []),
+    ...(showAssignee ? [{ id: 'assignee', label: assigneeLabel, cell: (it: ItemRow) => <td key="assignee" className="whitespace-nowrap">{assignee(it, true)}</td> }] : []),
+    { id: 'status', label: 'Status', cell: (it: ItemRow) => <td key="status">{status(it, true)}</td> },
+    ...early.map(c => ({ id: c.field, label: c.label, cell: (it: ItemRow) => extraTd(it, c.field) })),
+  ]
+    .map((c, i) => ({ ...c, i }))
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i);
   let lastGroup: string | null = null;
   let lastCardGroup: string | null = null;
 
@@ -200,12 +211,9 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
               {showWorkType && <th>Work type</th>}
               <th className="pin">Key</th>
               <th>Title</th>
-              {early.map(c => (
-                <th key={c.field}>{c.label}</th>
+              {midColumns.map(c => (
+                <th key={c.id}>{c.label}</th>
               ))}
-              {showOwner && <th>{ownerLabel}</th>}
-              {showAssignee && <th>{assigneeLabel}</th>}
-              <th>Status</th>
               {extra.map(c => (
                 <th key={c.field}>{c.label}</th>
               ))}
@@ -252,10 +260,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
                       {it.reviewRounds > 1 && <span className="ml-1.5 text-2xs text-muted">· {it.reviewRounds} review rounds</span>}
                     </div>
                   </td>
-                  {early.map(c => extraTd(it, c.field))}
-                  {showOwner && <td className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td>}
-                  {showAssignee && <td className="whitespace-nowrap">{assignee(it, true)}</td>}
-                  <td>{status(it, true)}</td>
+                  {midColumns.map(c => c.cell(it))}
                   {extra.map(c => extraTd(it, c.field))}
                   {showUpdated && <td className="whitespace-nowrap text-xs text-muted tabular-nums">{formatDateTime(it.updatedAt, tz)}</td>}
                   {showExpected && <td className="whitespace-nowrap text-muted">{formatDate(it.dueAt, tz) || '—'}</td>}
