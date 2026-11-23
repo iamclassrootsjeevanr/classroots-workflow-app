@@ -22,9 +22,20 @@ describe('up for review on the relay moves the journey here', () => {
   });
   it('moves nothing for other stages, other statuses or a status with no time', () => {
     for (const s of ['ready_for_review', 'review_in_progress', 'correction_verification', 'closed', 'design_standardization', 'done']) expect(reviewMoves(s, up, null), s).toEqual([]);
-    expect(reviewMoves('creating', { status: 'corrections_wip', at: up.at }, null)).toEqual([]);
+    expect(reviewMoves('creating', { status: 'something_new', at: up.at }, null)).toEqual([]);
     expect(reviewMoves('creating', { status: 'up_for_review', at: null }, null)).toEqual([]);
     expect(reviewMoves('creating', null, null)).toEqual([]);
+  });
+  it('corrections in progress on the relay asks for changes here, through submit and review', () => {
+    const fix = { status: 'corrections_wip', at: at('2026-11-20T10:00:00Z') };
+    expect(reviewMoves('allocated', fix, null)).toEqual(['creating', 'ready_for_review', 'review_in_progress', 'changes_asked']);
+    expect(reviewMoves('creating', fix, null)).toEqual(['ready_for_review', 'review_in_progress', 'changes_asked']);
+    expect(reviewMoves('review_in_progress', fix, null)).toEqual(['changes_asked']);
+    expect(reviewMoves('correction_verification', fix, null)).toEqual(['changes_asked']);
+    expect(reviewMoves('changes_asked', fix, null)).toEqual([]);
+    expect(reviewMoves('closed', fix, null)).toEqual([]);
+    // A stage change made here after the relay's status stands.
+    expect(reviewMoves('creating', fix, at('2026-11-21T09:00:00Z'))).toEqual([]);
   });
   it('ready for students on the relay closes the review here, through submit and review', () => {
     const ready = { status: 'ready_for_student', at: at('2026-11-20T10:00:00Z') };

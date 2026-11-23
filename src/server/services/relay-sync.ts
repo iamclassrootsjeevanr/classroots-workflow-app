@@ -209,7 +209,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       await updateFields(ACTOR, item.id, { creationStage: stage }, { at: await inOrder(item.id, at) });
     }
 
-    /** The relay's publish status against the stage here: "up for review" submits, "ready for students" closes the review; anything still out of step is reported. */
+    /** The relay's publish status against the stage here: "up for review" submits, "corrections in progress" asks for changes, "ready for students" closes the review; anything still out of step is reported. */
     async function syncReview() {
       if (!item || !meta.publishStatus) return;
       const publish = { status: meta.publishStatus, at: meta.publishAt };
@@ -220,23 +220,33 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         const from = item.status;
         status = moves[moves.length - 1];
         const closing = publish.status === 'ready_for_student';
-        const note = closing ? 'Ready for students on the relay' : 'Up for review on the relay';
+        const corrections = publish.status === 'corrections_wip';
+        const note = closing ? 'Ready for students on the relay' : corrections ? 'Corrections asked on the relay' : 'Up for review on the relay';
         // A closed review is handed on at once (design standardization): a dry run names that stage too.
         const hand = mod.developerHandoff;
         if (dryRun && hand && status === hand.after) status = nextActiveAfter(mod.statuses, hand.after) ?? status;
         if (!dryRun) {
-          // A review that ends on the relay was submitted when the creator first called it up for review there.
+          // A review that ends (or asks for changes) on the relay was submitted when the creator first called it up for review there.
           const firstUp = events.find(e => e.kind === 'publish' && e.what === 'up_for_review' && publish.at && e.at <= publish.at)?.at ?? publish.at;
-          for (const to of moves) await changeStatus(ACTOR, item.id, to, { at: await inOrder(item.id, closing && SUBMIT_MOVES.has(to) ? firstUp : publish.at), note });
+          for (const to of moves) await changeStatus(ACTOR, item.id, to, { at: await inOrder(item.id, (closing || corrections) && SUBMIT_MOVES.has(to) ? firstUp : publish.at), note });
           // Closing hands it on to design standardization; a paused or skipped stage may land it elsewhere.
           const now = await db.workItem.findUniqueOrThrow({ where: { id: item.id }, select: { status: true, developerId: true } });
           status = now.status;
           const { id, ownerId, title } = item;
           const href = `/w/${JOURNEY}/${id}`;
-          const tell = closing ? now.developerId : ownerId;
+          // Closed → the developer; corrections → the creator; submitted → the reviewer.
+          const tell = closing ? now.developerId : corrections ? item.assigneeId : ownerId;
           if (tell) {
             await db.$transaction(tx =>
-              notify(tx, tell, closing ? { kind: 'item.developer', title: `Check design standardization: ${shortKey(a.key)}`, body: title, href } : { kind: 'item.submitted', title: `${statusDef(mod, status).label}: ${shortKey(a.key)}`, body: title, href }),
+              notify(
+                tx,
+                tell,
+                closing
+                  ? { kind: 'item.developer', title: `Check design standardization: ${shortKey(a.key)}`, body: title, href }
+                  : corrections
+                    ? { kind: 'item.feedback', title: `Changes asked on the relay: ${shortKey(a.key)}`, body: title, href }
+                    : { kind: 'item.submitted', title: `${statusDef(mod, status).label}: ${shortKey(a.key)}`, body: title, href },
+              ),
             );
           }
           item = { ...item, status };
