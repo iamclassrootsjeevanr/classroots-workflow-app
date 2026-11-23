@@ -24,3 +24,4 @@
 - 2026-11-16T10:59Z | claude-code | Handoff: PR #20/#21 merged (relay stewards, steward creators, Change steward, relay reassign/teams, developer own data); next Render relay sync
 - 2026-11-17T07:00Z | claude-code | Render relay cron confirmed live; README/manual cron + URL docs; RELAY/Dashboard sync map and next steps
 - 2026-11-17T07:33Z | claude-code | Journey: Design check stage (reviewer/steward) after last look; docs, tests, decision
+- 2026-11-23T07:41Z | claude-code | Relay publish status submits journeys here; mismatch notes; applet-fixes endpoint; RELAY bin/dash-push
