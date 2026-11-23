@@ -239,7 +239,8 @@ export type WorkTypeDefinition = {
   /** Columns of the Work done card on the Overview. Omit for the default (work items done / still open). */
   doneMetrics?: DoneMetric[];
   /** Item list columns: hide default ones, add data fields. */
-  table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
+  /** List columns. An extra column with `afterTitle` sits right after Title; the others after Status. */
+  table?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string; afterTitle?: boolean }[] };
   /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
   runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */

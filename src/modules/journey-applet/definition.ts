@@ -185,10 +185,10 @@ export const journeyApplet: WorkTypeDefinition = {
   ],
   table: {
     extra: [
+      { field: 'creationStage', label: 'Creation stage', afterTitle: true },
       { field: 'peerReviewer', label: 'Peer reviewer' },
       { field: 'teamOwner', label: 'Steward' },
       { field: 'developer', label: 'Developer' },
-      { field: 'creationStage', label: 'Creation stage' },
       { field: 'pickedUpAt', label: 'Picked up' },
       { field: 'submittedAt', label: 'Submitted for review' },
       { field: 'daysTaken', label: 'Days taken' },
