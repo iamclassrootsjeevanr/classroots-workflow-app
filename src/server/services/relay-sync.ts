@@ -3,7 +3,9 @@ import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
-import { relayMismatch, reviewMoves, SUBMIT_MOVES } from '@/lib/relay-review';
+import { chapterFeedCursor, chapterFeedRows, keptChapterCursor } from '@/lib/relay-chapters';
+import { allocationEventId } from '@/lib/relay-holder';
+import { relayMismatch, reopenFollow, reopenLine, reopenStanding, reviewMoves, SUBMIT_MOVES, type RelayRow } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
 import { nextActiveAfter } from '@/lib/stages';
 import { journeyPart } from '@/modules/journey-applet/definition';
@@ -13,7 +15,7 @@ import { env } from '../env';
 import { workCalendar } from '../settings';
 import { refreshStages } from '../stages';
 import type { RelayClient } from '../relay/client';
-import { notify } from './notifications';
+import { notify, stewardIds } from './notifications';
 import { relaySettled } from './relay-push';
 import { addTeamMember } from './teams';
 import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } from './work-items';
@@ -24,7 +26,9 @@ import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } fr
  * The relay's publish status "up for review" submits the journey here (and moves Changes asked to Correction verification), and "ready for
  * students" closes its review here (which hands it to a developer for design standardization), when it is later than the last stage change
  * made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
- * Never touched here: any other stage, SME reviewer, peer reviewer, developer, feedback, and any person other than the creator.
+ * A reopen on the relay (the steward went back) lowers the Creation stage here to the stage the relay shows now; the review stage is not
+ * moved back: a journey reopened while in review or later carries a note, and the chapter's stewards get one Inbox message.
+ * Never touched here: any other stage, SME reviewer, developer, feedback, and any person other than the creator.
  *
  * How much is read: the relay's change feed (`sync_feed`, contract in src/lib/relay-contract.ts) says which journeys something was recorded
  * for since the last run, and only those have their status read. Holders, stewards and teams come from one `allocations` call every run.
@@ -38,7 +42,7 @@ const FEED_PAGES = 20;
 const FEED_LIMIT = 500;
 
 /** Where the pull stands: the feed cursor, and when every journey was last read. */
-type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null };
+type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null; /** Where the read of chapter and subtopic rows stands (its own cursor: it starts from the feed's first row). */ chapterFeed?: FeedCursor | null };
 
 export type RelayReport = {
   dryRun: boolean;
@@ -65,6 +69,8 @@ export type RelayReport = {
   /** People with no team put in the team of their latest relay journey (teams are defaults; nobody is moved). */
   teamChanges: { person: string; team: string; from: string | null }[];
   teamIssues: string[];
+  /** Reopened on the relay: the Creation stage here went back to the stage the relay shows now (`to` null = no stage: the chapter or subtopic was reopened). */
+  reopened?: { key: string; from: string; to: string | null; reopenStage: string }[];
   /** The dashboard is ahead of the relay (e.g. Published): not changed. */
   dashboardAhead: { key: string; dashboard: string; relay: string }[];
   /** Dashboard journeys the relay has no allocation for (old tracker imports). */
@@ -75,12 +81,18 @@ export type RelayReport = {
   stewardIssues: string[];
   skipped: string[];
   errors: { key: string; error: string }[];
+  /** Feed rows recorded at chapter and subtopic keys (the chapter read, the scopes) kept this run, for the Chapters page. */
+  chapterEvents?: number;
   /** How this run read the relay: `feed` = only journeys the change feed named, `full` = every journey, `off` = the relay has no feed (full). */
   feed?: { mode: 'feed' | 'full' | 'off'; events: number; read: number };
 };
 
-const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], addedPeople: [], peopleIssues: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
+const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], addedPeople: [], peopleIssues: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], reopened: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
+const creationStageOf = (item: { data: unknown }): string | null => {
+  const v = ((item.data ?? {}) as Record<string, unknown>).creationStage;
+  return typeof v === 'string' && v ? v : null;
+};
 
 export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string; full?: boolean } = {}): Promise<RelayReport> {
   const dryRun = Boolean(opts.dryRun);
@@ -132,9 +144,34 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     report.feed = { mode: 'off', events: 0, read: 0 };
   }
 
+  // Stages 1 and 2 are recorded under chapter and subtopic keys, which have no journey row here: those feed rows are kept as sent.
+  let nextChapterFeed: FeedCursor | null = null;
+  if (!only && client.syncFeed && report.feed.mode !== 'off') {
+    try {
+      let cursor = chapterFeedCursor(saved?.chapterFeed);
+      let kept = 0;
+      for (let page = 0; page < FEED_PAGES; page++) {
+        const got = parseFeed(await client.syncFeed({ after: cursor, limit: FEED_LIMIT }));
+        if (!got) break;
+        const rows = chapterFeedRows(got.events);
+        if (rows.length && !dryRun) kept += (await db.chapterRelayEvent.createMany({ data: rows.map(r => ({ ...r, data: r.data as Prisma.InputJsonValue })), skipDuplicates: true })).count;
+        else kept += rows.length;
+        cursor = { ...cursor, ...got.cursor };
+        if (!got.more) {
+          nextChapterFeed = keptChapterCursor(cursor);
+          break;
+        }
+      }
+      report.chapterEvents = kept;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!toolUnavailable(message)) report.errors.push({ key: 'chapter feed', error: message });
+    }
+  }
+
   const allocReply = await client.allocations();
   const [items, users, chapters, cal] = await Promise.all([
-    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, data: true, assignee: { select: { name: true } } } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, groupKey: true, data: true, assignee: { select: { name: true } } } }),
     db.user.findMany({ where: { active: true }, select: { id: true, email: true, name: true } }),
     db.chapter.findMany({ select: { id: true, code: true } }),
     workCalendar(),
@@ -189,6 +226,15 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   // A journey the feed did not name is not read: its relay status is the one already kept here.
   const lastPublish = new Map<string, { what: string | null; at: Date }>();
   if (touched) for (const r of await db.relayEvent.findMany({ where: { kind: 'publish', withdrawn: false, item: { workTypeId: wt.id } }, orderBy: { at: 'asc' }, select: { itemId: true, what: true, at: true } })) lastPublish.set(r.itemId, r);
+  // Who holds each journey on the relay is kept (kind `allocation`), so a creator changed here can be told apart from the relay's holder.
+  const keptAllocations = new Set((await db.relayEvent.findMany({ where: { kind: 'allocation', item: { workTypeId: wt.id } }, select: { itemId: true, eventId: true } })).map(r => `${r.itemId}|${r.eventId}`));
+  // Likewise a reopen that still stands: the rows kept here say so (the reopens, and the approvals of the journeys that have one).
+  const kept = new Map<string, RelayRow[]>();
+  if (touched) {
+    const reopens = await db.relayEvent.findMany({ where: { kind: 'reopen', item: { workTypeId: wt.id } }, select: { itemId: true, kind: true, stage: true, at: true, withdrawn: true } });
+    const approvals = reopens.length ? await db.relayEvent.findMany({ where: { kind: 'approval', itemId: { in: [...new Set(reopens.map(r => r.itemId))] } }, select: { itemId: true, kind: true, stage: true, at: true, withdrawn: true } }) : [];
+    for (const r of [...reopens, ...approvals]) kept.set(r.itemId, [...(kept.get(r.itemId) ?? []), r]);
+  }
 
   for (const a of allocations) {
     try {
@@ -239,7 +285,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
           if (assigneeId) await notify(tx, assigneeId, { kind: 'item.assigned', title: `Journey allocated to you: ${shortKey(a.key)}`, body: row.title, href: `/w/${JOURNEY}/${row.id}` });
           return row;
         });
-        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, data: created.data, assignee: null };
+        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, groupKey: parsed.chapter, data: created.data, assignee: null };
         byKey.set(a.key, item);
       }
     } else if (assigneeId && !item.assigneeId) {
@@ -267,10 +313,20 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       }
     }
 
+    if (item && !dryRun) {
+      const eventId = allocationEventId(a.key, a.email, a.at);
+      if (!keptAllocations.has(`${item.id}|${eventId}`)) {
+        await db.relayEvent.createMany({ data: [{ itemId: item.id, eventId, kind: 'allocation', what: a.email ? 'Allocated' : 'Released', approver: a.email, at: a.at ?? new Date() }], skipDuplicates: true });
+        keptAllocations.add(`${item.id}|${eventId}`);
+      }
+    }
+
     if (touched && existed && item && !isTouched(a.key, touched)) {
       const p = lastPublish.get(item.id);
       const text = p ? relayMismatch(item.status, journeyPart(mod, item.status), p.what) : null;
-      if (text && !(await relaySettled(item.id, p!.at))) report.mismatches.push({ key: a.key, text });
+      const reopened = reopenLine(journeyPart(mod, item.status), reopenStanding(kept.get(item.id) ?? [], creationStageOf(item)));
+      const said = [reopened, text && !(await relaySettled(item.id, p!.at)) ? text : null].filter(Boolean).join(' ');
+      if (said) report.mismatches.push({ key: a.key, text: said });
       return;
     }
     if (report.feed) report.feed.read++;
@@ -281,9 +337,11 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     const stage = meta.stage ?? fallback.stage;
     const at = meta.stage ? (meta.at ?? fallback.at) : fallback.at;
     const before = item ? ((item.data ?? {}) as Record<string, unknown>).creationStage : null;
+    let newReopen = false;
     if (item && !dryRun && events.length) {
       const known = new Set((await db.relayEvent.findMany({ where: { itemId: item.id }, select: { eventId: true } })).map(e => e.eventId));
       const fresh = events.filter(e => !known.has(e.eventId));
+      newReopen = fresh.some(e => e.kind === 'reopen');
       if (fresh.length) {
         await db.relayEvent.createMany({ data: fresh.map(e => ({ itemId: item!.id, ...e })) as Prisma.RelayEventCreateManyInput[], skipDuplicates: true });
         report.eventsAdded += fresh.length;
@@ -294,10 +352,27 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     } else if (item == null) {
       report.eventsAdded += events.length;
     }
+    let stageNow: string | null = typeof before === 'string' && before ? before : null;
     await syncStage();
-    await syncReview();
+    const publishText = await syncReview();
+    await syncReopen(publishText);
 
     async function syncStage() {
+      // Reopened on the relay and ahead here: the Creation stage follows the relay back, unless it was changed here after the reopen.
+      if (stageNow && events.some(e => e.kind === 'reopen') && (meta.reopenedAbove || (stage && stageIndex(stageNow) > stageIndex(stage)))) {
+        const lastHere = item ? await db.workItemEvent.findFirst({ where: { itemId: item.id, type: 'FIELD_CHANGED', field: 'creationStage', source: 'APP' }, orderBy: { at: 'desc' }, select: { at: true } }) : null;
+        const follow = reopenFollow({ here: stageNow, relayStage: stage, reopenedAbove: meta.reopenedAbove, rows: events, lastHereAt: lastHere?.at ?? null });
+        if (follow) {
+          report.reopened!.push({ key: a.key, from: stageNow, to: follow.to, reopenStage: follow.note.replace(/^Reopened on the relay at /, '') });
+          if (!dryRun && item) {
+            await updateFields(ACTOR, item.id, { creationStage: follow.to }, { at: await inOrder(item.id, follow.at), note: follow.note });
+            item = { ...item, data: { ...((item.data ?? {}) as Record<string, unknown>), creationStage: follow.to } as Prisma.JsonValue };
+            byKey.set(a.key, item);
+          }
+          stageNow = follow.to;
+          return;
+        }
+      }
       if (!stage || before === stage) return;
       if (stageIndex(before) > stageIndex(stage)) {
         // Published is this side's own step after Ship; the relay's last stage is Ship. That is the two in step, not one ahead.
@@ -306,13 +381,27 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         return;
       }
       report.stageChanges.push({ key: a.key, from: typeof before === 'string' ? before : null, to: stage });
+      stageNow = stage;
       if (dryRun || !item) return;
       await updateFields(ACTOR, item.id, { creationStage: stage }, { at: await inOrder(item.id, at) });
     }
 
-    /** The relay's publish status against the stage here: "up for review" submits, "corrections in progress" asks for changes, "ready from content" closes the review; anything still out of step is reported. */
-    async function syncReview() {
-      if (!item || !meta.publishStatus) return;
+    /** A reopen that still stands on a journey in review or later: the review stage is not moved back. The journey carries a note, and the chapter's stewards are told once, when the reopen is first seen. */
+    async function syncReopen(publishText: string | null) {
+      if (!item) return;
+      const line = reopenLine(journeyPart(mod, item.status), reopenStanding(events, stageNow));
+      const said = [line, publishText].filter(Boolean).join(' ');
+      if (said) report.mismatches.push({ key: a.key, text: said });
+      if (!line || !newReopen) return;
+      const { id, title, groupKey } = item;
+      await db.$transaction(async tx => {
+        for (const userId of await stewardIds(tx, wt!.id, groupKey)) await notify(tx, userId, { kind: 'item.relay-reopened', title: `Reopened on the relay: ${shortKey(a.key)}`, body: `${title} · ${line}`, href: `/w/${JOURNEY}/${id}` });
+      });
+    }
+
+    /** The relay's publish status against the stage here: "up for review" submits, "corrections in progress" asks for changes, "ready from content" closes the review; what is still out of step comes back as a note. */
+    async function syncReview(): Promise<string | null> {
+      if (!item || !meta.publishStatus) return null;
       const publish = { status: meta.publishStatus, at: meta.publishAt };
       const lastHere = await db.workItemEvent.findFirst({ where: { itemId: item.id, type: 'STATUS_CHANGED', source: 'APP' }, orderBy: { at: 'desc' }, select: { at: true } });
       const moves = reviewMoves(item.status, publish, lastHere?.at ?? null);
@@ -357,7 +446,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       }
       const text = relayMismatch(status, journeyPart(mod, status), publish.status);
       // Not a flag when the stage here changed after the relay's status and the relay has been told (its dashboard log holds it).
-      if (text && !(await relaySettled(item.id, publish.at))) report.mismatches.push({ key: a.key, text });
+      return text && !(await relaySettled(item.id, publish.at)) ? text : null;
     }
   }
 
@@ -371,7 +460,10 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   if (!dryRun) {
     const ok = report.errors.length === 0;
     // The cursor moves only after a clean run of every key; one journey's run leaves it where it was.
-    const cursor: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
+    const base: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
+    // The chapter rows are kept by the feed's own id, so their cursor moves on its own: reading a row again adds nothing.
+    const chapterFeed = nextChapterFeed ?? saved?.chapterFeed ?? null;
+    const cursor: SyncCursor | null = base || chapterFeed ? { ...(base ?? {}), ...(chapterFeed ? { chapterFeed } : {}) } : null;
     const row = { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue, ...(cursor ? { cursor: cursor as unknown as Prisma.InputJsonValue } : {}) };
     await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, ...row }, update: row });
   }

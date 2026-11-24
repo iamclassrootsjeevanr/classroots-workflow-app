@@ -141,10 +141,11 @@ describe('who presses which button', () => {
     expect(canTransition(mod, 'correction_verification', 'changes_asked', reviewer)).toBe(true);
   });
 
-  it('after-steps belong to the coordinator, except the last look', () => {
+  it('after-steps belong to the coordinator; the last look is the creator\'s, the reviewer\'s or the coordinator\'s', () => {
     expect(canTransition(mod, 'closed', 'design_standardization', coordinator)).toBe(true);
     expect(canTransition(mod, 'last_look', 'design_check', creator)).toBe(true);
-    expect(canTransition(mod, 'last_look', 'design_check', coordinator)).toBe(false);
+    expect(canTransition(mod, 'last_look', 'design_check', coordinator)).toBe(true);
+    expect(canTransition(mod, 'last_look', 'design_check', reviewer)).toBe(true);
     expect(canTransition(mod, 'design_check', 'video_replacement', coordinator)).toBe(true);
     expect(canTransition(mod, 'design_check', 'video_replacement', creator)).toBe(false);
     expect(canTransition(mod, 'design_check', 'video_replacement', reviewer)).toBe(true);

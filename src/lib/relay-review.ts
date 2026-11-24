@@ -5,6 +5,8 @@
  * "Ready from content" on the relay is not Done: it means the review is over and the journey is final in UAT. It lines up with Review
  * closed here; design standardization, the prod steps and Done come after it and live only in the dashboard.
  */
+import { CREATION_STAGES } from './journey';
+
 export type RelayPublish = { status: string; at: Date | null };
 
 /** Where a journey sits here (journeyPart in the Journey definition). */
@@ -52,8 +54,60 @@ export function reviewMoves(status: string, publish: RelayPublish | null, lastHe
 /** Moves that happened when the creator first called the journey up for review (not when the review ended): they take that time. */
 export const SUBMIT_MOVES = new Set(['creating', 'ready_for_review']);
 
-/** What to do where the relay and the dashboard disagree, or null when they agree. `status` is the stage key, `part` its place in the line. */
-export function relayMismatch(status: string, part: ReviewPart, publish: string | null): string | null {
+/** A row the relay recorded for a journey, as far as a reopen needs it: its kind (approval, reopen, …), relay stage and time. */
+export type RelayRow = { kind: string; stage: string | null; at: Date; withdrawn?: boolean };
+
+const RELAY_STAGE_LABEL: Record<string, string> = { '1': '1 · Chapter', '2': '2 · Scope', '3a': '3a · Spine', '3b': '3b · Script', '4': '4 · Build', '5': '5 · Ship' };
+/** A relay stage as it reads here: "3b" → "3b · Script". */
+export const relayStageLabel = (stage: string | null) => (stage ? RELAY_STAGE_LABEL[stage.trim().toLowerCase()] : undefined) ?? `stage ${stage ?? '?'}`;
+
+const creationIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
+const SHIP = creationIndex('5 · Ship');
+const lastReopen = (rows: readonly RelayRow[]) => rows.reduce<RelayRow | null>((last, r) => (r.kind === 'reopen' && (!last || r.at.getTime() >= last.at.getTime()) ? r : last), null);
+
+/**
+ * A reopen on the relay to follow (human-record-15: the steward went back; every approval of that stage and after stops counting).
+ * The Creation stage here goes back to the stage the relay shows now: `relayStage` for a reopen at the journey's own key, and no stage at
+ * all when the chapter or subtopic above it was reopened (`reopenedAbove`: nothing of the journey counts until it is approved again).
+ * Only when the stage here is ahead of that, and only when the reopen is later than the last change of the Creation stage made here: a
+ * later change in the dashboard stands. Null when there is nothing to follow.
+ */
+export function reopenFollow(a: { here: string | null; relayStage: string | null; reopenedAbove: boolean; rows: readonly RelayRow[]; lastHereAt: Date | null }): { to: string | null; at: Date; note: string } | null {
+  const reopen = lastReopen(a.rows);
+  if (!reopen || !a.here) return null;
+  if (a.lastHereAt && reopen.at.getTime() <= a.lastHereAt.getTime()) return null;
+  const to = a.reopenedAbove ? null : a.relayStage;
+  if (to === null ? !a.reopenedAbove : creationIndex(a.here) <= creationIndex(to)) return null;
+  return { to, at: reopen.at, note: `Reopened on the relay at ${relayStageLabel(reopen.stage)}` };
+}
+
+/**
+ * The reopen that still stands for a journey, or null: its last reopen, until the journey is back at Ship on the relay with something
+ * approved after the reopen. `creationStage` is the Creation stage here (it follows the relay); `rows` what the relay recorded, any order.
+ */
+export function reopenStanding(rows: readonly RelayRow[], creationStage: string | null): RelayRow | null {
+  const reopen = lastReopen(rows);
+  if (!reopen) return null;
+  if (creationIndex(creationStage) < SHIP) return reopen;
+  return rows.some(r => r.kind === 'approval' && !r.withdrawn && r.at.getTime() > reopen.at.getTime()) ? null : reopen;
+}
+
+/** The note for a journey reopened on the relay while it is in review or later here: the review stage is not moved back, a person decides. */
+export function reopenLine(part: ReviewPart, reopen: RelayRow | null): string | null {
+  if (!reopen || part === 'not_started' || part === 'creating') return null;
+  return `Reopened on the relay at ${relayStageLabel(reopen.stage)}. The stage here did not move.`;
+}
+
+/**
+ * What to do where the relay and the dashboard disagree, or null when they agree. `status` is the stage key, `part` its place in the line,
+ * `reopen` a relay reopen that still stands (`reopenStanding`).
+ */
+export function relayMismatch(status: string, part: ReviewPart, publish: string | null, reopen: RelayRow | null = null): string | null {
+  const lines = [reopenLine(part, reopen), publishMismatch(status, part, publish)].filter(Boolean);
+  return lines.length ? lines.join(' ') : null;
+}
+
+function publishMismatch(status: string, part: ReviewPart, publish: string | null): string | null {
   if (!publish) return null;
   const early = part === 'not_started' || part === 'creating';
   if (publish === 'up_for_review') {

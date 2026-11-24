@@ -5,23 +5,24 @@ import { coordinatedPeople, nextDefault, reviewDefaults, teamOf, teamPeople, typ
 import { journeyApplet } from '@/modules/journey-applet/definition';
 import { rolesForModule, templateColumns } from '@/modules/roles';
 
-/** Team structure from the SME (6 Nov 2026): the coordinator reviews by default, buddies peer-review each other. */
+/** Team structure from the SME (6 Nov 2026): the coordinator reviews by default. The peer reviewer was removed on 24 Nov 2026. */
 const teams: TeamLite[] = [
-  { id: 'a', name: 'Team A', coordinatorId: 'arjun', reviewerId: null, members: [{ userId: 'kapil', peerReviewerId: 'animesh' }, { userId: 'animesh', peerReviewerId: 'kapil' }, { userId: 'preethi', peerReviewerId: null }] },
-  { id: 'd', name: 'Team D', coordinatorId: 'dev', reviewerId: 'aswin', members: [{ userId: 'vaishali', peerReviewerId: 'divyanshu' }] },
+  { id: 'a', name: 'Team A', coordinatorId: 'arjun', reviewerId: null, members: [{ userId: 'kapil' }, { userId: 'animesh' }, { userId: 'preethi' }] },
+  { id: 'd', name: 'Team D', coordinatorId: 'dev', reviewerId: 'aswin', members: [{ userId: 'vaishali' }] },
 ];
 
 describe('journey-level ownership', () => {
-  it('a journey belongs to the coordinator of its creator’s team, who reviews it by default; the buddy peer-reviews', () => {
-    expect(reviewDefaults(teams, 'kapil')).toMatchObject({ accountableId: 'arjun', reviewerId: 'arjun', peerReviewerId: 'animesh' });
-    expect(reviewDefaults(teams, 'preethi')).toMatchObject({ accountableId: 'arjun', reviewerId: 'arjun', peerReviewerId: null });
+  it('a journey belongs to the coordinator of its creator’s team, who reviews it by default; there is no peer reviewer', () => {
+    expect(reviewDefaults(teams, 'kapil')).toMatchObject({ accountableId: 'arjun', reviewerId: 'arjun' });
+    expect(reviewDefaults(teams, 'preethi')).toMatchObject({ accountableId: 'arjun', reviewerId: 'arjun' });
+    expect(reviewDefaults(teams, 'kapil')).not.toHaveProperty('peerReviewerId');
   });
   it('the team’s default reviewer can be someone else while the coordinator is away; ownership stays', () => {
-    expect(reviewDefaults(teams, 'vaishali')).toMatchObject({ accountableId: 'dev', reviewerId: 'aswin', peerReviewerId: 'divyanshu' });
+    expect(reviewDefaults(teams, 'vaishali')).toMatchObject({ accountableId: 'dev', reviewerId: 'aswin' });
   });
   it('a coordinator owns their own journeys but does not review them; people outside teams have no defaults', () => {
     expect(reviewDefaults(teams, 'arjun')).toMatchObject({ accountableId: 'arjun', reviewerId: null });
-    expect(reviewDefaults(teams, 'someone')).toEqual({ team: null, accountableId: null, reviewerId: null, peerReviewerId: null });
+    expect(reviewDefaults(teams, 'someone')).toEqual({ team: null, accountableId: null, reviewerId: null });
     expect(reviewDefaults(teams, null).team).toBeNull();
   });
   it('team people = members and coordinator; a coordinator’s people = their members', () => {
@@ -76,7 +77,7 @@ describe('journeys list: team filters', () => {
     expect(itemsWhere(journeyApplet, { scope: 'team' }, 'vaishali', now, teams)).toEqual({ AND: [{ assigneeId: { in: ['dev', 'vaishali'] } }] });
     expect(itemsWhere(journeyApplet, { scope: 'team' }, 'nobody', now, teams)).toEqual({ AND: [{ id: '__none__' }] });
   });
-  it('Mine includes the journeys I peer-review', () => {
-    expect(itemsWhere(journeyApplet, { scope: 'mine' }, 'u', now)).toEqual({ AND: [{ OR: [{ assigneeId: 'u' }, { ownerId: 'u' }, { peerReviewerId: 'u' }, { developerId: 'u' }] }] });
+  it('Mine is the journeys I create, review or check the design of', () => {
+    expect(itemsWhere(journeyApplet, { scope: 'mine' }, 'u', now)).toEqual({ AND: [{ OR: [{ assigneeId: 'u' }, { ownerId: 'u' }, { developerId: 'u' }] }] });
   });
 });

@@ -87,6 +87,9 @@ export default async function SyncPage() {
           {relayReport && (relayReport.reviewMoves?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Moved here by the relay status: {relayReport.reviewMoves.map(x => `${x.key} ${x.from} → ${x.to}`).join(', ')}</p>
           )}
+          {relayReport && (relayReport.reopened?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Reopened on the relay, Creation stage moved back: {relayReport.reopened!.map(x => `${x.key} ${x.from} → ${x.to ?? 'no stage'} (reopened at ${x.reopenStage})`).join(', ')}</p>
+          )}
           {relayReport && (relayReport.mismatches?.length ?? 0) > 0 && (
             <div className="mt-2 text-xs text-warn">
               Out of step with the relay status:

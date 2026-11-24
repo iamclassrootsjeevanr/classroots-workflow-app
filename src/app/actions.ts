@@ -10,10 +10,10 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { startViewAs, stopViewAs } from '@/server/view-as';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
-import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
+import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { httpRelayClient, relayConfigured } from '@/server/relay/client';
 import { pushRelay } from '@/server/services/relay-push';
@@ -82,10 +82,6 @@ export async function setOwnerAction(itemId: string, ownerId: string | null) {
 
 export async function setDeveloperAction(itemId: string, userId: string | null) {
   return run(async () => setDeveloper(await itemActor(itemId), itemId, userId));
-}
-
-export async function setPeerReviewerAction(itemId: string, userId: string | null) {
-  return run(async () => setPeerReviewer(await itemActor(itemId), itemId, userId));
 }
 
 export async function updateFieldsAction(itemId: string, patch: Record<string, FieldValue>) {
@@ -352,14 +348,7 @@ export async function removeTeamMemberAction(teamId: string, userId: string) {
   });
 }
 
-export async function setMemberPeerAction(teamId: string, userId: string, peerReviewerId: string | null) {
-  return run(async () => {
-    const a = await teamActor(teamId);
-    return `${a.mod.labels?.peer ?? 'Peer reviewer'} saved${moved(await setMemberPeer(a.user.id, teamId, userId, peerReviewerId), a.mod.itemNoun)}`;
-  });
-}
-
-/** Give open journeys with no SME reviewer or peer reviewer their team's default. */
+/** Give open journeys with no SME reviewer their team's default. */
 export async function fillReviewersAction(teamId: string) {
   return run(async () => {
     const a = await teamActor(teamId);
@@ -671,12 +660,14 @@ export async function syncRelayAction(dryRun: boolean) {
     if (r.stewards.length) bits.push(`${r.stewards.length} chapter steward ${dryRun ? 'changes to make' : 'changes'} (${r.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : '✕'} ${x.steward}`).join(', ')})`);
     if (r.stewardIssues.length) bits.push(`stewards to check: ${r.stewardIssues.join('; ')}`);
     if (r.reassigned.length) bits.push(`${r.reassigned.length} journeys ${dryRun ? 'to move' : 'moved'} to the relay's creator (${r.reassigned.map(x => `${x.key} → ${x.to}`).join(', ')})`);
+    if (r.reopened?.length) bits.push(`${r.reopened.length} reopened on the relay, Creation stage ${dryRun ? 'to move back' : 'moved back'} (${r.reopened.map(x => `${x.key} → ${x.to ?? 'no stage'}`).join(', ')})`);
     if (r.creatorDiffers.length) bits.push(`${r.creatorDiffers.length} reassigned here after the relay, kept`);
     if (r.teamChanges.length) bits.push(`${r.teamChanges.length} team ${dryRun ? 'changes to make' : 'changes'} (${r.teamChanges.map(x => `${x.person} → ${x.team}`).join(', ')})`);
     if (r.teamIssues.length) bits.push(`teams to check: ${r.teamIssues.join('; ')}`);
     if (r.addedPeople?.length) bits.push(`${r.addedPeople.length} ${dryRun ? 'people to add' : 'people added'} from the relay (${r.addedPeople.map(p => p.name).join(', ')})`);
     if (r.peopleIssues?.length) bits.push(`people to check: ${r.peopleIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
+    if (r.chapterEvents) bits.push(`${r.chapterEvents} chapter and scope ${dryRun ? 'records to keep' : 'records kept'}`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
     if (r.feed?.mode === 'feed') bits.push(`${r.feed.events} relay changes since the last run, ${r.feed.read} journeys read`);
     bits.push(dryRun ? `${push.queued + push.pending} changes here to send to the relay` : `${push.sent} changes sent to the relay${push.pending ? `, ${push.pending} waiting` : ''}${push.failed ? `, ${push.failed} refused` : ''}`);

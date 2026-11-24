@@ -45,3 +45,27 @@ export function canChat(ctx: ActorContext, ticket?: { authorId: string | null; t
 /** Only the person who raised a ticket closes (or reopens) it; an admin can too. */
 export const canCloseTicket = (ctx: ActorContext, ticket: { authorId: string | null }, userId: string | null): boolean =>
   ctx.isAdmin || (Boolean(userId) && ticket.authorId === userId);
+
+/** The part the writer of a ticket plays on the item: what the relay and the Inbox say beside their name. */
+export type WriterRole = 'reviewer' | 'creator' | 'developer' | 'steward' | 'admin' | 'member' | 'system';
+
+/**
+ * The reviewer of the item, its creator, its developer, a steward who can act on it (the "assign" capability, which stops at their
+ * chapters and teams), an admin, or someone else with access. `null` = a change the system made.
+ */
+export function writerRole(ctx: ActorContext | null): WriterRole {
+  if (!ctx) return 'system';
+  if (ctx.isOwner) return 'reviewer';
+  if (ctx.isAssignee) return 'creator';
+  if (ctx.isDeveloper) return 'developer';
+  if (ctx.isAdmin) return 'admin';
+  return hasCap(ctx, 'assign') ? 'steward' : 'member';
+}
+
+/** That part in the work type's own words ("SME reviewer", "Steward"). */
+export function writerRoleLabel(role: WriterRole, mod: { labels?: { assignee?: string; owner?: string }; developerHandoff?: { label: string } }): string {
+  if (role === 'reviewer') return mod.labels?.owner ?? 'Reviewer';
+  if (role === 'creator') return mod.labels?.assignee ?? 'Assignee';
+  if (role === 'developer') return mod.developerHandoff?.label ?? 'Developer';
+  return role === 'steward' ? 'Steward' : role === 'admin' ? 'Admin' : role === 'system' ? 'System' : 'Member';
+}

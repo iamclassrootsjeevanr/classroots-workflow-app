@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CONTRACT, contractData, DASHBOARD_STATUSES, feedTouched, isTouched, mismatchSettled, parseFeed, publishFor, RelayContractError, toolUnavailable, type FeedEvent } from '@/lib/relay-contract';
+import { CONTRACT, contractData, DASHBOARD_ROLES, DASHBOARD_STATUSES, feedTouched, isTouched, mismatchSettled, parseFeed, publishFor, RelayContractError, toolUnavailable, type FeedEvent } from '@/lib/relay-contract';
 import { dashEventFor, eventIdFor, parsePushReply, PUSHED_TYPES, type EventRow, type PushContext } from '@/lib/relay-push';
 import { relayMismatch } from '@/lib/relay-review';
 import { applyStageConfig } from '@/lib/stages';
@@ -59,7 +59,7 @@ describe('a difference is settled once the relay holds this side’s word', () =
   });
 });
 
-const ctx: PushContext = { labels: { owner: 'SME reviewer', peer: 'Peer reviewer', developer: 'Developer' }, statusLabel: s => ({ changes_asked: 'Changes asked', allocated: 'Allocated' })[s] ?? null, emailByName: new Map([['devjyoti mondal', 'devjyoti@classrootsedu.com']]) };
+const ctx: PushContext = { labels: { owner: 'SME reviewer', developer: 'Developer' }, statusLabel: s => ({ changes_asked: 'Changes asked', allocated: 'Allocated' })[s] ?? null, emailByName: new Map([['devjyoti mondal', 'devjyoti@classrootsedu.com']]) };
 const row = (over: Partial<EventRow>): EventRow => ({ id: 'ev1', type: 'STATUS_CHANGED', field: 'status', fromValue: 'review_in_progress', toValue: 'changes_asked', source: 'APP', note: 'Two asks.', meta: null, at: new Date('2026-11-23T05:30:00Z'), actorEmail: 'Arjun@classrootsedu.com', externalKey: 'G04C05ST1J2_halves', ...over });
 const sent = (over: Partial<EventRow>) => {
   const e = dashEventFor(row(over), ctx);
@@ -74,6 +74,11 @@ describe('a change here as the event the relay keeps', () => {
     expect(eventIdFor('ev1')).toBe(eventIdFor('ev1'));
     expect(eventIdFor('ev1')).not.toBe(eventIdFor('ev2'));
   });
+  it('the removed peer reviewer is not sent: its old history stays here', () => {
+    expect(dashEventFor(row({ type: 'FIELD_CHANGED', field: 'Peer reviewer', fromValue: null, toValue: 'Animesh Mittal' }), ctx)).toEqual({ skip: 'the peer reviewer is not sent' });
+    // The relay's role list keeps the value: one that is not sent does not move the contract.
+    expect(DASHBOARD_ROLES).toContain('peer_reviewer');
+  });
   it('a move the relay caused is sent too, by system, so the relay’s copy is whole', () => {
     const e = sent({ source: 'RELAY', actorEmail: null, note: 'Up for review on the relay' });
     expect([e.by, e.data.source]).toEqual(['system', 'RELAY']);
@@ -86,7 +91,6 @@ describe('a change here as the event the relay keeps', () => {
     expect(sent({ type: 'ASSIGNED', field: 'assignee', fromValue: null, toValue: 'Devjyoti Mondal', note: null })).toMatchObject({ entity: 'assignment', action: 'update', to: 'devjyoti@classrootsedu.com', data: { role: 'creator', name: 'Devjyoti Mondal' } });
     expect(sent({ type: 'UNASSIGNED', field: 'assignee', fromValue: 'Devjyoti Mondal', toValue: null, note: null })).toMatchObject({ entity: 'assignment', action: 'delete', from: 'devjyoti@classrootsedu.com', data: { role: 'creator' } });
     expect(sent({ type: 'FIELD_CHANGED', field: 'SME reviewer', fromValue: null, toValue: 'Somebody Else' })).toMatchObject({ to: 'Somebody Else', data: { role: 'reviewer' } });
-    expect(sent({ type: 'FIELD_CHANGED', field: 'Peer reviewer', toValue: 'X' }).data.role).toBe('peer_reviewer');
     expect(sent({ type: 'FIELD_CHANGED', field: 'Developer', toValue: 'X' }).data.role).toBe('developer');
   });
   it('fields, feedback, created, deleted and restored', () => {

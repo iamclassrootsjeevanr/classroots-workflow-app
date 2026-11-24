@@ -13,7 +13,7 @@ function span(a: Date | null, b: Date | null, cal: WorkCalendar) {
 /** One row per item with every stage timestamp and business-hour duration. */
 export function itemReportRows(items: ItemRow[], cal: WorkCalendar) {
   const tz = cal.tz;
-  const teams = items.some(i => i.teamOwnerName || i.peerReviewerName);
+  const teams = items.some(i => i.teamOwnerName);
   return items.map(i => ({
     'Work type': i.workTypeName,
     Key: i.externalKey,
@@ -22,7 +22,7 @@ export function itemReportRows(items: ItemRow[], cal: WorkCalendar) {
     Chapter: i.chapterTitle ?? '',
     SME: i.ownerName ?? '',
     Developer: i.assigneeName ?? '',
-    ...(teams ? { 'Peer reviewer': i.peerReviewerName ?? '', Owner: i.teamOwnerName ?? '' } : {}),
+    ...(teams ? { Owner: i.teamOwnerName ?? '' } : {}),
     Status: i.statusLabel,
     'Due date': formatDateTime(i.dueAt, tz),
     'Received at': formatDateTime(i.receivedAt, tz),

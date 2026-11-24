@@ -3,16 +3,18 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
-import { developerStage, landingStage, nextActiveAfter } from '@/lib/stages';
+import { developerStage, landingStage, nextActiveAfter, stageAfterOwnCheck } from '@/lib/stages';
 import { lowerLabel, matchOption } from '@/lib/text';
-import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
+import { actorMatches, allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
+import { relayHolderNote } from '@/lib/relay-holder';
+import { relayHolders } from '../relay-holder';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
-import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel } from '@/lib/feedback';
 import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -175,8 +177,13 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
     for (const half of mod.fields.filter(x => x.halfOf === f)) if (!data[half.key]) data[half.key] = halfOfDay(now, cal);
   }
   for (const [f, v] of Object.entries(move?.set ?? {})) if (!data[f]) data[f] = v;
-  const landing = landingStage(mod.statuses, to, data);
-  const note = landing === to ? opts.note : [opts.note, `${statusDef(mod, to).label} not needed`].filter(Boolean).join(' · ');
+  const reached = landingStage(mod.statuses, to, data);
+  // A check stage the mover may approve themself is passed with this move: the same person would check twice.
+  const check = statusDef(mod, reached);
+  const ctx = actor.ctx;
+  const afterCheck = stageAfterOwnCheck(mod.statuses, item.status, to, reached, ctx ? by => actorMatches(by, ctx) : null);
+  const landing = afterCheck ? landingStage(mod.statuses, afterCheck, data) : reached;
+  const note = [opts.note, reached !== to ? `${statusDef(mod, to).label} not needed` : null, afterCheck ? `${check.label} done with ${statusDef(mod, item.status).label}` : null].filter(Boolean).join(' · ') || undefined;
   const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, landing, now) };
   if (move?.stamp?.length || move?.set || mod.compute) {
     const c = computed(mod, item.externalKey, data, cal);
@@ -230,7 +237,7 @@ async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: st
 
 /** True when the journey is on the relay and its publish status there is not "ready from content" (review over, final in UAT) yet. */
 async function relayNotReady(tx: Tx, itemId: string): Promise<boolean> {
-  const any = await tx.relayEvent.findFirst({ where: { itemId }, select: { id: true } });
+  const any = await tx.relayEvent.findFirst({ where: { itemId, kind: { not: 'allocation' } }, select: { id: true } });
   if (!any) return false;
   const publish = await tx.relayEvent.findFirst({ where: { itemId, kind: 'publish' }, orderBy: { at: 'desc' }, select: { what: true } });
   return publish?.what !== 'ready_from_content';
@@ -323,8 +330,21 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
     await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
   }
 
+  // Allocations belong to the relay: a creator set here who is not the relay's holder cannot work on it at a seat until an allocator
+  // moves the key. The change is not blocked; the chapter's stewards are told once.
+  if (mod.relayBoard && assigneeId && actor.source === 'APP') {
+    const holder = (await relayHolders([item.id], tx)).get(item.id) ?? null;
+    const person = holder ? await tx.user.findUnique({ where: { id: assigneeId }, select: { email: true, name: true } }) : null;
+    const note = relayHolderNote(shortKey(item.externalKey), holder, person);
+    if (note) {
+      for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
+        if (userId !== actor.userId) await notify(tx, userId, { kind: 'item.relay-holder', title: `Creator changed here: ${shortKey(item.externalKey)}`, body: note, href: `/w/${item.workType.key}/${item.id}` });
+      }
+    }
+  }
+
   let fresh = await loadItem(tx, item.id);
-  // Teams: the new creator's coordinator reviews it by default and their buddy peer-reviews it.
+  // Teams: the new creator's coordinator reviews it by default.
   if (mod.teams && assigneeId) {
     const teams = await loadTeams(tx, [item.workTypeId]);
     if (await applyReviewDefaultsTx(tx, fresh, actor, teams, reviewDefaults(teams, item.assigneeId), now)) fresh = await loadItem(tx, item.id);
@@ -353,27 +373,27 @@ export async function assign(actor: ChangeActor, itemId: string, assigneeId: str
   });
 }
 
-type PersonSlot = 'owner' | 'peer' | 'developer';
+type PersonSlot = 'owner' | 'developer';
 
-const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : slot === 'developer' ? (mod.developerHandoff?.label ?? 'Developer') : (mod.labels?.peer ?? 'Peer reviewer'));
+const slotLabel = (mod: WorkTypeDefinition, slot: PersonSlot) => (slot === 'owner' ? (mod.labels?.owner ?? 'Owner') : (mod.developerHandoff?.label ?? 'Developer'));
 
-/** Put a person in the item's owner (Journey: SME reviewer) or peer reviewer slot. `quiet` = no inbox message (bulk changes send one). */
+/** Put a person in the item's owner (Journey: SME reviewer) or developer slot. `quiet` = no inbox message (bulk changes send one). */
 async function setPersonTx(tx: Tx, item: ItemWithType, actor: ChangeActor, slot: PersonSlot, userId: string | null, now: Date, quiet = false) {
   const mod = requireModule(item.workType.key);
-  // The developer can also be changed by the item's own creator (assignee); owner and peer reviewer stay with coordinators.
+  // The developer can also be changed by the item's own creator (assignee); the owner stays with coordinators.
   const may = actor.ctx && (hasCap(actor.ctx, 'assign') || (slot === 'developer' && actor.ctx.isAssignee && hasCap(actor.ctx, 'work')));
   if (actor.ctx && !may) throw new ForbiddenError(slot === 'developer' ? 'Only the steward or the SME creator can change the developer.' : 'You don’t have permission to assign work here.');
   // The developer is only assigned or changed while the journey is in the design standardization stage (and it is not paused).
   if (slot === 'developer' && actor.ctx && !developerStage(mod.statuses, mod.developerHandoff, item.status).open) {
     throw new ForbiddenError('The developer can be set only while the journey is in design standardization.');
   }
-  const current = slot === 'owner' ? item.ownerId : slot === 'developer' ? item.developerId : item.peerReviewerId;
+  const current = slot === 'owner' ? item.ownerId : item.developerId;
   if (current === userId) return false;
   const [from, to] = await Promise.all([
     current ? tx.user.findUnique({ where: { id: current }, select: { name: true } }) : null,
     userId ? tx.user.findUnique({ where: { id: userId }, select: { name: true } }) : null,
   ]);
-  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : slot === 'developer' ? { developerId: userId } : { peerReviewerId: userId });
+  await saveItem(tx, item, slot === 'owner' ? { ownerId: userId } : { developerId: userId });
   const label = slotLabel(mod, slot);
   await tx.workItemEvent.create({
     data: { itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: label, fromValue: from?.name ?? null, toValue: to?.name ?? null, source: actor.source, at: now },
@@ -406,30 +426,15 @@ export async function setDeveloper(actor: ChangeActor, itemId: string, userId: s
   });
 }
 
-/** Set the item's peer reviewer (Journey: the creator's buddy by default). Same permission as assigning. */
-export async function setPeerReviewer(actor: ChangeActor, itemId: string, userId: string | null) {
-  return db.$transaction(async tx => {
-    const item = await loadItem(tx, itemId);
-    guardActive(item, actor);
-    if (userId && userId === item.assigneeId) throw new Error('The peer reviewer is someone other than the creator.');
-    await setPersonTx(tx, item, actor, 'peer', userId, new Date());
-  });
-}
-
 /**
- * Give an item its creator's team defaults: the SME reviewer and the peer reviewer, where the slot is empty or still holds
- * the default it had before (`was`). A reviewer picked by hand stays. Returns true when something changed.
+ * Give an item its creator's team default, the SME reviewer, where the slot is empty or still holds the default it had before
+ * (`was`). A reviewer picked by hand stays. Returns true when something changed.
  */
-async function applyReviewDefaultsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, teams: TeamLite[], was: { reviewerId: string | null; peerReviewerId: string | null }, now: Date, quiet = false) {
+async function applyReviewDefaultsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, teams: TeamLite[], was: { reviewerId: string | null }, now: Date, quiet = false) {
   const next = reviewDefaults(teams, item.assigneeId);
   const system = { ...actor, ctx: null };
-  let changed = false;
   const owner = nextDefault(item.ownerId, was.reviewerId, next.reviewerId);
-  if (owner !== undefined && (await setPersonTx(tx, item, system, 'owner', owner, now, quiet))) changed = true;
-  const fresh = changed ? await loadItem(tx, item.id) : item;
-  const peer = nextDefault(fresh.peerReviewerId, was.peerReviewerId, next.peerReviewerId);
-  if (peer !== undefined && (await setPersonTx(tx, fresh, system, 'peer', peer, now, quiet))) changed = true;
-  return changed;
+  return owner !== undefined && (await setPersonTx(tx, item, system, 'owner', owner, now, quiet));
 }
 
 /**
@@ -437,7 +442,7 @@ async function applyReviewDefaultsTx(tx: Tx, item: ItemWithType, actor: ChangeAc
  * `was` = each creator's defaults before the change; omit to fill only the empty slots. Each newly named reviewer gets one
  * inbox message for all of them. Returns how many items changed.
  */
-export async function refillReviewDefaults(actor: ChangeActor, workTypeId: string, opts: { creatorIds?: string[]; was?: Map<string, { reviewerId: string | null; peerReviewerId: string | null }> } = {}) {
+export async function refillReviewDefaults(actor: ChangeActor, workTypeId: string, opts: { creatorIds?: string[]; was?: Map<string, { reviewerId: string | null }> } = {}) {
   return db.$transaction(
     async tx => {
       const wt = await tx.workType.findUniqueOrThrow({ where: { id: workTypeId } });
@@ -454,13 +459,12 @@ export async function refillReviewDefaults(actor: ChangeActor, workTypeId: strin
       const gained = new Map<string, number>();
       let count = 0;
       for (const item of items) {
-        const was = opts.was?.get(item.assigneeId!) ?? { reviewerId: null, peerReviewerId: null };
+        const was = opts.was?.get(item.assigneeId!) ?? { reviewerId: null };
         if (!(await applyReviewDefaultsTx(tx, item, actor, teams, was, now, true))) continue;
         count++;
         const after = await loadItem(tx, item.id);
-        for (const id of new Set([after.ownerId !== item.ownerId ? after.ownerId : null, after.peerReviewerId !== item.peerReviewerId ? after.peerReviewerId : null])) {
-          if (id && id !== actor.userId) gained.set(id, (gained.get(id) ?? 0) + 1);
-        }
+        const id = after.ownerId !== item.ownerId ? after.ownerId : null;
+        if (id && id !== actor.userId) gained.set(id, (gained.get(id) ?? 0) + 1);
       }
       for (const [userId, n] of gained) {
         await notify(tx, userId, { kind: 'item.owner', title: `You now review ${n} more ${mod.itemNoun}${n === 1 ? '' : 's'}`, body: 'Team review defaults changed.', href: `/w/${wt.key}/items?scope=mine` });
@@ -500,7 +504,7 @@ function coerce(field: FieldDef, value: FieldValue): string | number | null {
   return String(value).trim();
 }
 
-async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date, cal: WorkCalendar) {
+async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date, cal: WorkCalendar, note?: string) {
   const mod = requireModule(item.workType.key);
   const data = { ...((item.data ?? {}) as Record<string, unknown>) };
   const update: Prisma.WorkItemUncheckedUpdateInput = {};
@@ -531,7 +535,7 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     }
     const after = value === null ? null : String(value);
     if (before === after) continue;
-    events.push({ itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: key, fromValue: before, toValue: after, source: actor.source, at: now });
+    events.push({ itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: key, fromValue: before, toValue: after, source: actor.source, at: now, ...(note ? { note } : {}) });
     const col = key === 'dueAt' ? columnFor(mod, 'dueAt') : columnFor(mod, 'data', key);
     if (col) columns.push(col);
   }
@@ -552,12 +556,12 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   }
 }
 
-export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date } = {}) {
+export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date; note?: string } = {}) {
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal);
+    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal, opts.note);
   });
 }
 
@@ -654,10 +658,18 @@ export async function addFeedback(
     const toId = counterpart(actor.userId, item);
     const ticket = await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, title: ticketTitle(input.title, body), toId, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
-    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
-    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator.
+    // Who wrote it and who it is for go with the event: the relay shows a reviewer's or a steward's feedback to the creator's seat.
+    const role = writerRole(actor.ctx);
+    const [writer, reader] = await Promise.all([
+      actor.userId ? tx.user.findUnique({ where: { id: actor.userId }, select: { name: true } }) : null,
+      toId ? tx.user.findUnique({ where: { id: toId }, select: { email: true } }) : null,
+    ]);
+    const forRole = toId === item.assigneeId ? 'creator' : toId === item.developerId ? 'developer' : toId === item.ownerId ? 'reviewer' : null;
+    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity, role, ...(reader?.email ? { for: reader.email.toLowerCase(), for_role: forRole } : {}) }, at: now } });
+    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator. One message, with who wrote it.
     if (toId && toId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: ticket.title, href: `/w/${item.workType.key}/${item.id}/feedback` });
+      const from = writer?.name ? ` · from ${writer.name} (${writerRoleLabel(role, mod)})` : '';
+      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: `${ticket.title}${from}`, href: `/w/${item.workType.key}/${item.id}/feedback` });
     }
     if (input.requestCorrections) {
       const fresh = await loadItem(tx, itemId);
@@ -751,7 +763,7 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
   const reached = (m: Parameters<typeof marks.has>[0]) => marks.has(m);
   const pastQueue = def.category !== 'queue';
   const at = actor.source === 'IMPORT' ? null : now;
-  // Teams: a new item starts with its creator's default SME reviewer and peer reviewer unless one was picked.
+  // Teams: a new item starts with its creator's default SME reviewer unless one was picked.
   const defaults = mod.teams && input.assigneeId ? reviewDefaults(await loadTeams(tx, [workType.id]), input.assigneeId) : null;
   const item = await tx.workItem.create({
     data: {
@@ -761,7 +773,6 @@ export async function createItemTx(tx: Tx, workType: WorkType, actor: ChangeActo
       status,
       assigneeId: input.assigneeId ?? null,
       ownerId: input.ownerId ?? defaults?.reviewerId ?? null,
-      peerReviewerId: defaults?.peerReviewerId ?? null,
       parentId,
       createdById: actor.source === 'APP' ? actor.userId : null,
       chapterId: input.chapterId ?? null,

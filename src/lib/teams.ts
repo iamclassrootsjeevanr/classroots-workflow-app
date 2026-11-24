@@ -2,8 +2,8 @@
  * Teams (Journey): a coordinator and their SME creators. Pure rules, no DB.
  *
  * Ownership has two levels. A chapter belongs to its steward (the coordinator who steers it). A journey belongs to the
- * coordinator of its creator's team, wherever it was allocated; that coordinator reviews it by default, and the creator's
- * buddy is its peer reviewer. Both defaults are settings of the team and can be changed per journey.
+ * coordinator of its creator's team, wherever it was allocated; that coordinator reviews it by default. The default is a
+ * setting of the team and can be changed per journey.
  */
 
 export type TeamLite = {
@@ -14,7 +14,7 @@ export type TeamLite = {
   reviewerId: string | null;
   /** Default developer of the team's items (the design check after review); null or absent = the least busy developer. */
   developerId?: string | null;
-  members: { userId: string; peerReviewerId: string | null }[];
+  members: { userId: string }[];
 };
 
 /** The team a person belongs to: as a member, or as its coordinator. */
@@ -40,16 +40,14 @@ export type ReviewDefaults = {
   accountableId: string | null;
   /** Default SME reviewer. Nobody reviews their own item. */
   reviewerId: string | null;
-  peerReviewerId: string | null;
 };
 
 /** Who owns and reviews the items created by `creatorId`, from their team's settings. */
 export function reviewDefaults(teams: readonly TeamLite[], creatorId: string | null | undefined): ReviewDefaults {
   const team = teamOf(teams, creatorId) ?? null;
-  if (!team || !creatorId) return { team: null, accountableId: null, reviewerId: null, peerReviewerId: null };
+  if (!team || !creatorId) return { team: null, accountableId: null, reviewerId: null };
   const reviewer = team.reviewerId ?? team.coordinatorId;
-  const peer = team.members.find(m => m.userId === creatorId)?.peerReviewerId ?? null;
-  return { team, accountableId: team.coordinatorId, reviewerId: reviewer === creatorId ? null : reviewer, peerReviewerId: peer === creatorId ? null : peer };
+  return { team, accountableId: team.coordinatorId, reviewerId: reviewer === creatorId ? null : reviewer };
 }
 
 /**

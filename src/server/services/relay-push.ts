@@ -31,7 +31,7 @@ async function context(): Promise<PushContext> {
   }
   const emailByName = new Map([...seen].filter((x): x is [string, string] => x[1] !== null));
   return {
-    labels: { owner: mod.labels?.owner ?? 'Owner', peer: mod.labels?.peer ?? 'Peer reviewer', developer: mod.developerHandoff?.label ?? 'Developer' },
+    labels: { owner: mod.labels?.owner ?? 'Owner', developer: mod.developerHandoff?.label ?? 'Developer' },
     statusLabel: s => {
       try {
         return statusDef(mod, s).label;

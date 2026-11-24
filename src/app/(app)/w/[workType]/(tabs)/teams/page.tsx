@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ workType:
   return { title: mod ? `${mod.name} · ${mod.pages?.teams ?? 'Teams'}` : 'Work' };
 }
 
-/** Teams of a work type: who is in them, the default reviewer of each team and each member's peer reviewer. */
+/** Teams of a work type: who is in them, and the default reviewer and developer of each team. */
 export default async function TeamsPage({ params }: { params: Promise<{ workType: string }> }) {
   const { workType: key } = await params;
   const { user, access, mod, wt, items, can, editable } = await loadWorkTypePage(key);
@@ -32,7 +32,7 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
   const person = (u: { id: string; name: string | null; email: string | null }) => ({ id: u.id, name: u.name ?? u.email ?? '?' });
   const teamNameOf = new Map(teams.flatMap(t => t.members.map(m => [m.userId, t.name] as const)));
   const openOf = (ids: string[]) => items.filter(i => i.assigneeId && ids.includes(i.assigneeId) && i.category !== 'done').length;
-  const labels = { creator: mod.labels?.assignee ?? 'Person', reviewer: mod.labels?.owner ?? 'Reviewer', peer: mod.labels?.peer ?? 'Peer reviewer', noun: mod.itemNoun, developer: hand?.label };
+  const labels = { creator: mod.labels?.assignee ?? 'Person', reviewer: mod.labels?.owner ?? 'Reviewer', noun: mod.itemNoun, developer: hand?.label };
 
   const views: TeamView[] = teams.map(t => ({
     id: t.id,
@@ -53,8 +53,8 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        A {labels.noun} belongs to the steward of its {labels.creator.toLowerCase()}&rsquo;s team, whoever allocated it and in whichever chapter. That steward is its default {labels.reviewer.toLowerCase()}; the
-        creator&rsquo;s buddy is its {labels.peer.toLowerCase()}{hand ? `, and the team's default ${hand.label.toLowerCase()} checks its design after review` : ''}. Each can be changed here for the team, or on one {labels.noun}.
+        A {labels.noun} belongs to the steward of its {labels.creator.toLowerCase()}&rsquo;s team, whoever allocated it and in whichever chapter. That steward is its default {labels.reviewer.toLowerCase()}
+        {hand ? `, and the team's default ${hand.label.toLowerCase()} checks its design after review` : ''}. Each can be changed here for the team, or on one {labels.noun}.
       </p>
       {access.isAdmin && editable && (
         <Card title="Add a team">

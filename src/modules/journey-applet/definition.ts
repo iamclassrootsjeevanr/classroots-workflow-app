@@ -17,6 +17,7 @@ const REVIEWER = ['OWNER'] as const;
 const COORDINATOR = ['assign'] as const;
 const DEVELOPER = ['DEVELOPER', 'assign'] as const;
 const CHECKER = ['OWNER', 'assign'] as const; // the SME reviewer or the steward
+const LOOKER = ['ASSIGNEE', 'OWNER', 'assign'] as const; // the last look: the SME creator, the SME reviewer or the steward (24 Nov 2026)
 
 const statuses: StatusDef[] = [
   // Creation (the SME creator, with Claude). Two working days from picked up to submitted.
@@ -31,9 +32,10 @@ const statuses: StatusDef[] = [
   // After-steps (SME's first version, 5 Nov 2026; may change once they begin).
   // A developer is assigned when the review closes and checks the design standardization (developerHandoff).
   { key: 'design_standardization', label: 'Design standardization', color: '#26a69a', category: 'active', marks: ['started'], next: { label: 'Design done', by: [...DEVELOPER] } },
-  { key: 'last_look', label: 'Last look after design', color: '#00897b', category: 'review', stuckHours: 4.5, next: { label: 'Last look done', by: [...CREATOR] } },
-  // The second loop: the developer's fix is checked by the creator (last look), then by the SME reviewer or steward; either can send it back to the developer.
-  { key: 'design_check', label: 'Design check', color: '#009688', category: 'review', stuckHours: 4.5, next: { label: 'Design approved', by: [...CHECKER] } },
+  { key: 'last_look', label: 'Last look after design', color: '#00897b', category: 'review', stuckHours: 4.5, next: { label: 'Last look done', by: [...LOOKER] } },
+  // The second loop: the developer's fix gets a last look (the creator, the SME reviewer or the steward), then the SME reviewer or steward
+  // checks the design; each can send it back to the developer. A last look by the SME reviewer or a steward is the design check too.
+  { key: 'design_check', label: 'Design check', color: '#009688', category: 'review', stuckHours: 4.5, passedByMover: true, next: { label: 'Design approved', by: [...CHECKER] } },
   { key: 'video_replacement', label: 'Video replacement', color: '#00796b', category: 'active', skipWhen: { field: 'needsVideoReplacement', equals: 'No' }, next: { label: 'Videos replaced', by: [...COORDINATOR] } },
   // Engineering migrates; the coordinator moves it on.
   { key: 'uat_to_prod', label: 'UAT → prod migration', color: '#0288d1', category: 'active', next: { label: 'Migrated to prod', by: [...COORDINATOR] } },
@@ -107,15 +109,15 @@ export const journeyApplet: WorkTypeDefinition = {
   relayBoard: true,
   teams: true,
   itemNoun: 'journey',
-  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', peer: 'Peer reviewer', accountable: 'Steward' },
+  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', accountable: 'Steward' },
   categoryLabels: { queue: 'Not started', active: 'Being worked', review: 'In review', feedback: 'Changes asked', approved: 'Review closed', done: 'Done', hold: 'Paused' },
   importRoles: { assignee: 'sme-creator', owner: 'sme-reviewer' },
   developerHandoff: { after: 'closed', role: 'developer', label: 'Developer' },
 
   roles: [
-    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design (and sends it back to the developer with feedback until it is right). Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review, and checks the design after the creator’s last look (approve, or send back to the developer with feedback).', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators, reviewers and peer reviewers, sets pick-up dates, edits details, moves journeys through the after-steps (also the design check, with the reviewer) and sends them back from QA for a fix. Also builds their own journeys like an SME creator. Acts in their own chapters, on every journey of their team and on their own journeys.', color: '#00897b', capabilities: ['work', 'assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design (and sends it back to the developer with feedback until it is right; the SME reviewer or the steward can do the last look too). Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review, gives feedback to the creator, and after design does the last look (which is then the design check too) or checks the design after the creator’s last look (approve, or send back to the developer with feedback).', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators and reviewers, sets pick-up dates, edits details, moves journeys through the after-steps (also the last look and the design check, with the creator and the reviewer), gives feedback to the creator, and sends journeys back from QA for a fix. Also builds their own journeys like an SME creator. Acts in their own chapters, on every journey of their team and on their own journeys.', color: '#00897b', capabilities: ['work', 'assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
     { key: 'developer', name: 'Developer', description: 'Checks and fixes design standardization once a journey’s review is closed: the journey is assigned to them automatically (least busy developer first). Marks Design done, which sends it to the creator’s last look, then the reviewer/steward’s design check. If the creator sends it back with feedback, they fix it and mark Design done again. Sees only the journeys assigned to them.', color: '#26a69a', capabilities: [], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'program-manager', name: 'Program manager', description: 'Watches the dashboards and reports; cannot change journeys.', color: '#546e7a', capabilities: [], dataScope: 'ALL', canEdit: false, pages: ['dashboard', 'items', 'reports', 'export'] },
   ],
@@ -128,7 +130,7 @@ export const journeyApplet: WorkTypeDefinition = {
     { from: 'changes_asked', to: 'correction_verification', by: [...CREATOR], label: 'Corrections done' },
     { from: 'correction_verification', to: 'changes_asked', by: [...REVIEWER], label: 'Ask for changes again', requires: 'feedback' },
     { from: 'correction_verification', to: '@next:review_in_progress', by: [...REVIEWER], label: 'Close review', stamp: ['reviewDate'] },
-    { from: 'last_look', to: 'design_standardization', by: [...CREATOR], label: 'Send back to design', requires: 'feedback' },
+    { from: 'last_look', to: 'design_standardization', by: [...LOOKER], label: 'Send back to design', requires: 'feedback' },
     { from: 'design_check', to: 'design_standardization', by: [...CHECKER], label: 'Send back to design', requires: 'feedback' },
     { from: 'user_testing_qa', to: 'changes_asked', by: [...COORDINATOR], label: 'Send back for a fix', requires: 'feedback' },
   ],
@@ -184,11 +186,10 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'dueAt', label: 'Closure due' },
   ],
   table: {
-    // After Name: SME creator, Creation stage, Status, SME reviewer, Steward, Peer reviewer, Developer; then the rest.
-    order: ['assignee', 'creationStage', 'status', 'owner', 'teamOwner', 'peerReviewer', 'developer'],
+    // After Name: SME creator, Creation stage, Status, SME reviewer, Steward, Developer; then the rest.
+    order: ['assignee', 'creationStage', 'status', 'owner', 'teamOwner', 'developer'],
     extra: [
       { field: 'creationStage', label: 'Creation stage' },
-      { field: 'peerReviewer', label: 'Peer reviewer' },
       { field: 'teamOwner', label: 'Steward' },
       { field: 'developer', label: 'Developer' },
       { field: 'pickedUpAt', label: 'Picked up' },

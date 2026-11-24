@@ -13,9 +13,8 @@ export type ItemsFilters = {
   cat?: string;
   dev?: string;
   sme?: string;
-  /** The developer of the handoff slot, and the peer reviewer. */
+  /** The developer of the handoff slot. */
   developer?: string;
-  peer?: string;
   group?: string;
   grade?: string;
   q?: string;
@@ -30,7 +29,7 @@ export const NONE = 'none';
 const list = (v: string | undefined) => (v ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 /** A person column: any of the ids, with `none` for nobody. */
-function person(field: 'assigneeId' | 'ownerId' | 'developerId' | 'peerReviewerId', value: string | undefined): Prisma.WorkItemWhereInput | null {
+function person(field: 'assigneeId' | 'ownerId' | 'developerId', value: string | undefined): Prisma.WorkItemWhereInput | null {
   const ids = list(value);
   if (!ids.length) return null;
   const real = ids.filter(i => i !== NONE);
@@ -48,7 +47,7 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
   const and: Prisma.WorkItemWhereInput[] = [];
   if (f.status) and.push({ status: { in: mod.statuses.map(s => s.key).filter(k => inList(k, f.status)) } });
   if (f.cat) and.push({ status: { in: keysOf(mod, c => inList(c, f.cat)) } });
-  for (const p of [person('assigneeId', f.dev), person('ownerId', f.sme), person('developerId', f.developer), person('peerReviewerId', f.peer)]) if (p) and.push(p);
+  for (const p of [person('assigneeId', f.dev), person('ownerId', f.sme), person('developerId', f.developer)]) if (p) and.push(p);
   if (f.group) and.push({ groupKey: { in: list(f.group) } });
   if (f.grade) and.push({ chapter: { grade: { in: list(f.grade).map(Number).filter(Number.isFinite) } } });
   for (const field of dataSelectFields(mod)) {
@@ -68,7 +67,7 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
     const picked = teams.filter(t => list(f.team).includes(t.id));
     and.push(picked.length ? { assigneeId: { in: [...new Set(picked.flatMap(teamPeople))] } } : { id: '__none__' });
   }
-  if (f.scope === 'mine') and.push({ OR: [{ assigneeId: userId }, { ownerId: userId }, ...(mod.teams ? [{ peerReviewerId: userId }] : []), ...(mod.developerHandoff ? [{ developerId: userId }] : [])] });
+  if (f.scope === 'mine') and.push({ OR: [{ assigneeId: userId }, { ownerId: userId }, ...(mod.developerHandoff ? [{ developerId: userId }] : [])] });
   // My team: the items of the team I coordinate or belong to.
   if (f.scope === 'team') {
     const mine = teams.filter(t => t.coordinatorId === userId);

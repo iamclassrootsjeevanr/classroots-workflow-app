@@ -6,7 +6,7 @@ import { PAGE_SIZE } from '@/lib/paging';
 import { formatDate, formatDateTime } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { ItemRow } from '@/server/services/analytics';
-import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type PersonOption, type RelayHolderProp, type StatusOption } from './controls';
 import { UrlFilter, type FilterOption } from './column-filter';
 import { Sheet } from './sheet';
 import { Delay, Empty, StatusBadge } from './ui';
@@ -19,6 +19,8 @@ type Props = {
   /** Ids of items the viewer may delete; those rows get a Delete button. */
   deletable?: ReadonlySet<string>;
   people?: PersonOption[];
+  /** Journey: per item, the relay's holder of its key, with the note to show when the creator here is someone else. */
+  relayHolders?: ReadonlyMap<string, RelayHolderProp & { note: string | null }>;
   /** Ids of items whose developer (a handoff role) the viewer may change; those rows get a dropdown in the Developer column. */
   developerEdits?: ReadonlySet<string>;
   developerOptions?: PersonOption[];
@@ -47,7 +49,7 @@ type Props = {
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, developerEdits, developerOptions, developerColor, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table, columnFilters }: Props) {
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, relayHolders, assignable, developerEdits, developerOptions, developerColor, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table, columnFilters }: Props) {
   if (!items.length && !columnFilters) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
   const head = (id: string, label: string) => (
     <>
@@ -105,12 +107,23 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
     ) : (
       <StatusBadge label={it.statusLabel} color={it.statusColor} />
     );
-  const assignee = (it: ItemRow, compact: boolean) =>
-    people && (!assignable || assignable.has(it.id)) ? (
-      <AssignSelect compact={compact} itemId={it.id} assigneeId={it.assigneeId} people={people} />
-    ) : (
-      (it.assigneeName ?? <span className="text-muted">Unassigned</span>)
+  const assignee = (it: ItemRow, compact: boolean) => {
+    const relay = relayHolders?.get(it.id);
+    return (
+      <>
+        {people && (!assignable || assignable.has(it.id)) ? (
+          <AssignSelect compact={compact} itemId={it.id} assigneeId={it.assigneeId} people={people} relay={relay} />
+        ) : (
+          (it.assigneeName ?? <span className="text-muted">Unassigned</span>)
+        )}
+        {relay?.note && (
+          <span className="mt-0.5 block text-xs text-warn" title={relay.note}>
+            Relay holder: {relay.holderName}
+          </span>
+        )}
+      </>
     );
+  };
   /** The Developer column: a dropdown for those who may change it, else the name. */
   const extraCell = (it: ItemRow, field: string, compact: boolean) =>
     field === 'developer' && developerOptions && developerEdits?.has(it.id) ? (

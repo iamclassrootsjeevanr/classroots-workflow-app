@@ -183,3 +183,31 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - **Admin → Sheet sync is now Admin → Integrations** (route `/admin/sync` unchanged).
 - **Relay people.** A person the relay names (journey holder or chapter owner) who is not in People is created by `syncRelay` when the email is in `OFFICE_DOMAINS` (`planRelayPeople`): SME creator role for a holder, Steward with the relay's chapters for a chapter owner. Other emails and deactivated people are reported (`peopleIssues`), never added.
 - **Team default developer.** `Team.developerId` (migration `20261124120000_team_default_developer`, seeded Jeevan → Team Devjyoti, Swathi → Team Arjun). When a review closes the journey goes to the developer already on it, else the creator's team's developer, else the least busy one. Changed on the Teams tab; journeys waiting in design on the old default follow.
+
+## 2026-11-24 · Relay reopen is followed for the Creation stage only
+- A reopen on the relay (`human-record-15`) lowers the Creation stage here to the stage the relay shows now; a reopen of the chapter or subtopic above leaves the journey with no Creation stage. A later change of the Creation stage made here stands.
+- The review stage is never moved back by a reopen. A journey reopened while in review or later carries a note (`reopenLine`), and the chapter's stewards get one Inbox message, when the reopen is first seen.
+- A reopen "stands" until the journey is back at Ship with an approval after it (`reopenStanding`), computed from the relay rows kept here, so journeys the feed did not name keep the note.
+
+## 2026-11-24 · The relay's holder of a journey is kept, and a creator change here says so
+- `syncRelay` keeps each relay allocation as a `RelayEvent` of kind `allocation` (holder email in `approver`, none = released; id from `allocationEventId`). No schema change. `relayHolders` (`src/server/relay-holder.ts`) reads the latest per journey.
+- When the creator here is not that holder, the journey page and the Journeys list show "Relay holder: <name>. Ask an allocator to allocate <key> to <creator>." (`relayHolderNote`). The note goes when the relay's allocation agrees.
+- Changing the creator of such a journey asks first (not blocked) and sends the chapter's stewards one Inbox message. Nothing is written to the relay.
+
+## 2026-11-24 · Chapter and scope progress from the relay feed
+- Relay stages 1 and 2 live under chapter and subtopic keys, which have no journey row. `syncRelay` keeps those feed rows as sent in `ChapterRelayEvent` (migration `20261124150000_chapter_relay_events`): allocation, scope_mode, step, approval, baseline, reopen. It reads them with its own cursor (`cursor.chapterFeed`, from the feed's first row), so no journey row is made early.
+- The Chapters page shows a "Relay progress" card worked out from them (`chapterProgress`, `src/lib/relay-chapters.ts`): steward on the relay, chapter read, scopes approved of subtopics seen, scoped by steward or seats, journeys cut against journeys allocated here. A reopen takes back what was approved before it.
+- The relay sends a scope approval's `data.journeys` as JSON text (`[{key, name}]`); `scopeJourneys` reads that or a list.
+
+## 2026-11-24 · Last look by three roles, steward feedback
+- **Last look after design** can be approved, or sent back to design with feedback, by the SME creator, the SME reviewer or a steward who can act on the journey (`LOOKER` in the Journey definition).
+- **Design check is done with the last look** of the SME reviewer or a steward (Jeevan, 24 Nov 2026): the journey passes Design check at once (`passedByMover` on the stage, `stageAfterOwnCheck`). After the creator's last look, Design check runs as before. The history note reads "Design check done with Last look after design".
+- **A steward gives feedback only** (Jeevan, 24 Nov 2026): the review buttons (Start review, Ask for changes, Close review) stay with the SME reviewer.
+- A ticket's Inbox message names its writer and role; the FEEDBACK event's meta carries `role`, `for` (email) and `for_role`, which go to the relay in `dashboard_event` data with the text in `data.note` (cut at 2000).
+- Live check, 24 Nov 2026: the Journey work type has one saved `WorkflowStage` row and none for `last_look`, so no saved "who may press" overrides the code.
+
+## 2026-11-24 · The peer reviewer is removed
+- Journey has no peer reviewer any more (Jeevan, 24 Nov 2026). It is gone from the journey page, the Journeys list (column and filter), the Teams tab, new journeys, the relay sync, "Fill missing reviewers", reports and exports, and it is no longer sent to the relay.
+- **Columns dropped** (Jeevan's choice): migration `20261124160000_remove_peer_reviewer` drops `WorkItem.peerReviewerId` and `TeamMember.peerReviewerId`. On the live site that deletes the value on 95 journeys and 8 team members (counted 24 Nov). Apply it to Render before the deploy.
+- History events with the field "Peer reviewer" are kept and shown; `dashEventFor` skips them (`PEER_FIELD`), so they are not sent.
+- `src/lib/relay-contract.ts` and the fixture keep `peer_reviewer` in the role list: a value that is not sent does not move the contract. APK Testing is unchanged.

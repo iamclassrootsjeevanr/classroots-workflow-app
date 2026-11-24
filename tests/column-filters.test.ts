@@ -14,7 +14,9 @@ describe('column filters: several values at once', () => {
     expect(where({ dev: 'a,b' })).toEqual([{ assigneeId: { in: ['a', 'b'] } }]);
     expect(where({ dev: 'none' })).toEqual([{ assigneeId: null }]);
     expect(where({ sme: 'a,none' })).toEqual([{ OR: [{ ownerId: { in: ['a'] } }, { ownerId: null }] }]);
-    expect(where({ developer: 'd', peer: 'p' })).toEqual([{ developerId: { in: ['d'] } }, { peerReviewerId: { in: ['p'] } }]);
+    expect(where({ developer: 'd' })).toEqual([{ developerId: { in: ['d'] } }]);
+    // The peer reviewer was removed (24 Nov 2026): an old link with ?peer= filters nothing.
+    expect(where({ developer: 'd', peer: 'p' } as Parameters<typeof where>[0])).toEqual([{ developerId: { in: ['d'] } }]);
   });
   it('chapters and grades take lists', () => {
     expect(where({ group: 'G04C05,G06C07', grade: '4,6' })).toEqual([{ groupKey: { in: ['G04C05', 'G06C07'] } }, { chapter: { grade: { in: [4, 6] } } }]);
@@ -47,8 +49,8 @@ describe('people the relay names and the dashboard lacks', () => {
 
 describe('a team’s default developer', () => {
   const teams: TeamLite[] = [
-    { id: 'd', name: 'Team Devjyoti', coordinatorId: 'dev', reviewerId: null, developerId: 'jeevan', members: [{ userId: 'vaishali', peerReviewerId: null }] },
-    { id: 'a', name: 'Team Arjun', coordinatorId: 'arjun', reviewerId: null, members: [{ userId: 'kapil', peerReviewerId: null }] },
+    { id: 'd', name: 'Team Devjyoti', coordinatorId: 'dev', reviewerId: null, developerId: 'jeevan', members: [{ userId: 'vaishali' }] },
+    { id: 'a', name: 'Team Arjun', coordinatorId: 'arjun', reviewerId: null, members: [{ userId: 'kapil' }] },
   ];
   it('is the developer of the creator’s team, for members and the steward', () => {
     expect(defaultDeveloper(teams, 'vaishali')).toBe('jeevan');

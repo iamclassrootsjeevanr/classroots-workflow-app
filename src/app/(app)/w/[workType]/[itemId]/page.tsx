@@ -26,7 +26,10 @@ import { reviewDefaults } from '@/lib/teams';
 import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
 import { approvalLabel } from '@/lib/relay-map';
-import { PUBLISH_LABEL, relayMismatch } from '@/lib/relay-review';
+import { PUBLISH_LABEL, relayMismatch, reopenLine, reopenStanding } from '@/lib/relay-review';
+import { relayHolderNote } from '@/lib/relay-holder';
+import { shortKey } from '@/lib/notifications-core';
+import { relayHolders } from '@/server/relay-holder';
 import { relaySettled } from '@/server/services/relay-push';
 import { journeyPart } from '@/modules/journey-applet/definition';
 
@@ -68,9 +71,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     include: {
       workType: true,
       ...APK_INCLUDE,
-      assignee: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true, email: true } },
       owner: { select: { name: true } },
-      peerReviewer: { select: { name: true } },
       developer: { select: { name: true } },
       chapter: true,
       parent: { select: { id: true, externalKey: true } },
@@ -101,12 +103,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     canAssign ? assignablePeople(await loadItems({ workTypeKeys: [key] }), [key]) : null,
     canAssign && showOwner ? reviewPeople(key) : null,
   ]);
-  // Teams: the coordinator of the creator's team owns the item (else the chapter's steward), and the creator's buddy peer-reviews it.
+  // Teams: the coordinator of the creator's team owns the item (else the chapter's steward).
   const [teams, stewards] = mod.teams ? await Promise.all([loadTeams(db, [item.workTypeId]), loadStewards(db, [item.workTypeId])]) : [[], new Map<string, { userId: string; name: string }[]>()];
   const team = reviewDefaults(teams, item.assigneeId).team;
   const teamRow = team && teams.find(t => t.id === team.id);
   const accountable = teamRow ? `${teamRow.coordinatorName} (${teamRow.name})` : stewards.get(`${item.workTypeId}:${item.groupKey}`)?.map(s => `${s.name} (steward)`).join(', ');
-  const peers = mod.teams && people ? people.filter(p => p.id !== item.assigneeId).map(p => ({ id: p.id, name: p.name })) : null;
   const data = hydrateApkData((item.data ?? {}) as Record<string, unknown>, item.apkTest);
   // APK Testing: a version is the work. Its facts and its test results (listed below) come with it.
   if (isVersion) {
@@ -138,7 +139,14 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const relayPublish = relayPublishEvent?.what ?? null;
   const relayDiffers = mod.relayBoard && !item.archivedAt ? relayMismatch(item.status, journeyPart(mod, item.status), relayPublish) : null;
   // Not a note when the stage here changed after the relay's status and the relay has been told.
-  const relayNote = relayDiffers && !(await relaySettled(item.id, relayPublishEvent?.at ?? null)) ? relayDiffers : null;
+  const relayPublishNote = relayDiffers && !(await relaySettled(item.id, relayPublishEvent?.at ?? null)) ? relayDiffers : null;
+  // Reopened on the relay while in review or later here: the stage here is not moved back, so the journey says so until it is shipped again.
+  const relayReopened = mod.relayBoard && !item.archivedAt ? reopenLine(journeyPart(mod, item.status), reopenStanding(relayEvents, typeof data.creationStage === 'string' ? data.creationStage : null)) : null;
+  const relayNote = [relayReopened, relayPublishNote].filter(Boolean).join(' ') || null;
+  // Allocations belong to the relay: when the creator here is not its holder, say who to ask.
+  const relayHolder = mod.relayBoard && !item.archivedAt ? ((await relayHolders([item.id])).get(item.id) ?? null) : null;
+  const holderNote = relayHolderNote(shortKey(item.externalKey), relayHolder, item.assignee);
+  const relayProp = relayHolder ? { key: shortKey(item.externalKey), holderId: relayHolder.userId, holderName: relayHolder.name } : undefined;
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 
@@ -237,18 +245,13 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           ))}
           <div className="min-w-52">
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
-            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} relay={relayProp} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {holderNote && <p className="note-warn mt-1.5 max-w-80 text-xs">{holderNote}</p>}
           </div>
           {owners && (
             <div className="min-w-52">
               <span className="label">{mod.labels?.owner ?? 'Owner'}</span>
               <AssignSelect owner itemId={item.id} assigneeId={item.ownerId} people={owners} label={`Choose ${lowerLabel(mod.labels?.owner ?? 'owner')}`} />
-            </div>
-          )}
-          {mod.teams && (
-            <div className="min-w-52">
-              <span className="label">{mod.labels?.peer ?? 'Peer reviewer'}</span>
-              {peers ? <AssignSelect peer none="None" itemId={item.id} assigneeId={item.peerReviewerId} people={peers} label={`Choose ${lowerLabel(mod.labels?.peer ?? 'peer reviewer')}`} /> : <div className="py-1.5 text-sm">{item.peerReviewer?.name ?? '—'}</div>}
             </div>
           )}
           {hand && (
@@ -301,10 +304,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
               <ol className="space-y-2 text-sm">
                 {relayEvents.map(e => (
                   <li key={e.id} className={e.withdrawn ? 'text-muted line-through' : ''}>
-                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.what || e.kind}</span>
+                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.kind === 'allocation' ? (e.approver ? 'Allocated on the relay' : 'Released on the relay') : e.what || e.kind}</span>
                     <span className="text-muted">
                       {' '}
-                      · {e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}
+                      {e.kind === 'allocation' ? '' : `· ${e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}`}
                       {e.version ? ` · v${e.version}` : ''}
                       {e.approver ? ` · ${e.approver}` : ''} · {formatDateTime(e.at, tz)}
                     </span>
