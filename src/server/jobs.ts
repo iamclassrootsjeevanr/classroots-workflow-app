@@ -7,6 +7,7 @@ import { syncAll } from './sync/google-sheet';
 import { refreshStages } from './stages';
 import { notifyOverdue } from './services/overdue';
 import { httpRelayClient, relayConfigured } from './relay/client';
+import { pushRelay } from './services/relay-push';
 import { syncRelay } from './services/relay-sync';
 
 /** Store today's load per person (one row per user per day; re-running updates it). */
@@ -29,12 +30,15 @@ export async function snapshotWorkload(now = new Date()) {
   return loads.length;
 }
 
-/** Pull the journey relay (when it is configured). A relay outage must not stop the other jobs. */
+/** Send what happened here to the relay, then pull the relay (when it is configured). A relay outage must not stop the other jobs. */
 async function relayJob() {
   if (!relayConfigured()) return null;
   try {
-    const r = await syncRelay(httpRelayClient());
-    return { created: r.created.length, stageChanges: r.stageChanges.length, eventsAdded: r.eventsAdded, errors: r.errors.length };
+    const client = httpRelayClient();
+    // What happened here goes out first, so the pull knows what the relay already holds.
+    const push = await pushRelay(client).catch(e => ({ error: e instanceof Error ? e.message : String(e) }));
+    const r = await syncRelay(client);
+    return { created: r.created.length, stageChanges: r.stageChanges.length, eventsAdded: r.eventsAdded, errors: r.errors.length, feed: r.feed, push };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

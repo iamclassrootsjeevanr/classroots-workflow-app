@@ -369,6 +369,7 @@ model WorkItem {
   intervals    WorkItemStageInterval[]
   feedback     Feedback[]
   outbox       SyncOutbox[]
+  relayOutbox  RelayOutbox[]
   /// APK Testing only: which version and test case this row is a run of.
   apkTest      ApkTest?
 
@@ -401,6 +402,8 @@ model WorkItemEvent {
 
   item  WorkItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
   actor User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// Its place in the queue for the relay (journeys only).
+  relayOutbox RelayOutbox?
 
   @@index([itemId, at])
   @@index([at])
@@ -647,5 +650,29 @@ model RelaySyncState {
   ok         Boolean
   /// Counts and problems of the last run.
   report     Json
+  /// Where the pull stands in the relay's change feed: { feed: {source: last row id}, fullAt: last full pass }.
+  cursor     Json?
   workType   WorkType @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+}
+
+/// Changes made here, queued for the relay's dashboard log (`dashboard_event`): one row per WorkItemEvent of a journey.
+model RelayOutbox {
+  id          String        @id @default(cuid())
+  itemId      String
+  /// The change this row carries.
+  workEventId String        @unique
+  /// The sha256 the relay keeps it under: a resend is kept once.
+  eventId     String        @unique
+  /// The event as the contract shapes it (src/lib/relay-push.ts); null for a change that is not sent.
+  payload     Json?
+  status      OutboxStatus  @default(PENDING)
+  attempts    Int           @default(0)
+  lastError   String?
+  createdAt   DateTime      @default(now())
+  sentAt      DateTime?
+  item        WorkItem      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  workEvent   WorkItemEvent @relation(fields: [workEventId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([itemId])
 }

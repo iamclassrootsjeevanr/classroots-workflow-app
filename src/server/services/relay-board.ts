@@ -35,7 +35,7 @@ export async function loadRelayBoard(workTypeKey: string, scope: Prisma.WorkItem
     const data = (i.data ?? {}) as Record<string, unknown>;
     const part = journeyPart(mod, i.status);
     const publish = l?.publish?.status || null;
-    const marked = publish === 'up_for_review' || publish === 'corrections_wip' || publish === 'ready_for_student';
+    const marked = publish === 'up_for_review' || publish === 'corrections_wip' || publish === 'ready_from_content';
     return {
       id: i.id,
       key: i.externalKey ?? i.title,

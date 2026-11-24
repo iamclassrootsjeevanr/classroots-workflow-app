@@ -15,7 +15,7 @@ describe('relay board', () => {
     expect(columnOf(j({ creationStage: '5 · Ship' }))).toBe('ship');
     expect(columnOf(j({ creationStage: '5 · Ship', publishStatus: 'up_for_review' }))).toBe('review');
     expect(columnOf(j({ creationStage: '5 · Ship', publishStatus: 'corrections_wip' }))).toBe('review');
-    expect(columnOf(j({ creationStage: '5 · Ship', publishStatus: 'ready_for_student' }))).toBe('ready');
+    expect(columnOf(j({ creationStage: '5 · Ship', publishStatus: 'ready_from_content' }))).toBe('ready');
     expect(columnOf(j({ creationStage: 'Published' }))).toBe('ready');
     expect(columnOf(j({ creationStage: '4 · Build', finished: true }))).toBeNull();
   });

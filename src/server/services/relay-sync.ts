@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
+import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
 import { relayMismatch, reviewMoves, SUBMIT_MOVES } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
 import { nextActiveAfter } from '@/lib/stages';
@@ -12,6 +13,7 @@ import { workCalendar } from '../settings';
 import { refreshStages } from '../stages';
 import type { RelayClient } from '../relay/client';
 import { notify } from './notifications';
+import { relaySettled } from './relay-push';
 import { addTeamMember } from './teams';
 import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } from './work-items';
 
@@ -22,9 +24,20 @@ import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } fr
  * students" closes its review here (which hands it to a developer for design standardization), when it is later than the last stage change
  * made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
  * Never touched here: any other stage, SME reviewer, peer reviewer, developer, feedback, and any person other than the creator.
+ *
+ * How much is read: the relay's change feed (`sync_feed`, contract in src/lib/relay-contract.ts) says which journeys something was recorded
+ * for since the last run, and only those have their status read. Holders, stewards and teams come from one `allocations` call every run.
+ * A full pass (every journey read) runs the first time, once a day, on `full`, and whenever the relay has no feed (an older relay).
+ * The cursor moves on only after a run with no errors, so a journey that failed is read again next time.
  */
 const JOURNEY = 'journey-applet';
 const ACTOR: ChangeActor = { userId: null, ctx: null, source: 'RELAY' };
+const FULL_EVERY_MS = 24 * 3600_000;
+const FEED_PAGES = 20;
+const FEED_LIMIT = 500;
+
+/** Where the pull stands: the feed cursor, and when every journey was last read. */
+type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null };
 
 export type RelayReport = {
   dryRun: boolean;
@@ -33,7 +46,7 @@ export type RelayReport = {
   /** Existing journeys with no creator that the relay holds for a known person: assigned. */
   assigned: string[];
   stageChanges: { key: string; from: string | null; to: string }[];
-  /** The relay's publish status moved the journey here: "up for review" submitted it (or sent corrections for verification), "ready for students" closed its review. */
+  /** The relay's publish status moved the journey here: "up for review" submitted it (or sent corrections for verification), "ready from content" closed its review. */
   reviewMoves: { key: string; from: string; to: string }[];
   /** The relay's publish status and the stage here disagree: what to do. */
   mismatches: { key: string; text: string }[];
@@ -57,12 +70,14 @@ export type RelayReport = {
   stewardIssues: string[];
   skipped: string[];
   errors: { key: string; error: string }[];
+  /** How this run read the relay: `feed` = only journeys the change feed named, `full` = every journey, `off` = the relay has no feed (full). */
+  feed?: { mode: 'feed' | 'full' | 'off'; events: number; read: number };
 };
 
 const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
 
-export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string } = {}): Promise<RelayReport> {
+export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string; full?: boolean } = {}): Promise<RelayReport> {
   const dryRun = Boolean(opts.dryRun);
   const report = empty(dryRun);
   const wt = await db.workType.findUnique({ where: { key: JOURNEY } });
@@ -74,6 +89,44 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   await refreshStages(true);
   const mod = requireModule(JOURNEY);
   const only = opts.key ? journeyKeyOf(opts.key) : null;
+
+  // The change feed first, so nothing recorded while this run reads is missed (reading a journey twice changes nothing).
+  const saved = ((await db.relaySyncState.findUnique({ where: { workTypeId: wt.id }, select: { cursor: true } }))?.cursor ?? null) as SyncCursor | null;
+  let touched: Touched | null = null; // null = a full pass: every journey's status is read
+  let nextFeed: FeedCursor | null = saved?.feed ?? null;
+  report.feed = { mode: 'full', events: 0, read: 0 };
+  if (!only && client.syncFeed) {
+    try {
+      const recent = saved?.fullAt ? Date.now() - Date.parse(saved.fullAt) < FULL_EVERY_MS : false;
+      if (!opts.full && saved?.feed && recent) {
+        const events: FeedEvent[] = [];
+        let cursor = saved.feed;
+        for (let page = 0; page < FEED_PAGES; page++) {
+          const got = parseFeed(await client.syncFeed({ after: cursor, limit: FEED_LIMIT }));
+          if (!got) throw new Error('unknown tool: the relay has no ledger to feed from');
+          events.push(...got.events);
+          cursor = { ...cursor, ...got.cursor };
+          if (!got.more) break;
+        }
+        touched = feedTouched(events);
+        nextFeed = cursor;
+        report.feed = { mode: 'feed', events: events.length, read: 0 };
+      } else {
+        const head = parseFeed(await client.syncFeed({ head: true }));
+        if (!head) throw new Error('unknown tool: the relay has no ledger to feed from');
+        nextFeed = head.cursor;
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      touched = null;
+      nextFeed = saved?.feed ?? null;
+      if (toolUnavailable(message)) report.feed = { mode: 'off', events: 0, read: 0 };
+      else report.errors.push({ key: 'feed', error: message });
+    }
+  } else if (!only) {
+    report.feed = { mode: 'off', events: 0, read: 0 };
+  }
+
   const allocReply = await client.allocations();
   const [items, users, chapters, cal] = await Promise.all([
     db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, data: true, assignee: { select: { name: true } } } }),
@@ -98,6 +151,10 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   if (!only) report.notOnRelay = items.filter(i => !i.archivedAt && !relayKeys.has(i.externalKey.toUpperCase()) && parseJourneyKey(i.externalKey)).map(i => i.externalKey).sort();
 
   if (!only) await syncStewards(wt.id, parseChapterStewards(allocReply), report, dryRun);
+
+  // A journey the feed did not name is not read: its relay status is the one already kept here.
+  const lastPublish = new Map<string, { what: string | null; at: Date }>();
+  if (touched) for (const r of await db.relayEvent.findMany({ where: { kind: 'publish', withdrawn: false, item: { workTypeId: wt.id } }, orderBy: { at: 'asc' }, select: { itemId: true, what: true, at: true } })) lastPublish.set(r.itemId, r);
 
   for (const a of allocations) {
     try {
@@ -127,6 +184,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
 
   async function syncOne(a: RelayAllocation) {
     let item = byKey.get(a.key);
+    const existed = Boolean(item);
     if (item?.archivedAt) {
       report.skipped.push(`${a.key} is deleted in the dashboard`);
       return;
@@ -175,6 +233,13 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       }
     }
 
+    if (touched && existed && item && !isTouched(a.key, touched)) {
+      const p = lastPublish.get(item.id);
+      const text = p ? relayMismatch(item.status, journeyPart(mod, item.status), p.what) : null;
+      if (text && !(await relaySettled(item.id, p!.at))) report.mismatches.push({ key: a.key, text });
+      return;
+    }
+    if (report.feed) report.feed.read++;
     const reply = await client.journeyStatus(a.key);
     const events = parseStatus(reply);
     const meta = parseStatusMeta(reply);
@@ -201,6 +266,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     async function syncStage() {
       if (!stage || before === stage) return;
       if (stageIndex(before) > stageIndex(stage)) {
+        // Published is this side's own step after Ship; the relay's last stage is Ship. That is the two in step, not one ahead.
+        if (before === 'Published' && stage === '5 · Ship') return;
         report.dashboardAhead.push({ key: a.key, dashboard: String(before), relay: stage });
         return;
       }
@@ -209,7 +276,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       await updateFields(ACTOR, item.id, { creationStage: stage }, { at: await inOrder(item.id, at) });
     }
 
-    /** The relay's publish status against the stage here: "up for review" submits, "corrections in progress" asks for changes, "ready for students" closes the review; anything still out of step is reported. */
+    /** The relay's publish status against the stage here: "up for review" submits, "corrections in progress" asks for changes, "ready from content" closes the review; anything still out of step is reported. */
     async function syncReview() {
       if (!item || !meta.publishStatus) return;
       const publish = { status: meta.publishStatus, at: meta.publishAt };
@@ -219,9 +286,9 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       if (moves.length) {
         const from = item.status;
         status = moves[moves.length - 1];
-        const closing = publish.status === 'ready_for_student';
+        const closing = publish.status === 'ready_from_content';
         const corrections = publish.status === 'corrections_wip';
-        const note = closing ? 'Ready for students on the relay' : corrections ? 'Corrections asked on the relay' : 'Up for review on the relay';
+        const note = closing ? 'Ready from content on the relay' : corrections ? 'Corrections asked on the relay' : 'Up for review on the relay';
         // A closed review is handed on at once (design standardization): a dry run names that stage too.
         const hand = mod.developerHandoff;
         if (dryRun && hand && status === hand.after) status = nextActiveAfter(mod.statuses, hand.after) ?? status;
@@ -255,7 +322,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         report.reviewMoves.push({ key: a.key, from: statusDef(mod, from).label, to: statusDef(mod, status).label });
       }
       const text = relayMismatch(status, journeyPart(mod, status), publish.status);
-      if (text) report.mismatches.push({ key: a.key, text });
+      // Not a flag when the stage here changed after the relay's status and the relay has been told (its dashboard log holds it).
+      if (text && !(await relaySettled(item.id, publish.at))) report.mismatches.push({ key: a.key, text });
     }
   }
 
@@ -268,7 +336,10 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
 
   if (!dryRun) {
     const ok = report.errors.length === 0;
-    await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue }, update: { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue } });
+    // The cursor moves only after a clean run of every key; one journey's run leaves it where it was.
+    const cursor: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
+    const row = { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue, ...(cursor ? { cursor: cursor as unknown as Prisma.InputJsonValue } : {}) };
+    await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, ...row }, update: row });
   }
   return report;
 }

@@ -1,0 +1,75 @@
+{
+  "contract": 1,
+  "feed_sources": [
+    "allocations",
+    "scope_modes",
+    "steps",
+    "statuses",
+    "notes",
+    "writes"
+  ],
+  "feed_entities": [
+    "allocation",
+    "scope_mode",
+    "step",
+    "approval",
+    "baseline",
+    "reopen",
+    "publish_status",
+    "team_note",
+    "cms_write"
+  ],
+  "ops": [
+    "create",
+    "update",
+    "delete"
+  ],
+  "dashboard_statuses": [
+    "allocated",
+    "creating",
+    "ready_for_review",
+    "review_in_progress",
+    "changes_asked",
+    "correction_verification",
+    "closed",
+    "design_standardization",
+    "last_look",
+    "design_check",
+    "video_replacement",
+    "uat_to_prod",
+    "published_prod",
+    "user_testing_qa",
+    "done"
+  ],
+  "publish_for": {
+    "allocated": null,
+    "creating": null,
+    "ready_for_review": "up_for_review",
+    "review_in_progress": "up_for_review",
+    "changes_asked": "corrections_wip",
+    "correction_verification": "up_for_review",
+    "closed": "ready_from_content",
+    "design_standardization": "ready_from_content",
+    "last_look": "ready_from_content",
+    "design_check": "ready_from_content",
+    "video_replacement": "ready_from_content",
+    "uat_to_prod": "ready_from_content",
+    "published_prod": "ready_from_content",
+    "user_testing_qa": "ready_from_content",
+    "done": "ready_from_content"
+  },
+  "dashboard_entities": [
+    "item",
+    "status",
+    "assignment",
+    "field",
+    "feedback"
+  ],
+  "dashboard_roles": [
+    "creator",
+    "reviewer",
+    "peer_reviewer",
+    "developer",
+    "steward"
+  ]
+}

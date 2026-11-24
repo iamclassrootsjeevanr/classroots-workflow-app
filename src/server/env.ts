@@ -23,7 +23,7 @@ const schema = z.object({
   CRON_SECRET: z.string().optional(),
   /** Key the journey relay (Claude) sends to /api/relay: it can only read journeys and set their Creation stage. */
   RELAY_KEY: z.string().optional(),
-  /** The live journey relay (buildjourneyrelay): MCP endpoint and a Cloudflare Access service token. All three set = relay sync is on. */
+  /** The live journey relay (buildjourneyrelay): MCP endpoint and a Cloudflare Access service token. All three set = relay sync is on, both ways: the relay is read (allocations, journey_status, sync_feed) and changes made here are sent to its dashboard log (dashboard_event; the relay must name the token in DASHBOARD_TOKENS). */
   RELAY_URL: z.string().optional(),
   RELAY_CF_CLIENT_ID: z.string().optional(),
   RELAY_CF_CLIENT_SECRET: z.string().optional(),

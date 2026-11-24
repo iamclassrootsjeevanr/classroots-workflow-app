@@ -6,6 +6,12 @@ export interface RelayClient {
   allocations(): Promise<unknown>;
   journeyStatus(key: string): Promise<unknown>;
   whoami(): Promise<unknown>;
+  /** Everything the relay recorded since a cursor (contract: src/lib/relay-contract.ts). Absent on a fixture client. */
+  syncFeed?(args: { after?: Record<string, number>; limit?: number; head?: boolean }): Promise<unknown>;
+  /** Send changes made here; the relay keeps them in its dashboard log and acts on none. */
+  dashboardEvents?(events: unknown[]): Promise<unknown>;
+  /** Read the relay's dashboard log back: one key's events and state, or the events after an id. */
+  dashboardLog?(args: { key?: string; after?: number; limit?: number }): Promise<unknown>;
 }
 
 export class RelayHttpError extends Error {}
@@ -54,7 +60,7 @@ export function httpRelayClient(): RelayClient {
     const msg = (await res.json()) as { error?: unknown; result?: { isError?: boolean; content?: { type: string; text?: string }[] } };
     if (msg.error) throw new RelayHttpError(`${tool}: ${JSON.stringify(msg.error).slice(0, 200)}`);
     const text = msg.result?.content?.find(c => c.type === 'text')?.text ?? '';
-    if (msg.result?.isError) throw new RelayHttpError(`${tool}: ${text.slice(0, 200)}`);
+    if (msg.result?.isError) throw new RelayHttpError(`${tool}: ${text.slice(0, 400)}`);
     return text;
   }
 
@@ -92,5 +98,8 @@ export function httpRelayClient(): RelayClient {
     allocations: () => callAll('allocations', {}),
     journeyStatus: key => callAll('journey_status', { journey: key }),
     whoami: () => callAll('whoami', {}),
+    syncFeed: args => callAll('sync_feed', args),
+    dashboardEvents: events => callAll('dashboard_event', { events }),
+    dashboardLog: args => callAll('dashboard_log', args),
   };
 }

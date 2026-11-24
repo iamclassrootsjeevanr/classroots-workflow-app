@@ -226,12 +226,12 @@ async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: st
   return [...people].sort((a, b) => busy(a.id) - busy(b.id) || (a.name ?? '').localeCompare(b.name ?? ''))[0].id;
 }
 
-/** True when the journey is on the relay and its publish status there is not "ready for students" (review over, final in UAT) yet. */
+/** True when the journey is on the relay and its publish status there is not "ready from content" (review over, final in UAT) yet. */
 async function relayNotReady(tx: Tx, itemId: string): Promise<boolean> {
   const any = await tx.relayEvent.findFirst({ where: { itemId }, select: { id: true } });
   if (!any) return false;
   const publish = await tx.relayEvent.findFirst({ where: { itemId, kind: 'publish' }, orderBy: { at: 'desc' }, select: { what: true } });
-  return publish?.what !== 'ready_for_student';
+  return publish?.what !== 'ready_from_content';
 }
 
 /**
@@ -274,11 +274,11 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   if (design && to === design && item.developerId && item.developerId !== actor.userId && (item.status === look || item.status === check)) {
     await notify(tx, item.developerId, { kind: 'item.developer', title: `Sent back to design: ${shortKey(item.externalKey)}`, body: item.title, href });
   }
-  // On the relay "ready for students" means the review of the published journey is over (design and prod come after, here only).
+  // On the relay "ready from content" means the review of the published journey is over (design and prod come after, here only).
   // The dashboard cannot write to the relay: when the review closes, the chapter's stewards are asked to set it there.
   if (mod.relayBoard && marks.includes('approved') && (await relayNotReady(tx, item.id))) {
     for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
-      await notify(tx, userId, { kind: 'item.relay-ready', title: `${label}: ${shortKey(item.externalKey)}`, body: 'Set the relay status: ready for students', href });
+      await notify(tx, userId, { kind: 'item.relay-ready', title: `${label}: ${shortKey(item.externalKey)}`, body: 'Set the relay status: ready from content', href });
     }
   }
 }
