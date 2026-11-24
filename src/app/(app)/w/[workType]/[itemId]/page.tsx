@@ -27,6 +27,9 @@ import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
 import { approvalLabel } from '@/lib/relay-map';
 import { PUBLISH_LABEL, relayMismatch, reopenLine, reopenStanding } from '@/lib/relay-review';
+import { relayHolderNote } from '@/lib/relay-holder';
+import { shortKey } from '@/lib/notifications-core';
+import { relayHolders } from '@/server/relay-holder';
 import { relaySettled } from '@/server/services/relay-push';
 import { journeyPart } from '@/modules/journey-applet/definition';
 
@@ -68,7 +71,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
     include: {
       workType: true,
       ...APK_INCLUDE,
-      assignee: { select: { id: true, name: true } },
+      assignee: { select: { id: true, name: true, email: true } },
       owner: { select: { name: true } },
       peerReviewer: { select: { name: true } },
       developer: { select: { name: true } },
@@ -142,6 +145,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   // Reopened on the relay while in review or later here: the stage here is not moved back, so the journey says so until it is shipped again.
   const relayReopened = mod.relayBoard && !item.archivedAt ? reopenLine(journeyPart(mod, item.status), reopenStanding(relayEvents, typeof data.creationStage === 'string' ? data.creationStage : null)) : null;
   const relayNote = [relayReopened, relayPublishNote].filter(Boolean).join(' ') || null;
+  // Allocations belong to the relay: when the creator here is not its holder, say who to ask.
+  const relayHolder = mod.relayBoard && !item.archivedAt ? ((await relayHolders([item.id])).get(item.id) ?? null) : null;
+  const holderNote = relayHolderNote(shortKey(item.externalKey), relayHolder, item.assignee);
+  const relayProp = relayHolder ? { key: shortKey(item.externalKey), holderId: relayHolder.userId, holderName: relayHolder.name } : undefined;
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 
@@ -240,7 +247,8 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
           ))}
           <div className="min-w-52">
             <span className="label">{mod.labels?.assignee ?? 'Developer'}</span>
-            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {people ? <AssignSelect itemId={item.id} assigneeId={item.assigneeId} people={people} relay={relayProp} label={`Choose ${lowerLabel(mod.labels?.assignee ?? 'developer')}`} /> : <div className="py-1.5 text-sm">{item.assignee?.name ?? 'Unassigned'}</div>}
+            {holderNote && <p className="note-warn mt-1.5 max-w-80 text-xs">{holderNote}</p>}
           </div>
           {owners && (
             <div className="min-w-52">
@@ -304,10 +312,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
               <ol className="space-y-2 text-sm">
                 {relayEvents.map(e => (
                   <li key={e.id} className={e.withdrawn ? 'text-muted line-through' : ''}>
-                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.what || e.kind}</span>
+                    <span className="font-medium text-ink">{e.kind === 'approval' ? `Approved: ${approvalLabel(e.approval) || e.what}` : e.kind === 'reopen' ? 'Reopened' : e.kind === 'publish' ? `Relay status: ${(e.what ?? '').replace(/_/g, ' ')}` : e.kind === 'allocation' ? (e.approver ? 'Allocated on the relay' : 'Released on the relay') : e.what || e.kind}</span>
                     <span className="text-muted">
                       {' '}
-                      · {e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}
+                      {e.kind === 'allocation' ? '' : `· ${e.stage && e.stage !== '0' ? `stage ${e.stage}` : 'start'}`}
                       {e.version ? ` · v${e.version}` : ''}
                       {e.approver ? ` · ${e.approver}` : ''} · {formatDateTime(e.at, tz)}
                     </span>

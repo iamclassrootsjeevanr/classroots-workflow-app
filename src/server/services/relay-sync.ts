@@ -3,6 +3,7 @@ import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
+import { allocationEventId } from '@/lib/relay-holder';
 import { relayMismatch, reopenFollow, reopenLine, reopenStanding, reviewMoves, SUBMIT_MOVES, type RelayRow } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
 import { nextActiveAfter } from '@/lib/stages';
@@ -197,6 +198,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   // A journey the feed did not name is not read: its relay status is the one already kept here.
   const lastPublish = new Map<string, { what: string | null; at: Date }>();
   if (touched) for (const r of await db.relayEvent.findMany({ where: { kind: 'publish', withdrawn: false, item: { workTypeId: wt.id } }, orderBy: { at: 'asc' }, select: { itemId: true, what: true, at: true } })) lastPublish.set(r.itemId, r);
+  // Who holds each journey on the relay is kept (kind `allocation`), so a creator changed here can be told apart from the relay's holder.
+  const keptAllocations = new Set((await db.relayEvent.findMany({ where: { kind: 'allocation', item: { workTypeId: wt.id } }, select: { itemId: true, eventId: true } })).map(r => `${r.itemId}|${r.eventId}`));
   // Likewise a reopen that still stands: the rows kept here say so (the reopens, and the approvals of the journeys that have one).
   const kept = new Map<string, RelayRow[]>();
   if (touched) {
@@ -279,6 +282,14 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         }
       } else {
         report.creatorDiffers.push({ key: a.key, dashboard: item.assignee?.name ?? null, relay: a.email });
+      }
+    }
+
+    if (item && !dryRun) {
+      const eventId = allocationEventId(a.key, a.email, a.at);
+      if (!keptAllocations.has(`${item.id}|${eventId}`)) {
+        await db.relayEvent.createMany({ data: [{ itemId: item.id, eventId, kind: 'allocation', what: a.email ? 'Allocated' : 'Released', approver: a.email, at: a.at ?? new Date() }], skipDuplicates: true });
+        keptAllocations.add(`${item.id}|${eventId}`);
       }
     }
 

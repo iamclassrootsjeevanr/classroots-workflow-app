@@ -11,6 +11,8 @@ import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
 import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store';
 import { notify, stewardIds } from './notifications';
+import { relayHolderNote } from '@/lib/relay-holder';
+import { relayHolders } from '../relay-holder';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
 import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
@@ -230,7 +232,7 @@ async function pickDeveloper(tx: Tx, workTypeId: string, role: string, stage: st
 
 /** True when the journey is on the relay and its publish status there is not "ready from content" (review over, final in UAT) yet. */
 async function relayNotReady(tx: Tx, itemId: string): Promise<boolean> {
-  const any = await tx.relayEvent.findFirst({ where: { itemId }, select: { id: true } });
+  const any = await tx.relayEvent.findFirst({ where: { itemId, kind: { not: 'allocation' } }, select: { id: true } });
   if (!any) return false;
   const publish = await tx.relayEvent.findFirst({ where: { itemId, kind: 'publish' }, orderBy: { at: 'desc' }, select: { what: true } });
   return publish?.what !== 'ready_from_content';
@@ -321,6 +323,19 @@ async function assignTx(tx: Tx, item: ItemWithType, actor: ChangeActor, assignee
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   if (assigneeId && assigneeId !== actor.userId && actor.source === 'APP' && !item.parentId) {
     await notify(tx, assigneeId, { kind: 'item.assigned', title: `Assigned to you: ${shortKey(item.externalKey)}`, body: item.title, href: `/w/${item.workType.key}/${item.id}` });
+  }
+
+  // Allocations belong to the relay: a creator set here who is not the relay's holder cannot work on it at a seat until an allocator
+  // moves the key. The change is not blocked; the chapter's stewards are told once.
+  if (mod.relayBoard && assigneeId && actor.source === 'APP') {
+    const holder = (await relayHolders([item.id], tx)).get(item.id) ?? null;
+    const person = holder ? await tx.user.findUnique({ where: { id: assigneeId }, select: { email: true, name: true } }) : null;
+    const note = relayHolderNote(shortKey(item.externalKey), holder, person);
+    if (note) {
+      for (const userId of await stewardIds(tx, item.workTypeId, item.groupKey)) {
+        if (userId !== actor.userId) await notify(tx, userId, { kind: 'item.relay-holder', title: `Creator changed here: ${shortKey(item.externalKey)}`, body: note, href: `/w/${item.workType.key}/${item.id}` });
+      }
+    }
   }
 
   let fresh = await loadItem(tx, item.id);

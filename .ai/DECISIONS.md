@@ -188,3 +188,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - A reopen on the relay (`human-record-15`) lowers the Creation stage here to the stage the relay shows now; a reopen of the chapter or subtopic above leaves the journey with no Creation stage. A later change of the Creation stage made here stands.
 - The review stage is never moved back by a reopen. A journey reopened while in review or later carries a note (`reopenLine`), and the chapter's stewards get one Inbox message, when the reopen is first seen.
 - A reopen "stands" until the journey is back at Ship with an approval after it (`reopenStanding`), computed from the relay rows kept here, so journeys the feed did not name keep the note.
+
+## 2026-11-24 · The relay's holder of a journey is kept, and a creator change here says so
+- `syncRelay` keeps each relay allocation as a `RelayEvent` of kind `allocation` (holder email in `approver`, none = released; id from `allocationEventId`). No schema change. `relayHolders` (`src/server/relay-holder.ts`) reads the latest per journey.
+- When the creator here is not that holder, the journey page and the Journeys list show "Relay holder: <name>. Ask an allocator to allocate <key> to <creator>." (`relayHolderNote`). The note goes when the relay's allocation agrees.
+- Changing the creator of such a journey asks first (not blocked) and sends the chapter's stewards one Inbox message. Nothing is written to the relay.

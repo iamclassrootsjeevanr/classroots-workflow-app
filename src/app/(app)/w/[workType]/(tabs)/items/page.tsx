@@ -11,6 +11,9 @@ import { db } from '@/server/db';
 import { dataSelectFields, NONE } from '@/lib/items-where';
 import { teamOf } from '@/lib/teams';
 import { loadTeams } from '@/server/teams';
+import { relayHolders } from '@/server/relay-holder';
+import { relayHolderNote } from '@/lib/relay-holder';
+import { shortKey } from '@/lib/notifications-core';
 import { loadVersionOptions } from '@/server/apk/queries';
 import { queryItemsPage, type ItemsFilters } from '@/server/services/items-query';
 import { loadWorkTypePage } from '@/server/work-type-page';
@@ -35,6 +38,15 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   // APK Testing lists the APK versions (the work); ?view=tests lists the test results instead.
   const testsView = mod.storage === 'apk' && sp.view === 'tests';
   const shown = await queryItemsPage(mod, scope, sp, user.id, Number(sp.page));
+  // Journey: where the creator here is not the relay's holder of the key, the row says who holds it.
+  const holders = mod.relayBoard ? await relayHolders(shown.rows.map(r => r.id)) : new Map();
+  const holderNotes = new Map(
+    shown.rows.flatMap(r => {
+      const h = holders.get(r.id);
+      const key = shortKey(r.externalKey);
+      return h ? [[r.id, { key, holderId: h.userId, holderName: h.name, note: r.assigneeId && r.assigneeId !== h.userId ? relayHolderNote(key, h, { email: null, name: r.assigneeName }) : null }] as const] : [];
+    }),
+  );
   const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows, developers, peers] = await Promise.all([
     editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
@@ -134,7 +146,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       />
 
       <Card>
-        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} developerEdits={developerEdits} developerOptions={developerOptions} developerColor={developerStage(mod.statuses, hand, undefined).color} tz={tz} labels={mod.labels} table={shownTable} columnFilters={columnFilters} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
+        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} relayHolders={holderNotes} assignable={assignable} developerEdits={developerEdits} developerOptions={developerOptions} developerColor={developerStage(mod.statuses, hand, undefined).color} tz={tz} labels={mod.labels} table={shownTable} columnFilters={columnFilters} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
         <Pager basePath={`/w/${key}/items`} params={sp as Record<string, string | undefined>} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
     </>
