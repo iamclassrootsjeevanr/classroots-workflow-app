@@ -8,6 +8,7 @@ import { db } from '@/server/db';
 import { emailEnabled, env, googleEnabled } from '@/server/env';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
+import { FilterableTable } from '@/components/table-filters';
 
 export const metadata = { title: 'People & access' };
 
@@ -71,7 +72,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     <>
       <PageHeader
         title="People & access"
-        subtitle={`${users.filter(u => u.active).length} active people · only people added here can sign in · ${office.length ? `@${office.join(', @')}: Google · others` : 'everyone'}: email + password`}
+        subtitle={`${users.filter(u => u.active).length} active people`}
         actions={
           <>
             <Link href="/admin/roles" className="btn-ghost">
@@ -142,13 +143,13 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
 
       {/* Wider screens: table */}
       <Card className="hidden md:block">
-        <div className="overflow-x-auto">
+        <FilterableTable className="overflow-x-auto">
           <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Email</th>
-                <th>Access (work type · roles · data · edit)</th>
+                <th data-nofilter="">Access (work type · roles · data · edit)</th>
                 <th>Work</th>
                 <th>Last sign-in</th>
                 <th />
@@ -183,7 +184,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
             </tbody>
           </table>
           {!shown.length && <p className="py-6 text-center text-sm text-muted">No one matches these filters.</p>}
-        </div>
+        </FilterableTable>
       </Card>
       {!shown.length && <p className="py-6 text-center text-sm text-muted md:hidden">No one matches these filters.</p>}
     </>

@@ -88,6 +88,7 @@ model User {
   notifications    Notification[]
   coordinatedTeams Team[]                  @relation("teamCoordinator")
   reviewedTeams    Team[]                  @relation("teamReviewer")
+  developedTeams   Team[]                  @relation("teamDeveloper")
   teamMemberships  TeamMember[]            @relation("teamMember")
   peerOf           TeamMember[]            @relation("teamPeer")
 
@@ -261,9 +262,12 @@ model Team {
   coordinatorId String
   /// Default reviewer (item owner) for the members' items. Null = the coordinator.
   reviewerId    String?
+  /// Default developer (design standardization) for the team's items. Null = the least busy developer.
+  developerId   String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   workType      WorkType     @relation(fields: [workTypeId], references: [id], onDelete: Cascade)
+  developer     User?        @relation("teamDeveloper", fields: [developerId], references: [id], onDelete: SetNull)
   coordinator   User         @relation("teamCoordinator", fields: [coordinatorId], references: [id], onDelete: Cascade)
   reviewer      User?        @relation("teamReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   members       TeamMember[]

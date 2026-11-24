@@ -8,6 +8,7 @@ import { Card } from '@/components/ui';
 import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
+import { dataSelectFields, NONE } from '@/lib/items-where';
 import { teamOf } from '@/lib/teams';
 import { loadTeams } from '@/server/teams';
 import { loadVersionOptions } from '@/server/apk/queries';
@@ -34,7 +35,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   // APK Testing lists the APK versions (the work); ?view=tests lists the test results instead.
   const testsView = mod.storage === 'apk' && sp.view === 'tests';
   const shown = await queryItemsPage(mod, scope, sp, user.id, Number(sp.page));
-  const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows] = await Promise.all([
+  const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows, developers, peers] = await Promise.all([
     editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? deletableItemsFor(user, shown.rows) : Promise.resolve(undefined),
@@ -44,6 +45,8 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     db.user.findMany({ where: { assignedItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, groupKey: { not: null } }, distinct: ['groupKey'], select: { groupKey: true } }),
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
+    mod.developerHandoff ? db.user.findMany({ where: { developerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
+    mod.teams ? db.user.findMany({ where: { peerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
   ]);
   const hand = mod.developerHandoff;
   const developerEdits = hand && editable && !testsView ? await developerEditsFor(user, shown.rows) : undefined;
@@ -60,6 +63,24 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
   const hasTeam = Boolean(teamOf(teams, user.id));
   const groupNames = groups.map(g => g.groupKey as string).sort(natural);
   const grades = [...new Set(gradeRows.map(r => r.chapter?.grade).filter((g): g is number => g != null))].sort((a, b) => a - b);
+
+  // The table's column titles filter the whole list (every page), through the URL.
+  const who = (list: { id: string; name: string | null }[], none: string) => [...list.map(u => ({ value: u.id, label: u.name ?? '?' })), { value: NONE, label: none }];
+  const shownTable = testsView ? mod.runTable : mod.table;
+  const extraLabel = (field: string, fallback: string) => shownTable?.extra?.find(c => c.field === field)?.label ?? fallback;
+  const columnFilters: Record<string, { name: string; label: string; options: { value: string; label: string }[] }> = {
+    status: { name: 'status', label: 'Status', options: mod.statuses.map(s => ({ value: s.key, label: s.label })) },
+    assignee: { name: 'dev', label: mod.labels?.assignee ?? 'Developer', options: who(devs, 'Unassigned') },
+    ...(owners.length && !shownTable?.hide?.includes('owner') ? { owner: { name: 'sme', label: mod.labels?.owner ?? 'SME', options: who(owners, 'None') } } : {}),
+    ...(developers.length && shownTable?.extra?.some(c => c.field === 'developer') ? { developer: { name: 'developer', label: extraLabel('developer', 'Developer'), options: who(developers, 'Not assigned') } } : {}),
+    ...(peers.length && shownTable?.extra?.some(c => c.field === 'peerReviewer') ? { peerReviewer: { name: 'peer', label: extraLabel('peerReviewer', 'Peer reviewer'), options: who(peers, 'None') } } : {}),
+    ...Object.fromEntries(
+      dataSelectFields(mod)
+        .filter(f => shownTable?.extra?.some(c => c.field === f.key))
+        .map(f => [f.key, { name: `f_${f.key}`, label: extraLabel(f.key, f.label), options: [...f.options!.map(o => ({ value: o, label: o })), { value: NONE, label: 'Not set' }] }]),
+    ),
+  };
+  const phoneFilters = Object.values(columnFilters).map(c => ({ ...c, multi: true, phoneOnly: true }));
 
   const STAGE_NAMES: Record<string, string> = { queue: 'To start', active: 'In progress', feedback: 'In corrections', review: 'In review', approved: 'Approved', done: 'Done', hold: 'On hold' };
   const stages = [...new Set(mod.statuses.map(s => s.category))].map(c => ({ value: c, label: mod.categoryLabels?.[c] ?? STAGE_NAMES[c] ?? c }));
@@ -99,21 +120,21 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       )}
 
       <FilterBar
+        also={Object.values(columnFilters).map(c => c.name)}
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
-          ...(groupNames.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', options: groupNames.map(g => ({ value: g, label: g })) }] : []),
-          { name: 'cat', label: 'Stage', options: stages },
-          { name: 'status', label: 'Status', options: mod.statuses.map(s => ({ value: s.key, label: s.label })) },
-          { name: 'dev', label: mod.labels?.assignee ?? 'Developer', options: [{ value: 'none', label: 'Unassigned' }, ...devs.map(d => ({ value: d.id, label: d.name ?? '?' }))] },
-          ...(owners.length && !mod.table?.hide?.includes('owner') ? [{ name: 'sme', label: mod.labels?.owner ?? 'SME', options: owners.map(o => ({ value: o.id, label: o.name ?? '?' })) }] : []),
-          ...(teams.length ? [{ name: 'team', label: 'Team', options: teams.map(t => ({ value: t.id, label: t.name })) }] : []),
-          ...(grades.length ? [{ name: 'grade', label: 'Grade', options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
+          ...(groupNames.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', multi: true, options: groupNames.map(g => ({ value: g, label: g })) }] : []),
+          { name: 'cat', label: 'Stage', multi: true, options: stages },
+          ...(teams.length ? [{ name: 'team', label: 'Team', multi: true, options: teams.map(t => ({ value: t.id, label: t.name })) }] : []),
+          ...(grades.length ? [{ name: 'grade', label: 'Grade', multi: true, options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
           { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, ...(hasTeam ? [{ value: 'team', label: 'My team' }] : []), { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },
+          // Phones show cards, not the table: its column filters sit here instead.
+          ...phoneFilters,
         ]}
       />
 
       <Card>
-        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} developerEdits={developerEdits} developerOptions={developerOptions} developerColor={developerStage(mod.statuses, hand, undefined).color} tz={tz} labels={mod.labels} table={testsView ? mod.runTable : mod.table} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
+        <ItemsTable items={shown.rows} statusOptions={options} fieldEdits={edits} deletable={deletable} people={people} assignable={assignable} developerEdits={developerEdits} developerOptions={developerOptions} developerColor={developerStage(mod.statuses, hand, undefined).color} tz={tz} labels={mod.labels} table={shownTable} columnFilters={columnFilters} groupByChapter={testsView || !mod.versions} empty={`No ${testsView ? 'tests' : `${mod.itemNoun}s`} match these filters.`} />
         <Pager basePath={`/w/${key}/items`} params={sp as Record<string, string | undefined>} page={shown.page} pages={shown.pages} from={shown.from} to={shown.to} total={shown.total} />
       </Card>
     </>

@@ -60,7 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             { href: '/admin/users', label: 'People & access', icon: 'people' as const },
             { href: '/admin/roles', label: 'Roles', icon: 'roles' as const },
             { href: '/admin/work-types', label: 'Work types', icon: 'workTypes' as const },
-            { href: '/admin/sync', label: 'Sheet sync', icon: 'sync' as const },
+            { href: '/admin/sync', label: 'Integrations', icon: 'integrations' as const },
           ]
         : [],
     },

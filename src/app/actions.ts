@@ -13,7 +13,7 @@ import { startViewAs, stopViewAs } from '@/server/view-as';
 import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
-import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
+import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { httpRelayClient, relayConfigured } from '@/server/relay/client';
 import { pushRelay } from '@/server/services/relay-push';
@@ -327,6 +327,13 @@ export async function setTeamReviewerAction(teamId: string, reviewerId: string |
   return run(async () => {
     const a = await teamActor(teamId);
     return `Default ${a.mod.labels?.owner ?? 'reviewer'} saved${moved(await setTeamReviewer(a.user.id, teamId, reviewerId), a.mod.itemNoun)}`;
+  });
+}
+
+export async function setTeamDeveloperAction(teamId: string, developerId: string | null) {
+  return run(async () => {
+    const a = await teamActor(teamId);
+    return `Default ${(a.mod.developerHandoff?.label ?? 'developer').toLowerCase()} saved${moved(await setTeamDeveloper(a.user.id, teamId, developerId), a.mod.itemNoun)}`;
   });
 }
 
@@ -667,6 +674,8 @@ export async function syncRelayAction(dryRun: boolean) {
     if (r.creatorDiffers.length) bits.push(`${r.creatorDiffers.length} reassigned here after the relay, kept`);
     if (r.teamChanges.length) bits.push(`${r.teamChanges.length} team ${dryRun ? 'changes to make' : 'changes'} (${r.teamChanges.map(x => `${x.person} → ${x.team}`).join(', ')})`);
     if (r.teamIssues.length) bits.push(`teams to check: ${r.teamIssues.join('; ')}`);
+    if (r.addedPeople?.length) bits.push(`${r.addedPeople.length} ${dryRun ? 'people to add' : 'people added'} from the relay (${r.addedPeople.map(p => p.name).join(', ')})`);
+    if (r.peopleIssues?.length) bits.push(`people to check: ${r.peopleIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
     if (r.feed?.mode === 'feed') bits.push(`${r.feed.events} relay changes since the last run, ${r.feed.read} journeys read`);

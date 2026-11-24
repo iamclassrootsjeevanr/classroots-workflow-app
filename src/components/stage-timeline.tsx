@@ -1,4 +1,5 @@
 import { formatDateTime, formatDuration } from '@/lib/time';
+import { FilterableTable } from './table-filters';
 
 export type TimelineInterval = {
   status: string;
@@ -38,7 +39,7 @@ export function StageTimeline({ intervals, now, tz, assigneeLabel = 'Developer' 
         <span>now</span>
       </div>
 
-      <div className="table-wrap mt-3"><table className="table">
+      <FilterableTable className="table-wrap mt-3"><table className="table">
         <thead>
           <tr>
             <th>Stage</th>
@@ -64,7 +65,7 @@ export function StageTimeline({ intervals, now, tz, assigneeLabel = 'Developer' 
           ))}
         </tbody>
       </table>
-      </div>
+      </FilterableTable>
     </div>
   );
 }

@@ -11,8 +11,9 @@ import { relayConfigured } from '@/server/relay/client';
 import type { RelayReport } from '@/server/services/relay-sync';
 import { appTz } from '@/server/settings';
 import { syncDirection, workTypeConfig } from '@/server/services/work-items';
+import { FilterableTable } from '@/components/table-filters';
 
-export const metadata = { title: 'Sheet sync' };
+export const metadata = { title: 'Integrations' };
 
 export default async function SyncPage() {
   await requireAdmin();
@@ -38,7 +39,7 @@ export default async function SyncPage() {
 
   return (
     <>
-      <PageHeader title="Google Sheet sync" subtitle="The database is the source of truth. App → sheet keeps the sheet a copy of the app. Two-way also pulls sheet edits in; if both change the same cell, the app wins and the conflict is logged." />
+      <PageHeader title="Integrations" subtitle="What this app exchanges with other systems: the journey relay and Google Sheets. The database here is the source of truth. For a sheet, App → sheet keeps the sheet a copy of the app; Two-way also pulls sheet edits in, and if both change the same cell the app wins and the conflict is logged." />
 
       {!configured && (
         <p className="note-warn mb-4">
@@ -105,6 +106,10 @@ export default async function SyncPage() {
           {relayReport && (relayReport.stewardIssues?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-warn">Stewards to check: {relayReport.stewardIssues.join('; ')}</p>
           )}
+          {relayReport && (relayReport.addedPeople?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Added from the relay: {relayReport.addedPeople!.map(p => `${p.name} (${p.email} · ${p.roles.join(', ')})`).join(', ')}. They sign in with Google; correct a name or role in People.</p>
+          )}
+          {relayReport && (relayReport.peopleIssues?.length ?? 0) > 0 && <p className="mt-2 text-xs text-warn">People to check: {relayReport.peopleIssues!.join('; ')}</p>}
           {relayReport && relayReport.unknownPeople.length > 0 && (
             <p className="mt-3 text-xs text-muted">Add these people in People (their email must match the relay), then sync again: {[...new Set(relayReport.unknownPeople.map(p => p.email))].join(', ')}</p>
           )}
@@ -191,6 +196,7 @@ export default async function SyncPage() {
 
         {conflicts.length > 0 && (
           <Card title="Recent conflicts (app value kept)">
+            <FilterableTable>
             <table className="table">
               <thead>
                 <tr>
@@ -217,6 +223,7 @@ export default async function SyncPage() {
                 ))}
               </tbody>
             </table>
+            </FilterableTable>
           </Card>
         )}
 

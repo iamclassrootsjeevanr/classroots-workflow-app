@@ -13,6 +13,7 @@ import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
 import { dashboard } from '@/server/services/analytics';
 import { assignablePeople } from '@/server/view';
+import { FilterableTable } from '@/components/table-filters';
 
 export const metadata = { title: 'Admin overview' };
 
@@ -103,7 +104,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Workload now" actions={<span className="text-xs text-muted">active items ÷ capacity</span>}>
-          <div className="table-wrap">
+          <FilterableTable className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -140,7 +141,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
               ))}
             </tbody>
           </table>
-          </div>
+          </FilterableTable>
         </Card>
         <Card title="Workload over the last 3 weeks">
           <WorkloadHeatmap days={d.heatmap.days} rows={heatRows} />
@@ -221,7 +222,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         </Card>
       </div>
 
-      <Card title="Sheet sync" actions={<Link className="link text-sm" href="/admin/sync">Manage</Link>}>
+      <Card title="Integrations" actions={<Link className="link text-sm" href="/admin/sync">Manage</Link>}>
         {syncStates.length ? (
           <ul className="text-sm">
             {syncStates.map(s => (
@@ -232,7 +233,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted">Sync hasn’t run yet. {allModules().some(m => m.sheet) && 'Turn it on under Sheet sync.'}</p>
+          <p className="text-sm text-muted">Sync hasn’t run yet. {allModules().some(m => m.sheet) && 'Turn it on under Integrations.'}</p>
         )}
         <p className="mt-1 text-xs text-muted">{pendingOutbox} change(s) waiting to be written to the sheet.</p>
       </Card>

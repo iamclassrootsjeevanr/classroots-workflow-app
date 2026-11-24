@@ -160,7 +160,7 @@ Open **Admin** (top of the left menu).
 - **People & access:** add a person, give a role in each work type, send the invite email, deactivate or remove someone. Check their email matches RELAY so their journeys land on them.
 - **Roles:** see and edit what each role can do. **Reset to default** returns a role to the standard.
 - **Work types:** pause, archive, or edit the stages of a work type (rename, skip, add).
-- **Sheet sync:** connect Google Sheets. The **Journey relay** card has **Dry run** (report only) and **Sync RELAY now**.
+- **Integrations:** the journey relay and Google Sheets. The **Journey relay** card has **Dry run** (report only) and **Sync RELAY now**.
 - **View as:** pick a person to see the app exactly as they see it. Use it to answer "I cannot see my journey".
 - You can act on any journey at any stage, and you can close or reopen any ticket.
 

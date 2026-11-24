@@ -7,6 +7,7 @@ import { formatDate, formatDateTime } from '@/lib/time';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { ItemRow } from '@/server/services/analytics';
 import { AssignSelect, DeleteItemButton, EditItemButton, LinkButton, StatusSelect, type PersonOption, type StatusOption } from './controls';
+import { UrlFilter, type FilterOption } from './column-filter';
 import { Sheet } from './sheet';
 import { Delay, Empty, StatusBadge } from './ui';
 
@@ -36,13 +37,24 @@ type Props = {
   labels?: { assignee?: string; owner?: string; due?: string };
   /** Hide default columns / add data columns (from the work type definition). */
   table?: WorkTypeDefinition['table'];
+  /**
+   * Column id (`owner`, `assignee`, `status` or an extra field) → the URL filter its title opens. Given on lists the
+   * server pages; without it the titles filter the rows on screen.
+   */
+  columnFilters?: Record<string, { name: string; options: FilterOption[] }>;
 };
 
 const LINK_FIELDS: Record<string, string> = { cmsUrl: 'CMS', aiTutorUrl: 'AI Tutor', buildUrl: 'Build', apkUrl: 'APK' };
 
 /** Work items with inline status changes. A table on wide screens, stacked cards on phones. */
-export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, developerEdits, developerOptions, developerColor, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table }: Props) {
-  if (!items.length) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
+export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people, assignable, developerEdits, developerOptions, developerColor, showWorkType, showAssignee = true, groupByChapter = true, tz, empty, linkable, labels, table, columnFilters }: Props) {
+  if (!items.length && !columnFilters) return <Empty>{empty ?? 'Nothing here yet.'}</Empty>;
+  const head = (id: string, label: string) => (
+    <>
+      {label}
+      {columnFilters?.[id] && <UrlFilter name={columnFilters[id].name} label={label} options={columnFilters[id].options} />}
+    </>
+  );
   const assigneeLabel = labels?.assignee ?? 'Developer';
   const ownerLabel = labels?.owner ?? 'SME';
   const dueLabel = labels?.due ?? 'Expected';
@@ -77,7 +89,7 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
   const linksOf = (it: ItemRow) => Object.entries(LINK_FIELDS).filter(([k]) => typeof it.data[k] === 'string' && it.data[k]);
 
   const extraTd = (it: ItemRow, field: string) => (
-    <td key={field} className="max-w-56 text-xs">
+    <td key={field} className="max-w-56 text-xs" data-fv={text(it, field)}>
       {extraCell(it, field, true) ?? (text(it, field) ? (
         <div className="truncate" title={text(it, field)}>
           {text(it, field)}
@@ -116,8 +128,8 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
   // Right after Title: people, Status and the extra columns the work type orders (`table.order`), then the rest as usual.
   const midColumns = [
     ...(showOwner ? [{ id: 'owner', label: ownerLabel, cell: (it: ItemRow) => <td key="owner" className="whitespace-nowrap text-muted">{it.ownerName ?? '—'}</td> }] : []),
-    ...(showAssignee ? [{ id: 'assignee', label: assigneeLabel, cell: (it: ItemRow) => <td key="assignee" className="whitespace-nowrap">{assignee(it, true)}</td> }] : []),
-    { id: 'status', label: 'Status', cell: (it: ItemRow) => <td key="status">{status(it, true)}</td> },
+    ...(showAssignee ? [{ id: 'assignee', label: assigneeLabel, cell: (it: ItemRow) => <td key="assignee" className="whitespace-nowrap" data-fv={it.assigneeName ?? ''}>{assignee(it, true)}</td> }] : []),
+    { id: 'status', label: 'Status', cell: (it: ItemRow) => <td key="status" data-fv={it.statusLabel}>{status(it, true)}</td> },
     ...early.map(c => ({ id: c.field, label: c.label, cell: (it: ItemRow) => extraTd(it, c.field) })),
   ]
     .map((c, i) => ({ ...c, i }))
@@ -204,7 +216,8 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
       </ul>
 
       {/* Wider screens: table */}
-      <Sheet className="hidden md:block">
+      {!items.length && <Empty>{empty ?? 'Nothing here yet.'}</Empty>}
+      <Sheet className="hidden md:block" filters={!columnFilters}>
         <table className="sheet">
           <thead>
             <tr>
@@ -212,16 +225,16 @@ export function ItemsTable({ items, statusOptions, fieldEdits, deletable, people
               <th className="pin">Key</th>
               <th>Title</th>
               {midColumns.map(c => (
-                <th key={c.id}>{c.label}</th>
+                <th key={c.id}>{head(c.id, c.label)}</th>
               ))}
               {extra.map(c => (
-                <th key={c.field}>{c.label}</th>
+                <th key={c.field}>{head(c.field, c.label)}</th>
               ))}
               {showUpdated && <th>Last update</th>}
               {showExpected && <th>{dueLabel}</th>}
               {showDelay && <th>Delay</th>}
-              <th>Links</th>
-              {anyActions && <th className="pin-end">Actions</th>}
+              <th data-nofilter="">Links</th>
+              {anyActions && <th className="pin-end" data-nofilter="">Actions</th>}
             </tr>
           </thead>
           <tbody>

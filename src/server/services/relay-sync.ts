@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
-import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards,
+import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
 import { relayMismatch, reviewMoves, SUBMIT_MOVES } from '@/lib/relay-review';
@@ -9,6 +9,7 @@ import { nextActiveAfter } from '@/lib/stages';
 import { journeyPart } from '@/modules/journey-applet/definition';
 import { requireModule, statusDef } from '@/modules/registry';
 import { db } from '../db';
+import { env } from '../env';
 import { workCalendar } from '../settings';
 import { refreshStages } from '../stages';
 import type { RelayClient } from '../relay/client';
@@ -53,6 +54,10 @@ export type RelayReport = {
   eventsAdded: number;
   /** The relay holds the journey for an email that is not a dashboard user (nobody is assigned until they are added). */
   unknownPeople: { key: string; email: string }[];
+  /** People the relay names who were not in the dashboard: added (office emails only), with the roles they got. */
+  addedPeople?: { email: string; name: string; roles: string[] }[];
+  /** People the relay names who could not be added: why. */
+  peopleIssues?: string[];
   /** The relay moved the journey to another creator after the dashboard's last reassignment: the dashboard follows. */
   reassigned: { key: string; from: string | null; to: string }[];
   /** The dashboard reassigned the journey after the relay's allocation: kept, reported. */
@@ -74,7 +79,7 @@ export type RelayReport = {
   feed?: { mode: 'feed' | 'full' | 'off'; events: number; read: number };
 };
 
-const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
+const empty = (dryRun: boolean): RelayReport => ({ dryRun, allocated: 0, created: [], assigned: [], stageChanges: [], reviewMoves: [], mismatches: [], eventsAdded: 0, unknownPeople: [], addedPeople: [], peopleIssues: [], reassigned: [], creatorDiffers: [], teamChanges: [], teamIssues: [], dashboardAhead: [], notOnRelay: [], stewards: [], stewardIssues: [], skipped: [], errors: [] });
 const stageIndex = (s: unknown) => CREATION_STAGES.findIndex(x => x === s);
 
 export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; key?: string; full?: boolean } = {}): Promise<RelayReport> {
@@ -150,6 +155,35 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   const relayKeys = new Set(allocations.map(a => a.key));
   if (!only) report.notOnRelay = items.filter(i => !i.archivedAt && !relayKeys.has(i.externalKey.toUpperCase()) && parseJourneyKey(i.externalKey)).map(i => i.externalKey).sort();
 
+  // Someone the relay names and the dashboard lacks is added first, so this same run gives them their journeys and chapters.
+  const willAdd = new Set<string>();
+  if (!only) {
+    try {
+      const gone = await db.user.findMany({ where: { active: false, email: { not: null } }, select: { email: true } });
+      const plan = planRelayPeople(allocations.flatMap(a => (a.email ? [a.email] : [])), parseChapterStewards(allocReply), e => Boolean(personFor(e)), env().OFFICE_DOMAINS, new Set(gone.map(u => u.email!.toLowerCase())));
+      report.peopleIssues = plan.issues;
+      const roles = await db.accessRole.findMany({ where: { workTypeId: wt.id, key: { in: [mod.importRoles?.assignee ?? 'sme-creator', 'coordinator'] } }, select: { id: true, key: true, name: true } });
+      const creatorRole = roles.find(r => r.key !== 'coordinator');
+      const stewardRole = roles.find(r => r.key === 'coordinator');
+      for (const p of plan.add) {
+        const give = [...(p.creator && creatorRole ? [creatorRole] : []), ...(p.chapters.length && stewardRole ? [stewardRole] : [])];
+        if (!give.length) {
+          report.peopleIssues.push(`${p.email}: no role to give in Journey`);
+          continue;
+        }
+        report.addedPeople!.push({ email: p.email, name: p.name, roles: give.map(r => r.name) });
+        willAdd.add(p.email);
+        if (dryRun) continue;
+        // A steward's chapter list starts with the relay's chapters: an empty list would mean every chapter.
+        const user = await db.user.create({ data: { email: p.email, name: p.name, active: true, memberships: { create: { workTypeId: wt.id, groupKeys: p.chapters, roles: { create: give.map(r => ({ roleId: r.id })) } } } }, select: { id: true } });
+        userByEmail.set(p.email, user.id);
+        nameById.set(user.id, p.name);
+      }
+    } catch (e) {
+      report.errors.push({ key: 'people', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   if (!only) await syncStewards(wt.id, parseChapterStewards(allocReply), report, dryRun);
 
   // A journey the feed did not name is not read: its relay status is the one already kept here.
@@ -190,7 +224,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
       return;
     }
     const assigneeId = a.email ? personFor(a.email) : null;
-    if (a.email && !assigneeId) report.unknownPeople.push({ key: a.key, email: a.email });
+    if (a.email && !assigneeId && !willAdd.has(a.email.toLowerCase())) report.unknownPeople.push({ key: a.key, email: a.email });
     if (!item) {
       report.created.push(a.key);
       if (!dryRun) {

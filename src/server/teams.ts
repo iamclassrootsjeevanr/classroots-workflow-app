@@ -4,7 +4,7 @@ import { db } from './db';
 
 type Client = Prisma.TransactionClient | typeof db;
 
-export type TeamRow = Omit<TeamLite, 'members'> & { workTypeId: string; coordinatorName: string; reviewerName: string | null; members: (TeamLite['members'][number] & { name: string; peerReviewerName: string | null })[] };
+export type TeamRow = Omit<TeamLite, 'members'> & { workTypeId: string; coordinatorName: string; reviewerName: string | null; developerId: string | null; developerName: string | null; members: (TeamLite['members'][number] & { name: string; peerReviewerName: string | null })[] };
 
 const who = (u: { name: string | null; email: string | null } | null | undefined) => u?.name ?? u?.email ?? '?';
 
@@ -17,6 +17,7 @@ export async function loadTeams(client: Client, workTypeIds: string[]): Promise<
     include: {
       coordinator: { select: { name: true, email: true } },
       reviewer: { select: { name: true, email: true } },
+      developer: { select: { name: true, email: true, active: true } },
       members: { include: { user: { select: { name: true, email: true } }, peerReviewer: { select: { name: true, email: true } } } },
     },
   });
@@ -28,6 +29,9 @@ export async function loadTeams(client: Client, workTypeIds: string[]): Promise<
     coordinatorName: who(t.coordinator),
     reviewerId: t.reviewerId,
     reviewerName: t.reviewer ? who(t.reviewer) : null,
+    // A deactivated developer is no default: the least busy one is picked instead.
+    developerId: t.developer?.active ? t.developerId : null,
+    developerName: t.developer?.active ? who(t.developer) : null,
     members: t.members
       .map(m => ({ userId: m.userId, name: who(m.user), peerReviewerId: m.peerReviewerId, peerReviewerName: m.peerReviewer ? who(m.peerReviewer) : null }))
       .sort((a, b) => a.name.localeCompare(b.name)),

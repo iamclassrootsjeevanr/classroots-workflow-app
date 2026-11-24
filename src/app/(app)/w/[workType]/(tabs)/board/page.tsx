@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { FilterableTable } from '@/components/table-filters';
 import { notFound } from 'next/navigation';
 import { Card, Empty } from '@/components/ui';
 import { BOARD_COLUMNS, columnTotals, FRESH_DAYS, OLD_DAYS, type BoardChip } from '@/lib/relay-board';
@@ -40,13 +41,13 @@ export default async function RelayBoardPage({ params }: { params: Promise<{ wor
         <Empty>No journeys to show.</Empty>
       ) : (
         <Card flush title={`${total} journeys in creation`}>
-          <div className="overflow-x-auto">
+          <FilterableTable className="overflow-x-auto">
             <table className="w-full min-w-[56rem] border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
                   <th className="sticky left-0 z-[1] bg-surface px-4 py-2 text-left text-2xs font-semibold tracking-wide text-muted uppercase">Creator</th>
                   {BOARD_COLUMNS.map(c => (
-                    <th key={c.key} className="px-2 py-2 text-left text-2xs font-semibold tracking-wide text-muted uppercase">
+                    <th key={c.key} data-nofilter="" className="px-2 py-2 text-left text-2xs font-semibold tracking-wide text-muted uppercase">
                       {c.label} <span className="font-normal">· {totals[c.key]}</span>
                     </th>
                   ))}
@@ -88,7 +89,7 @@ export default async function RelayBoardPage({ params }: { params: Promise<{ wor
                 ))}
               </tbody>
             </table>
-          </div>
+          </FilterableTable>
         </Card>
       )}
     </div>
