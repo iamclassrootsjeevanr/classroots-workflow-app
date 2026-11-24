@@ -258,6 +258,50 @@ export const approvalLabel = (id: string | null) => (id ? (APPROVAL_LABELS[id.re
 /** "krishna.rander@classrootsedu.com" → "krishna rander": the name an email's local part spells, for matching a person whose dashboard email differs. */
 export const nameFromEmail = (email: string) => email.split('@')[0].replace(/[._+-]+/g, ' ').trim().toLowerCase();
 
+/** "krishna.rander@classrootsedu.com" → "Krishna Rander": the name a person added from the relay starts with (an admin can correct it). */
+export const displayNameFromEmail = (email: string) => nameFromEmail(email).replace(/\b[a-z]/g, c => c.toUpperCase());
+
+export type RelayPersonPlan = { email: string; name: string; creator: boolean; /** Chapters the relay names them owner of. */ chapters: string[] };
+
+/**
+ * People the relay names that the dashboard does not know: who to add. Only office emails are added (they sign in with
+ * Google, so no password is needed and nobody outside the office gets in); the rest, and people deactivated here, are
+ * reported. `known` answers whether the dashboard already has someone for the email.
+ */
+export function planRelayPeople(
+  holders: readonly string[],
+  stewards: readonly { code: string; email: string }[],
+  known: (email: string) => boolean,
+  officeDomains: readonly string[],
+  deactivated: ReadonlySet<string> = new Set(),
+): { add: RelayPersonPlan[]; issues: string[] } {
+  const byEmail = new Map<string, RelayPersonPlan>();
+  const issues: string[] = [];
+  const person = (raw: string) => {
+    const email = raw.trim().toLowerCase();
+    if (!email.includes('@') || known(email)) return null;
+    if (byEmail.has(email)) return byEmail.get(email)!;
+    const reason = deactivated.has(email) ? 'is deactivated here' : !officeDomains.includes(email.split('@')[1]) ? 'is not an office email: add them in People with a password' : null;
+    if (reason) {
+      const text = `${email} ${reason}`;
+      if (!issues.includes(text)) issues.push(text);
+      return null;
+    }
+    const p: RelayPersonPlan = { email, name: displayNameFromEmail(email), creator: false, chapters: [] };
+    byEmail.set(email, p);
+    return p;
+  };
+  for (const e of holders) {
+    const p = person(e);
+    if (p) p.creator = true;
+  }
+  for (const s of stewards) {
+    const p = person(s.email);
+    if (p && !p.chapters.includes(s.code)) p.chapters.push(s.code);
+  }
+  return { add: [...byEmail.values()].map(p => ({ ...p, chapters: [...p.chapters].sort() })), issues };
+}
+
 /**
  * Whether the relay's holder replaces the dashboard's creator: the relay allocation is later than the dashboard's last
  * (re)assignment. A reassignment made here after the relay's allocation stands, and is reported instead.

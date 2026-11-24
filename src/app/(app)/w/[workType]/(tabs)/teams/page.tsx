@@ -6,7 +6,7 @@ import { teamPeople } from '@/lib/teams';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import { loadTeams } from '@/server/teams';
-import { reviewPeople } from '@/server/view';
+import { developerPeople, reviewPeople } from '@/server/view';
 import { loadWorkTypePage } from '@/server/work-type-page';
 
 export async function generateMetadata({ params }: { params: Promise<{ workType: string }> }) {
@@ -27,11 +27,12 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
     });
-  const [teams, creators, coordinators, reviewers] = await Promise.all([loadTeams(db, [wt.id]), withRight('capWork'), withRight('capAssign'), reviewPeople(key)]);
+  const hand = mod.developerHandoff;
+  const [teams, creators, coordinators, reviewers, developers] = await Promise.all([loadTeams(db, [wt.id]), withRight('capWork'), withRight('capAssign'), reviewPeople(key), hand ? developerPeople(key, hand.role) : Promise.resolve([])]);
   const person = (u: { id: string; name: string | null; email: string | null }) => ({ id: u.id, name: u.name ?? u.email ?? '?' });
   const teamNameOf = new Map(teams.flatMap(t => t.members.map(m => [m.userId, t.name] as const)));
   const openOf = (ids: string[]) => items.filter(i => i.assigneeId && ids.includes(i.assigneeId) && i.category !== 'done').length;
-  const labels = { creator: mod.labels?.assignee ?? 'Person', reviewer: mod.labels?.owner ?? 'Reviewer', peer: mod.labels?.peer ?? 'Peer reviewer', noun: mod.itemNoun };
+  const labels = { creator: mod.labels?.assignee ?? 'Person', reviewer: mod.labels?.owner ?? 'Reviewer', peer: mod.labels?.peer ?? 'Peer reviewer', noun: mod.itemNoun, developer: hand?.label };
 
   const views: TeamView[] = teams.map(t => ({
     id: t.id,
@@ -39,6 +40,8 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
     coordinatorId: t.coordinatorId,
     coordinatorName: t.coordinatorName,
     reviewerId: t.reviewerId,
+    developerId: t.developerId,
+    developerName: t.developerName,
     members: t.members.map(m => ({ ...m, open: openOf([m.userId]), href: itemsUrl(key, { dev: m.userId }) })),
     canManage: editable && (access.isAdmin || (can('assign') && t.coordinatorId === user.id)),
     itemsHref: itemsUrl(key, { team: t.id }),
@@ -51,7 +54,7 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
     <div className="space-y-5">
       <p className="text-sm text-muted">
         A {labels.noun} belongs to the steward of its {labels.creator.toLowerCase()}&rsquo;s team, whoever allocated it and in whichever chapter. That steward is its default {labels.reviewer.toLowerCase()}; the
-        creator&rsquo;s buddy is its {labels.peer.toLowerCase()}. Both can be changed here for the team, or on one {labels.noun}.
+        creator&rsquo;s buddy is its {labels.peer.toLowerCase()}{hand ? `, and the team's default ${hand.label.toLowerCase()} checks its design after review` : ''}. Each can be changed here for the team, or on one {labels.noun}.
       </p>
       {access.isAdmin && editable && (
         <Card title="Add a team">
@@ -66,6 +69,7 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
             team={t}
             creators={creators.map(c => ({ ...person(c), teamName: teamNameOf.get(c.id) }))}
             reviewers={reviewers}
+            developers={developers}
             coordinators={coordinators.map(person)}
             isAdmin={access.isAdmin && editable}
             labels={labels}

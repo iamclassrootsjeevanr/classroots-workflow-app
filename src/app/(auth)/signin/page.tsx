@@ -127,7 +127,6 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             </form>
           </section>
         </div>
-        <p className="mt-4 text-center text-xs text-muted">Only people an admin has added can sign in.</p>
       </div>
     </main>
   );

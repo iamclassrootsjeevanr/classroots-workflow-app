@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AutoFilters } from './table-filters';
 
 const INTERACTIVE = 'a,button,select,input,textarea,label,[role="button"]';
 
@@ -8,8 +9,9 @@ const INTERACTIVE = 'a,button,select,input,textarea,label,[role="button"]';
  * Spreadsheet-style scroll frame for a `<table className="sheet">`.
  * Always-visible scrollbars, a fade when more columns sit off to the right, a shadow under pinned columns once
  * scrolled, and cell navigation: click a cell, then use the arrow keys, Home/End or Ctrl/Cmd+C to copy it.
+ * Column titles get a value filter (see `AutoFilters`); pass `filters={false}` for a table that has none.
  */
-export function Sheet({ children, className = '', maxHeight = '70vh' }: { children: React.ReactNode; className?: string; maxHeight?: string }) {
+export function Sheet({ children, className = '', maxHeight = '70vh', filters = true }: { children: React.ReactNode; className?: string; maxHeight?: string; filters?: boolean }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [state, setState] = useState({ scrolled: false, more: false });
 
@@ -38,7 +40,7 @@ export function Sheet({ children, className = '', maxHeight = '70vh' }: { childr
   };
 
   const cellAt = (td: HTMLTableCellElement, dRow: number, dCol: number): HTMLElement | undefined => {
-    const rows = [...(td.closest('table')?.querySelectorAll('tbody tr') ?? [])].filter(r => r.children.length > 1) as HTMLTableRowElement[];
+    const rows = [...(td.closest('table')?.querySelectorAll('tbody tr') ?? [])].filter(r => r.children.length > 1 && !(r as HTMLElement).hidden) as HTMLTableRowElement[];
     const r = rows.indexOf(td.parentElement as HTMLTableRowElement);
     if (r < 0) return undefined;
     const row = rows[Math.min(rows.length - 1, Math.max(0, r + dRow))];
@@ -77,6 +79,7 @@ export function Sheet({ children, className = '', maxHeight = '70vh' }: { childr
         {children}
       </div>
       <div className="sheet-fade" aria-hidden="true" />
+      {filters && <AutoFilters root={scroller} />}
     </div>
   );
 }

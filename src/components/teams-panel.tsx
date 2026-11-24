@@ -10,6 +10,7 @@ import {
   removeTeamMemberAction,
   saveTeamAction,
   setMemberPeerAction,
+  setTeamDeveloperAction,
   setTeamReviewerAction,
   type ActionResult,
 } from '@/app/actions';
@@ -23,6 +24,9 @@ export type TeamView = {
   coordinatorId: string;
   coordinatorName: string;
   reviewerId: string | null;
+  /** Default developer of the team's items; null = the least busy one. */
+  developerId: string | null;
+  developerName: string | null;
   members: { userId: string; name: string; peerReviewerId: string | null; peerReviewerName: string | null; open: number; href: string }[];
   /** The viewer may change this team (its coordinator, or an admin). */
   canManage: boolean;
@@ -30,7 +34,7 @@ export type TeamView = {
   open: number;
 };
 
-type Labels = { creator: string; reviewer: string; peer: string; noun: string };
+type Labels = { creator: string; reviewer: string; peer: string; noun: string; /** Set when the work type hands items to a developer. */ developer?: string };
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -45,7 +49,7 @@ function useAction() {
 }
 
 /** One team: its coordinator, the default SME reviewer, and each member with their peer reviewer. */
-export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, isAdmin, labels }: { workTypeId: string; team: TeamView; creators: (PersonOption & { teamName?: string })[]; reviewers: PersonOption[]; coordinators: PersonOption[]; isAdmin: boolean; labels: Labels }) {
+export function TeamCard({ workTypeId, team, creators, reviewers, developers = [], coordinators, isAdmin, labels }: { workTypeId: string; team: TeamView; creators: (PersonOption & { teamName?: string })[]; reviewers: PersonOption[]; developers?: PersonOption[]; coordinators: PersonOption[]; isAdmin: boolean; labels: Labels }) {
   const { pending, result, exec } = useAction();
   const { confirm, dialog } = useConfirm();
   const [add, setAdd] = useState('');
@@ -97,6 +101,24 @@ export function TeamCard({ workTypeId, team, creators, reviewers, coordinators, 
           )}
           <span className="mt-1 block text-xs text-muted">New {labels.noun}s of the team go to this reviewer. Open ones still on the old default move too.</span>
         </label>
+        {labels.developer && (
+          <label className="block">
+            <span className="label">Default {labels.developer.toLowerCase()}</span>
+            {team.canManage ? (
+              <select className="input" value={team.developerId ?? ''} disabled={pending} onChange={e => exec(() => setTeamDeveloperAction(team.id, e.target.value || null))}>
+                <option value="">Least busy {labels.developer.toLowerCase()}</option>
+                {developers.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="py-1.5 text-sm">{team.developerName ?? `Least busy ${labels.developer.toLowerCase()}`}</div>
+            )}
+            <span className="mt-1 block text-xs text-muted">Checks the design of the team&rsquo;s {labels.noun}s once their review closes. Ones waiting in design on the old default move too.</span>
+          </label>
+        )}
       </div>
 
       {team.members.length ? (

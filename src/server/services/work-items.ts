@@ -13,7 +13,7 @@ import { currentApkFields, prepareApkCreate, writeApkFields } from '../apk/store
 import { notify, stewardIds } from './notifications';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
 import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
-import { nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
+import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
 
@@ -198,7 +198,8 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
 
 /**
  * Journey: the review is closed. The journey moves on to the next stage (design standardization) and a developer is assigned to
- * check it: the one already on it, else the developer with the fewest journeys waiting in that stage.
+ * check it: the one already on it, else the default developer of the creator's team, else the developer with the fewest journeys
+ * waiting in that stage.
  */
 async function handOffToDeveloperTx(tx: Tx, itemId: string, actor: ChangeActor, now: Date, cal: WorkCalendar) {
   const item = await loadItem(tx, itemId);
@@ -208,7 +209,8 @@ async function handOffToDeveloperTx(tx: Tx, itemId: string, actor: ChangeActor, 
   if (!hand || !next) return;
   const system = { ...actor, ctx: null };
   // A paused design standardization stage only collects journeys: nobody is assigned until it is active again.
-  const developerId = item.developerId ?? (!developerStage(mod.statuses, hand).paused ? await pickDeveloper(tx, item.workTypeId, hand.role, next) : null);
+  const teamDeveloper = mod.teams ? defaultDeveloper(await loadTeams(tx, [item.workTypeId]), item.assigneeId) : null;
+  const developerId = item.developerId ?? (!developerStage(mod.statuses, hand).paused ? (teamDeveloper ?? (await pickDeveloper(tx, item.workTypeId, hand.role, next))) : null);
   if (developerId && developerId !== item.developerId) await setPersonTx(tx, item, system, 'developer', developerId, now);
   await changeStatusTx(tx, await loadItem(tx, itemId), system, next, now, cal);
 }

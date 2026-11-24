@@ -1,8 +1,10 @@
+import { nextActiveAfter } from '@/lib/stages';
 import { reviewDefaults, type TeamLite } from '@/lib/teams';
+import { requireModule } from '@/modules/registry';
 import { db } from '../db';
 import { ForbiddenError } from '../errors';
 import { loadTeams } from '../teams';
-import { refillReviewDefaults, type ChangeActor } from './work-items';
+import { refillReviewDefaults, setDeveloper, type ChangeActor } from './work-items';
 
 /**
  * Teams: who is in them and their review defaults. Callers (server actions) check that the person may manage the team;
@@ -58,6 +60,32 @@ export async function setTeamReviewer(actorId: string, teamId: string, reviewerI
   const was = snapshot(await loadTeams(db, [team.workTypeId]), people);
   await db.team.update({ where: { id: teamId }, data: { reviewerId: next } });
   return refillReviewDefaults(system(actorId), team.workTypeId, { creatorIds: people, was });
+}
+
+/**
+ * Default developer of the team's journeys (null = the least busy developer). Journeys of the team now waiting in the
+ * design stage follow when nobody is on them or they are still on the old default; one given to someone else by hand stays.
+ */
+export async function setTeamDeveloper(actorId: string, teamId: string, developerId: string | null) {
+  const team = await db.team.findUniqueOrThrow({ where: { id: teamId }, include: { members: { select: { userId: true } }, workType: { select: { key: true } } } });
+  const mod = requireModule(team.workType.key);
+  const hand = mod.developerHandoff;
+  if (!hand) throw new Error('This work type has no developer step.');
+  if (developerId) {
+    const ok = await db.user.findFirst({ where: { id: developerId, active: true, memberships: { some: { workTypeId: team.workTypeId, roles: { some: { role: { key: hand.role, canEdit: true } } } } } }, select: { id: true } });
+    if (!ok) throw new Error(`Pick someone with the ${hand.label} role here.`);
+  }
+  if (developerId === team.developerId) return 0;
+  await db.team.update({ where: { id: teamId }, data: { developerId } });
+  const stage = nextActiveAfter(mod.statuses, hand.after);
+  if (!developerId || !stage) return 0;
+  const people = [team.coordinatorId, ...team.members.map(m => m.userId)];
+  const open = await db.workItem.findMany({
+    where: { workTypeId: team.workTypeId, archivedAt: null, status: stage, assigneeId: { in: people }, OR: [{ developerId: null }, ...(team.developerId ? [{ developerId: team.developerId }] : [])] },
+    select: { id: true },
+  });
+  for (const it of open) await setDeveloper(system(actorId), it.id, developerId);
+  return open.length;
 }
 
 export async function addTeamMember(actorId: string | null, teamId: string, userId: string) {

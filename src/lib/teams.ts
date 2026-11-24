@@ -12,6 +12,8 @@ export type TeamLite = {
   coordinatorId: string;
   /** Default SME reviewer of the members' items; null = the coordinator. */
   reviewerId: string | null;
+  /** Default developer of the team's items (the design check after review); null or absent = the least busy developer. */
+  developerId?: string | null;
   members: { userId: string; peerReviewerId: string | null }[];
 };
 
@@ -20,6 +22,9 @@ export function teamOf(teams: readonly TeamLite[], userId: string | null | undef
   if (!userId) return undefined;
   return teams.find(t => t.members.some(m => m.userId === userId)) ?? teams.find(t => t.coordinatorId === userId);
 }
+
+/** The developer who checks the design of this creator's items by default: their team's, when it has one. */
+export const defaultDeveloper = (teams: readonly TeamLite[], creatorId: string | null | undefined): string | null => teamOf(teams, creatorId)?.developerId ?? null;
 
 /** Everyone whose items a team owns: its members and its coordinator. */
 export const teamPeople = (team: TeamLite): string[] => [...new Set([team.coordinatorId, ...team.members.map(m => m.userId)])];
