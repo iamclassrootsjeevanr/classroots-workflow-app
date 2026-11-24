@@ -55,6 +55,11 @@ export type StatusDef = {
   custom?: boolean;
   /** Items whose field has this value pass straight on to the next stage (e.g. no videos to replace). */
   skipWhen?: { field: string; equals: string };
+  /**
+   * A check stage that is passed at once when the person who moved the item into it may press its own button too: the same person
+   * would check twice (Journey: Design check, when the SME reviewer or a steward does the last look).
+   */
+  passedByMover?: boolean;
 };
 
 /**

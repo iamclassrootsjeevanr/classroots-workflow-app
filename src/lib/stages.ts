@@ -194,3 +194,15 @@ export function stageKeyFor(label: string, taken: Iterable<string>): string {
   for (let n = 2; used.has(key); n++) key = `${base}_${n}`;
   return key;
 }
+
+/**
+ * A check stage the mover may approve themself is passed with the move (`passedByMover`): the stage after it, or undefined when
+ * the item stops at `reached`. Only for the forward move out of the stage before it (`from` → `to`), by a person (`mayApprove`
+ * answers whether they may press the check stage's own button).
+ */
+export function stageAfterOwnCheck(statuses: StatusDef[], from: string, to: string, reached: string, mayApprove: ((by: Actor[]) => boolean) | null): string | undefined {
+  const check = statuses.find(s => s.key === reached);
+  if (!check?.passedByMover || !check.next || !mayApprove) return undefined;
+  if (nextActiveAfter(statuses, from) !== to || !mayApprove(check.next.by)) return undefined;
+  return nextActiveAfter(statuses, reached);
+}

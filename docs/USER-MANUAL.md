@@ -84,6 +84,7 @@ RELAY (creation)                    DASHBOARD
 7. When the review is closed and the developer finishes design, you get a message: **do the last look**.
    - It is right: choose **→ Last look done**.
    - Something is wrong: open **Feedback**, raise a ticket that explains it, and press **Send back to design**. The developer fixes it and you look again.
+   - The SME reviewer or the steward can do the last look instead of you. Then the journey also passes the Design check.
 
 **Useful**
 - **Relay board** tab (Journey): shows your journeys by stage and how many days each has waited. Red chips are 5 days or more.
@@ -179,7 +180,7 @@ Each problem is a **ticket** with its own chat, like `TICK-00012`.
 2. Write a short **Title** and a clear **Description** (where it is, what is wrong, what it should be).
 3. Pick the **Severity** (Low, Medium, High) and a category if you want.
 4. Press **Raise ticket**. The other person is told.
-5. Reviewers (and the creator at last look, and the steward at QA) also see a red button, for example **Ask for changes**. It raises the ticket **and** sends the journey back in one step.
+5. Reviewers (and the creator, the SME reviewer or the steward at last look, and the steward at QA) also see a red button, for example **Ask for changes**. It raises the ticket **and** sends the journey back in one step.
 
 **Chat**
 - Open a ticket (click its row). Both sides write messages in the box and press **Send** (or Ctrl or Cmd + Enter).

@@ -3,9 +3,9 @@ import { requireModule, statusDef } from '@/modules/registry';
 import type { FieldDef, WorkTypeDefinition } from '@/modules/types';
 import { itemSheetValues } from '@/lib/sheet-core';
 import { businessMinutesBetween, dayKey, DEFAULT_CALENDAR, dueDateToInstant, halfOfDay, minutesBetween, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
-import { developerStage, landingStage, nextActiveAfter } from '@/lib/stages';
+import { developerStage, landingStage, nextActiveAfter, stageAfterOwnCheck } from '@/lib/stages';
 import { lowerLabel, matchOption } from '@/lib/text';
-import { allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
+import { actorMatches, allowedTransitions, canDeleteItem, canGiveFeedback, canUndoDelete, UNDO_DELETE_MINUTES, canEditField, canTransition, hasCap, stagePatch, transitionFor, type ActorContext } from '@/lib/workflow';
 import { db } from '../db';
 import { ConflictError, ForbiddenError, PausedError } from '../errors';
 import { workCalendar } from '../settings';
@@ -14,7 +14,7 @@ import { notify, stewardIds } from './notifications';
 import { relayHolderNote } from '@/lib/relay-holder';
 import { relayHolders } from '../relay-holder';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
-import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle } from '@/lib/feedback';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel } from '@/lib/feedback';
 import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -177,8 +177,13 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
     for (const half of mod.fields.filter(x => x.halfOf === f)) if (!data[half.key]) data[half.key] = halfOfDay(now, cal);
   }
   for (const [f, v] of Object.entries(move?.set ?? {})) if (!data[f]) data[f] = v;
-  const landing = landingStage(mod.statuses, to, data);
-  const note = landing === to ? opts.note : [opts.note, `${statusDef(mod, to).label} not needed`].filter(Boolean).join(' · ');
+  const reached = landingStage(mod.statuses, to, data);
+  // A check stage the mover may approve themself is passed with this move: the same person would check twice.
+  const check = statusDef(mod, reached);
+  const ctx = actor.ctx;
+  const afterCheck = stageAfterOwnCheck(mod.statuses, item.status, to, reached, ctx ? by => actorMatches(by, ctx) : null);
+  const landing = afterCheck ? landingStage(mod.statuses, afterCheck, data) : reached;
+  const note = [opts.note, reached !== to ? `${statusDef(mod, to).label} not needed` : null, afterCheck ? `${check.label} done with ${statusDef(mod, item.status).label}` : null].filter(Boolean).join(' · ') || undefined;
   const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, landing, now) };
   if (move?.stamp?.length || move?.set || mod.compute) {
     const c = computed(mod, item.externalKey, data, cal);
@@ -669,10 +674,18 @@ export async function addFeedback(
     const toId = counterpart(actor.userId, item);
     const ticket = await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, title: ticketTitle(input.title, body), toId, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
-    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity }, at: now } });
-    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator.
+    // Who wrote it and who it is for go with the event: the relay shows a reviewer's or a steward's feedback to the creator's seat.
+    const role = writerRole(actor.ctx);
+    const [writer, reader] = await Promise.all([
+      actor.userId ? tx.user.findUnique({ where: { id: actor.userId }, select: { name: true } }) : null,
+      toId ? tx.user.findUnique({ where: { id: toId }, select: { email: true } }) : null,
+    ]);
+    const forRole = toId === item.assigneeId ? 'creator' : toId === item.developerId ? 'developer' : toId === item.ownerId ? 'reviewer' : null;
+    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity, role, ...(reader?.email ? { for: reader.email.toLowerCase(), for_role: forRole } : {}) }, at: now } });
+    // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator. One message, with who wrote it.
     if (toId && toId !== actor.userId && actor.source === 'APP') {
-      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: ticket.title, href: `/w/${item.workType.key}/${item.id}/feedback` });
+      const from = writer?.name ? ` · from ${writer.name} (${writerRoleLabel(role, mod)})` : '';
+      await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: `${ticket.title}${from}`, href: `/w/${item.workType.key}/${item.id}/feedback` });
     }
     if (input.requestCorrections) {
       const fresh = await loadItem(tx, itemId);

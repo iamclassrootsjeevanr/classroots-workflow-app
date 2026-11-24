@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildAccess, canSeeItem, capabilitiesIn, type RoleLite } from '@/lib/access-core';
-import { applyStageConfig } from '@/lib/stages';
+import { applyStageConfig, stageAfterOwnCheck } from '@/lib/stages';
+import { writerRole, writerRoleLabel } from '@/lib/feedback';
 import { actorMatches, allowedTransitions, canDeleteItem, canEditField, canGiveFeedback, hasCap, type ActorContext } from '@/lib/workflow';
 import { journeyApplet as base } from '@/modules/journey-applet/definition';
 import { rightsDrift, rolesForModule, templateColumns } from '@/modules/roles';
@@ -76,6 +77,11 @@ describe('SME reviewer', () => {
     expect(canGiveFeedback(mod, others)).toBe(false);
     expect(canGiveFeedback(mod, ctxFor(['sme-creator'], { assignee: true }))).toBe(false);
   });
+  it('does the last look of the journeys they review, or sends it back to design (24 Nov 2026)', () => {
+    expect(moves(mine, 'last_look').sort()).toEqual(['design_check', 'design_standardization']);
+    expect(allowedTransitions(mod, 'last_look', mine).find(t => t.to === 'design_standardization')?.requires).toBe('feedback');
+    expect(moves(others, 'last_look')).toEqual([]);
+  });
   it('edits the review date and links of their journeys, not the creation stage or the creation dates', () => {
     expect(editable(mine).sort()).toEqual(['reviewDate', ...LINKS].sort());
     expect(editable(others)).toEqual([]);
@@ -103,10 +109,11 @@ describe('Coordinator', () => {
     const notTheirs = ctxFor(['coordinator'], { creatorId: 'vaishali' }, 'G05C02', ['G04C05'], ['kapil']);
     expect(hasCap(notTheirs, 'assign')).toBe(false);
   });
-  it('moves the after-steps (not the last look) and sends a journey back from QA with feedback', () => {
+  it('moves the after-steps, the last look too, and sends a journey back from QA with feedback', () => {
     expect(moves(inChapter, 'closed')).toEqual(['design_standardization']);
     expect(moves(inChapter, 'design_standardization')).toEqual(['last_look']); // a coordinator may also press Design done (the developer does by default)
-    expect(moves(inChapter, 'last_look')).toEqual([]);
+    expect(moves(inChapter, 'last_look').sort()).toEqual(['design_check', 'design_standardization']); // 24 Nov 2026: a steward can do the last look
+    expect(moves(otherChapter, 'last_look')).toEqual([]); // not outside their chapters and teams
     expect(moves(inChapter, 'design_check').sort()).toEqual(['design_standardization', 'video_replacement']); // the steward checks the design with the reviewer
     expect(moves(inChapter, 'video_replacement')).toEqual(['uat_to_prod']);
     expect(moves(inChapter, 'uat_to_prod')).toEqual(['published_prod']);
@@ -193,5 +200,50 @@ describe('design loop', () => {
   });
   it('the developer presses Design done to send it to the creator again', () => {
     expect(moves(developer, 'design_standardization')).toEqual(['last_look']);
+  });
+});
+
+describe('the last look by three roles (24 Nov 2026)', () => {
+  const creator = ctxFor(['sme-creator'], { assignee: true });
+  const reviewer = ctxFor(['sme-reviewer'], { owner: true });
+  const steward = ctxFor(['coordinator'], {}, 'G04C05', ['G04C05']);
+  const teamSteward = ctxFor(['coordinator'], { creatorId: 'kapil' }, 'G05C02', ['G04C05'], ['kapil']);
+  const stewardElsewhere = ctxFor(['coordinator'], {}, 'G05C02', ['G04C05']);
+  const admin: ActorContext = { isAdmin: true, capabilities: new Set(), canEdit: true, isAssignee: false };
+  const after = (ctx: ActorContext | null, from = 'last_look', to = 'design_check') => stageAfterOwnCheck(mod.statuses, from, to, to, ctx ? by => actorMatches(by, ctx) : null);
+
+  it('the creator, the SME reviewer and a steward who can act on the journey can press Last look done', () => {
+    for (const ctx of [creator, reviewer, steward, teamSteward]) expect(moves(ctx, 'last_look')).toContain('design_check');
+    expect(moves(stewardElsewhere, 'last_look')).toEqual([]);
+    expect(moves(ctxFor(['developer']), 'last_look')).toEqual([]);
+  });
+  it('Design check still runs after the creator, and is done with the last look of the SME reviewer or a steward', () => {
+    expect(after(creator)).toBeUndefined();
+    expect(after(reviewer)).toBe('video_replacement');
+    expect(after(steward)).toBe('video_replacement');
+    expect(after(teamSteward)).toBe('video_replacement');
+    expect(after(admin)).toBe('video_replacement');
+    expect(after(null)).toBeUndefined(); // a change the system made (the relay, an import)
+  });
+  it('only for the move out of the last look, and only into a stage marked so', () => {
+    expect(after(admin, 'design_standardization', 'design_check')).toBeUndefined(); // an admin setting Design check from elsewhere
+    expect(stageAfterOwnCheck(mod.statuses, 'design_check', 'video_replacement', 'video_replacement', () => true)).toBeUndefined();
+    expect(mod.statuses.filter(s => s.passedByMover).map(s => s.key)).toEqual(['design_check']);
+  });
+  it('the SME reviewer and a steward who can act on the journey give feedback to the creator', () => {
+    expect(canGiveFeedback(mod, reviewer)).toBe(true);
+    expect(canGiveFeedback(mod, steward)).toBe(true);
+    expect(canGiveFeedback(mod, teamSteward)).toBe(true);
+    expect(canGiveFeedback(mod, stewardElsewhere)).toBe(false);
+    expect(canGiveFeedback(mod, creator)).toBe(false);
+    expect(canGiveFeedback(mod, ctxFor(['sme-reviewer']))).toBe(false);
+  });
+  it('a steward does not press the review buttons', () => {
+    for (const from of ['ready_for_review', 'review_in_progress', 'correction_verification']) expect(moves(steward, from), from).toEqual([]);
+  });
+  it('a ticket says who wrote it', () => {
+    expect([writerRole(reviewer), writerRole(creator), writerRole(steward), writerRole(admin), writerRole(null), writerRole(stewardElsewhere)]).toEqual(['reviewer', 'creator', 'steward', 'admin', 'system', 'member']);
+    expect(writerRole({ ...steward, isOwner: true })).toBe('reviewer'); // a steward who is the journey's reviewer writes as its reviewer
+    expect([writerRoleLabel('reviewer', base), writerRoleLabel('steward', base), writerRoleLabel('creator', base), writerRoleLabel('developer', base)]).toEqual(['SME reviewer', 'Steward', 'SME creator', 'Developer']);
   });
 });

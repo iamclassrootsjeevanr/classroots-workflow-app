@@ -21,7 +21,7 @@ Journeys are grouped by chapter. All Journey roles can see every Journey, but a 
 | Role                | Main responsibility                                                                                                                                                               | Can act on                                                                                                                |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | **SME creator**     | Builds the Journey with Claude, submits it, makes corrections, and does the last look after design.                                                                               | Only Journeys assigned to them as SME creator.                                                                            |
-| **SME reviewer**    | Reviews the Journey, gives feedback, verifies corrections, and closes the review. By default this is the coordinator of the creator's team.                                       | Only Journeys assigned to them as SME reviewer.                                                                           |
+| **SME reviewer**    | Reviews the Journey, gives feedback, verifies corrections, and closes the review. Can do the last look after design. By default this is the coordinator of the creator's team.      | Only Journeys assigned to them as SME reviewer.                                                                           |
 | **Steward**         | Coordinator of their chapters and owner of their team's Journeys: adds chapters and Journeys, allocates, sets pick-up dates, maintains details, and drives the post-review steps. | Journeys in chapters they steer, and every Journey of their team's creators in any chapter. Elsewhere they can only view. |
 | **Program manager** | Watches delivery through dashboards, Journey lists, reports, and exports.                                                                                                         | View only.                                                                                                                |
 | **Admin**           | Maintains the system and resolves exceptions.                                                                                                                                     | Any Journey and any stage.                                                                                                |
@@ -93,8 +93,9 @@ Closed
 Design standardization (the developer checks it)
   ↓ Developer fixes and marks design done
 Last look after design
-  ├─ Creator sends back with feedback → Design standardization (developer fixes, marks design done again)
+  ├─ Creator, SME reviewer or Steward sends back with feedback → Design standardization (developer fixes, marks design done again)
   ↓ Creator marks last look done
+  ↓ (SME reviewer or Steward marks last look done → Design check is done with it: the Journey goes straight to the next stage)
 Design check
   ├─ SME reviewer or Steward sends back with feedback → Design standardization (developer fixes, then last look and design check again)
   ↓ Reviewer or Steward marks design approved
@@ -165,8 +166,8 @@ Once a Journey is **Closed**, the coordinator moves it through the delivery step
 | ---------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Closed                 | (automatic)            | Moves on to design standardization at once and a developer is assigned. A coordinator can still press **Send to design standardization** if one is stuck here.                                          |
 | Design standardization | Developer (or Steward) | The developer checks and fixes the design, then presses **Design done**.                                                                                                                                |
-| Last look after design | SME creator            | **Last look done**. If something is wrong, write feedback and **Send back to design**: the developer gets the feedback, fixes it and presses **Design done** again. Repeats until the creator is happy. |
-| Design check           | SME reviewer or Steward | **Design approved**. If something is wrong, write feedback and **Send back to design**: the developer fixes it and the journey goes through the creator's last look and this check again. |
+| Last look after design | SME creator, SME reviewer or Steward | **Last look done**. If something is wrong, write feedback and **Send back to design**: the developer gets the feedback, fixes it and presses **Design done** again. When the SME reviewer or a Steward presses **Last look done**, that is the Design check too and the Journey passes it. |
+| Design check           | SME reviewer or Steward | Runs after the creator's last look. **Design approved**. If something is wrong, write feedback and **Send back to design**: the developer fixes it and the journey goes through the creator's last look and this check again. |
 | Video replacement      | Steward                | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`.                                                                                                        |
 | UAT → prod migration   | Steward                | Advance after Engineering has migrated it.                                                                                                                                                              |
 | Published on prod      | Steward                | Start user testing.                                                                                                                                                                                     |
@@ -206,7 +207,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 3. Fill the CMS and AI Tutor links.
 4. Press **Submit for review** when ready, even if the creation stage is still progressing.
 5. When feedback arrives, fix it and press **Corrections done**.
-6. After design, complete **Last look done** or send it back to design if necessary. The SME reviewer or steward then does the **Design check**.
+6. After design, complete **Last look done** or send it back to design if necessary. The SME reviewer or steward then does the **Design check**. They can also do the last look themselves; then there is no separate Design check.
 
 ### SME reviewer
 
@@ -214,6 +215,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 2. Press **Start review**.
 3. Close the review, or leave clear feedback and press **Ask for changes**.
 4. Verify corrections and either close the review or request another change round.
+5. After design you can do the **Last look** yourself (**Last look done**, or feedback and **Send back to design**). Your last look is the Design check too. If the creator did the last look, do the **Design check**.
 
 ### Steward
 
@@ -221,7 +223,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 1. Keep your team, its default SME reviewer and the peer reviewers up to date on the **Teams** tab.
 1. Ensure a submitted Journey has an SME reviewer.
 1. Keep `Needs video replacement` accurate before post-review delivery.
-1. Move closed Journeys through design, migration, publishing, and QA.
+1. Move closed Journeys through design, migration, publishing, and QA. You can do the **Last look** and the **Design check** on the Journeys you can act on, and give feedback to the creator. The review buttons stay with the SME reviewer.
 1. If QA fails, leave feedback and use **Send back for a fix**.
 1. Monitor Inbox alerts and overdue review closure due dates for your chapters.
 

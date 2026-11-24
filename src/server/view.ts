@@ -1,8 +1,8 @@
 import 'server-only';
 import { workloadByUser, type ItemLite } from '@/lib/analytics-core';
-import { developerStage } from '@/lib/stages';
+import { developerStage, stageAfterOwnCheck } from '@/lib/stages';
 import { instantToDateKey } from '@/lib/time';
-import { allowedTransitions, canDeleteItem, canEditField, hasCap, type ActorContext } from '@/lib/workflow';
+import { actorMatches, allowedTransitions, canDeleteItem, canEditField, hasCap, type ActorContext } from '@/lib/workflow';
 import { getModule, statusDef } from '@/modules/registry';
 import type { WorkTypeDefinition } from '@/modules/types';
 import type { EditableField, PersonOption, StatusOption } from '@/components/controls';
@@ -38,7 +38,11 @@ export async function statusOptionsFor(user: CurrentUser, items: ItemRow[]): Pro
 export function statusOptions(mod: WorkTypeDefinition, status: string, ctx: ActorContext): StatusOption[] {
   return allowedTransitions(mod, status, ctx)
     .filter(t => t.requires !== 'feedback')
-    .map(t => ({ to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, t.to).label }));
+    .map(t => {
+      // A check stage this person may approve themself is passed with the move: the option names the stage the item really reaches.
+      const reached = stageAfterOwnCheck(mod.statuses, status, t.to, t.to, by => actorMatches(by, ctx)) ?? t.to;
+      return { to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, reached).label };
+    });
 }
 
 /** People who hold the work type's developer role (Journey: they check design standardization). */
