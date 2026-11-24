@@ -34,8 +34,8 @@ export type EventRow = {
 };
 
 export type PushContext = {
-  /** Field labels the person slots are logged under (Journey: SME reviewer, Peer reviewer, Developer). */
-  labels: { owner: string; peer: string; developer: string };
+  /** Field labels the person slots are logged under (Journey: SME reviewer, Developer). */
+  labels: { owner: string; developer: string };
   statusLabel: (status: string) => string | null;
   /** A person's email by the name events record, where the name is unique. */
   emailByName: Map<string, string>;
@@ -43,6 +43,9 @@ export type PushContext = {
 
 /** The event types that are sent. Comments and sheet conflicts are not data about the journey. */
 export const PUSHED_TYPES = ['CREATED', 'IMPORTED', 'STATUS_CHANGED', 'ASSIGNED', 'UNASSIGNED', 'FIELD_CHANGED', 'FEEDBACK'] as const;
+
+/** The label old history events of the removed peer reviewer slot carry. */
+export const PEER_FIELD = 'Peer reviewer';
 
 const MAX_VALUE = 500;
 const MAX_NOTE = 2000;
@@ -82,7 +85,8 @@ export function dashEventFor(row: EventRow, ctx: PushContext): DashEvent | { ski
     }
     case 'FIELD_CHANGED': {
       if (row.field === ctx.labels.owner) return people('reviewer');
-      if (row.field === ctx.labels.peer) return people('peer_reviewer');
+      // The peer reviewer was removed (24 Nov 2026). Its old history stays here and is not sent.
+      if (row.field === PEER_FIELD) return { skip: 'the peer reviewer is not sent' };
       if (row.field === ctx.labels.developer) return people('developer');
       if (row.field === 'archivedAt') return { ...base, entity: 'item', action: row.toValue ? 'delete' : 'update', data: { ...data, ...(row.toValue ? {} : { restored: true }) } };
       if (!row.field) return { skip: 'a field change with no field' };

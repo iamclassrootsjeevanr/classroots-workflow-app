@@ -10,10 +10,10 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { startViewAs, stopViewAs } from '@/server/view-as';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setPeerReviewer, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
-import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
+import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { httpRelayClient, relayConfigured } from '@/server/relay/client';
 import { pushRelay } from '@/server/services/relay-push';
@@ -82,10 +82,6 @@ export async function setOwnerAction(itemId: string, ownerId: string | null) {
 
 export async function setDeveloperAction(itemId: string, userId: string | null) {
   return run(async () => setDeveloper(await itemActor(itemId), itemId, userId));
-}
-
-export async function setPeerReviewerAction(itemId: string, userId: string | null) {
-  return run(async () => setPeerReviewer(await itemActor(itemId), itemId, userId));
 }
 
 export async function updateFieldsAction(itemId: string, patch: Record<string, FieldValue>) {
@@ -352,14 +348,7 @@ export async function removeTeamMemberAction(teamId: string, userId: string) {
   });
 }
 
-export async function setMemberPeerAction(teamId: string, userId: string, peerReviewerId: string | null) {
-  return run(async () => {
-    const a = await teamActor(teamId);
-    return `${a.mod.labels?.peer ?? 'Peer reviewer'} saved${moved(await setMemberPeer(a.user.id, teamId, userId, peerReviewerId), a.mod.itemNoun)}`;
-  });
-}
-
-/** Give open journeys with no SME reviewer or peer reviewer their team's default. */
+/** Give open journeys with no SME reviewer their team's default. */
 export async function fillReviewersAction(teamId: string) {
   return run(async () => {
     const a = await teamActor(teamId);

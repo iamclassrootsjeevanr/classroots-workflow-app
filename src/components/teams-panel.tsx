@@ -9,7 +9,6 @@ import {
   fillReviewersAction,
   removeTeamMemberAction,
   saveTeamAction,
-  setMemberPeerAction,
   setTeamDeveloperAction,
   setTeamReviewerAction,
   type ActionResult,
@@ -27,14 +26,14 @@ export type TeamView = {
   /** Default developer of the team's items; null = the least busy one. */
   developerId: string | null;
   developerName: string | null;
-  members: { userId: string; name: string; peerReviewerId: string | null; peerReviewerName: string | null; open: number; href: string }[];
+  members: { userId: string; name: string; open: number; href: string }[];
   /** The viewer may change this team (its coordinator, or an admin). */
   canManage: boolean;
   itemsHref: string;
   open: number;
 };
 
-type Labels = { creator: string; reviewer: string; peer: string; noun: string; /** Set when the work type hands items to a developer. */ developer?: string };
+type Labels = { creator: string; reviewer: string; noun: string; /** Set when the work type hands items to a developer. */ developer?: string };
 
 function useAction() {
   const [pending, start] = useTransition();
@@ -48,14 +47,13 @@ function useAction() {
   return { pending, result, exec };
 }
 
-/** One team: its coordinator, the default SME reviewer, and each member with their peer reviewer. */
+/** One team: its coordinator, the default SME reviewer and developer, and its members. */
 export function TeamCard({ workTypeId, team, creators, reviewers, developers = [], coordinators, isAdmin, labels }: { workTypeId: string; team: TeamView; creators: (PersonOption & { teamName?: string })[]; reviewers: PersonOption[]; developers?: PersonOption[]; coordinators: PersonOption[]; isAdmin: boolean; labels: Labels }) {
   const { pending, result, exec } = useAction();
   const { confirm, dialog } = useConfirm();
   const [add, setAdd] = useState('');
   const [editing, setEditing] = useState(false);
   const free = creators.filter(c => !c.teamName && c.id !== team.coordinatorId);
-  const peers = (memberId: string) => creators.filter(c => c.id !== memberId);
   const reviewerName = reviewers.find(r => r.id === team.reviewerId)?.name;
 
   return (
@@ -132,21 +130,6 @@ export function TeamCard({ workTypeId, team, creators, reviewers, developers = [
                   {m.open === 1 ? '' : 's'}
                 </Link>
               </div>
-              <label className="min-w-52 flex-1 sm:flex-none">
-                <span className="label">{labels.peer}</span>
-                {team.canManage ? (
-                  <select className="input" aria-label={`${labels.peer} of ${m.name}`} value={m.peerReviewerId ?? ''} disabled={pending} onChange={e => exec(() => setMemberPeerAction(team.id, m.userId, e.target.value || null))}>
-                    <option value="">None</option>
-                    {peers(m.userId).map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="py-1.5 text-sm">{m.peerReviewerName ?? '—'}</div>
-                )}
-              </label>
               {team.canManage && (
                 <button
                   className="btn-ghost text-bad"
@@ -184,7 +167,7 @@ export function TeamCard({ workTypeId, team, creators, reviewers, developers = [
             <UserPlus size={14} aria-hidden="true" />
             Add
           </button>
-          <button className="btn-ghost" disabled={pending} title={`Give open ${labels.noun}s with no ${labels.reviewer.toLowerCase()} or ${labels.peer.toLowerCase()} the team default`} onClick={() => exec(() => fillReviewersAction(team.id))}>
+          <button className="btn-ghost" disabled={pending} title={`Give open ${labels.noun}s with no ${labels.reviewer.toLowerCase()} the team default`} onClick={() => exec(() => fillReviewersAction(team.id))}>
             Fill missing reviewers
           </button>
           {isAdmin && (

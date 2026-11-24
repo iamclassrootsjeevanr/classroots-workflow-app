@@ -209,12 +209,12 @@ export type WorkTypeDefinition = {
   /** Singular noun for one item, e.g. "journey". */
   itemNoun: string;
   /** Column / field names shown in the UI for this work type. */
-  labels?: { assignee?: string; owner?: string; group?: string; due?: string; /** Teams: the peer reviewer, and the coordinator who owns the item's completion. */ peer?: string; accountable?: string };
+  labels?: { assignee?: string; owner?: string; group?: string; due?: string; /** Teams: the coordinator who owns the item's completion. */ accountable?: string };
   /** What each status category is called in this work type's KPI tiles (defaults are journey words). */
   categoryLabels?: Partial<Record<StatusCategory, string>>;
   /**
    * People work in teams (src/lib/teams.ts): the coordinator of the assignee's team owns the item and is its default owner
-   * (reviewer), the assignee's buddy is its peer reviewer, and groups have stewards. Adds the Teams page.
+   * (reviewer), and groups have stewards. Adds the Teams page.
    */
   teams?: boolean;
   /**

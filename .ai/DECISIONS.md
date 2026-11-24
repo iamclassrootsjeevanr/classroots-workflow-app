@@ -205,3 +205,9 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - **A steward gives feedback only** (Jeevan, 24 Nov 2026): the review buttons (Start review, Ask for changes, Close review) stay with the SME reviewer.
 - A ticket's Inbox message names its writer and role; the FEEDBACK event's meta carries `role`, `for` (email) and `for_role`, which go to the relay in `dashboard_event` data with the text in `data.note` (cut at 2000).
 - Live check, 24 Nov 2026: the Journey work type has one saved `WorkflowStage` row and none for `last_look`, so no saved "who may press" overrides the code.
+
+## 2026-11-24 · The peer reviewer is removed
+- Journey has no peer reviewer any more (Jeevan, 24 Nov 2026). It is gone from the journey page, the Journeys list (column and filter), the Teams tab, new journeys, the relay sync, "Fill missing reviewers", reports and exports, and it is no longer sent to the relay.
+- **Columns dropped** (Jeevan's choice): migration `20261124160000_remove_peer_reviewer` drops `WorkItem.peerReviewerId` and `TeamMember.peerReviewerId`. On the live site that deletes the value on 95 journeys and 8 team members (counted 24 Nov). Apply it to Render before the deploy.
+- History events with the field "Peer reviewer" are kept and shown; `dashEventFor` skips them (`PEER_FIELD`), so they are not sent.
+- `src/lib/relay-contract.ts` and the fixture keep `peer_reviewer` in the role list: a value that is not sent does not move the contract. APK Testing is unchanged.

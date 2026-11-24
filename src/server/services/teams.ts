@@ -11,7 +11,7 @@ import { refillReviewDefaults, setDeveloper, type ChangeActor } from './work-ite
  * journeys follow a changed default through services/work-items.ts (the only write path for items).
  */
 
-type Defaults = Map<string, { reviewerId: string | null; peerReviewerId: string | null }>;
+type Defaults = Map<string, { reviewerId: string | null }>;
 
 const snapshot = (teams: TeamLite[], userIds: string[]): Defaults => new Map(userIds.map(id => [id, reviewDefaults(teams, id)]));
 
@@ -100,26 +100,12 @@ export async function addTeamMember(actorId: string | null, teamId: string, user
   return refillReviewDefaults(system(actorId), team.workTypeId, { creatorIds: [userId] });
 }
 
-/** Their journeys keep the reviewers they have; other members who had them as buddy lose that default. */
+/** Their journeys keep the reviewers they have. */
 export async function removeTeamMember(teamId: string, userId: string) {
-  await db.$transaction([
-    db.teamMember.updateMany({ where: { teamId, peerReviewerId: userId }, data: { peerReviewerId: null } }),
-    db.teamMember.delete({ where: { teamId_userId: { teamId, userId } } }),
-  ]);
+  await db.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });
 }
 
-/** A member's default peer reviewer (their buddy). Their open journeys still on the old buddy follow. */
-export async function setMemberPeer(actorId: string, teamId: string, userId: string, peerReviewerId: string | null) {
-  const team = await teamOrThrow(teamId);
-  if (!team.members.some(m => m.userId === userId)) throw new Error('That person is not in this team.');
-  if (peerReviewerId === userId) throw new Error('A peer reviewer is someone else.');
-  if (peerReviewerId && !(await hasRight(team.workTypeId, peerReviewerId, 'capWork'))) throw new Error('Pick an active person who works on items here (SME creator).');
-  const was = snapshot(await loadTeams(db, [team.workTypeId]), [userId]);
-  await db.teamMember.update({ where: { teamId_userId: { teamId, userId } }, data: { peerReviewerId } });
-  return refillReviewDefaults(system(actorId), team.workTypeId, { creatorIds: [userId], was });
-}
-
-/** Fill the SME reviewer and peer reviewer of open journeys that have none, from the team settings. */
+/** Fill the SME reviewer of open journeys that have none, from the team settings. */
 export async function fillMissingReviewers(actorId: string, workTypeId: string, teamId?: string) {
   const creatorIds = teamId ? (await teamOrThrow(teamId)).members.map(m => m.userId) : undefined;
   return refillReviewDefaults(system(actorId), workTypeId, { creatorIds });

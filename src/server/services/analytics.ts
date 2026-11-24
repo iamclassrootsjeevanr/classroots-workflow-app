@@ -75,8 +75,6 @@ export type ItemRow = ItemLite & {
   statusColor: string;
   assigneeName: string | null;
   ownerName: string | null;
-  peerReviewerId: string | null;
-  peerReviewerName: string | null;
   developerId: string | null;
   developerName: string | null;
   /** Teams: the coordinator who owns the item's completion (the creator's team; else the group's steward). */
@@ -151,7 +149,6 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       workType: { select: { key: true, name: true } },
       assignee: { select: { name: true } },
       owner: { select: { name: true } },
-      peerReviewer: { select: { name: true } },
       developer: { select: { name: true } },
       chapter: { select: { title: true, grade: true } },
       ...APK_INCLUDE,
@@ -201,7 +198,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       ...hydrateApkData((r.data ?? {}) as Record<string, unknown>, r.apkTest),
       ...(versionFacts.get(r.id) ?? {}),
       // Shown as list columns (the work type's `table.extra`).
-      ...(mod?.teams ? { peerReviewer: r.peerReviewer?.name ?? '', teamOwner: teamOwnerName ?? '' } : {}),
+      ...(mod?.teams ? { teamOwner: teamOwnerName ?? '' } : {}),
       ...(mod?.developerHandoff ? { developer: r.developer?.name ?? '' } : {}),
     };
     return {
@@ -211,8 +208,6 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
       statusColor: def.color,
       assigneeName: r.assignee?.name ?? null,
       ownerName: r.owner?.name ?? null,
-      peerReviewerId: r.peerReviewerId,
-      peerReviewerName: r.peerReviewer?.name ?? null,
       developerId: r.developerId,
       developerName: r.developer?.name ?? null,
       teamOwnerName,

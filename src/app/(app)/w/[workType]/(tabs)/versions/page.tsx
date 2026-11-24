@@ -232,7 +232,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
     const myPeople = new Set([me, ...coordinatedPeople(teams, me)]);
     const mineSet = new Set<string>([
       ...codes.filter(c => stewards.get(`${workTypeId}:${c}`)?.some(s => s.userId === me)),
-      ...list.filter(i => i.groupKey && ((i.assigneeId && myPeople.has(i.assigneeId)) || i.ownerId === me || i.peerReviewerId === me)).map(i => i.groupKey!),
+      ...list.filter(i => i.groupKey && ((i.assigneeId && myPeople.has(i.assigneeId)) || i.ownerId === me)).map(i => i.groupKey!),
     ]);
     const isAdmin = access.isAdmin;
     return {

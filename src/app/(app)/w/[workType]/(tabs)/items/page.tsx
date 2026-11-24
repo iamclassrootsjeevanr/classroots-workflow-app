@@ -47,7 +47,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
       return h ? [[r.id, { key, holderId: h.userId, holderName: h.name, note: r.assigneeId && r.assigneeId !== h.userId ? relayHolderNote(key, h, { email: null, name: r.assigneeName }) : null }] as const] : [];
     }),
   );
-  const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows, developers, peers] = await Promise.all([
+  const [options, edits, deletable, assignable, people, owners, devs, groups, gradeRows, developers] = await Promise.all([
     editable ? statusOptionsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? editableItemsFor(user, shown.rows) : Promise.resolve(undefined),
     editable ? deletableItemsFor(user, shown.rows) : Promise.resolve(undefined),
@@ -58,7 +58,6 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, groupKey: { not: null } }, distinct: ['groupKey'], select: { groupKey: true } }),
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
     mod.developerHandoff ? db.user.findMany({ where: { developerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
-    mod.teams ? db.user.findMany({ where: { peerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
   ]);
   const hand = mod.developerHandoff;
   const developerEdits = hand && editable && !testsView ? await developerEditsFor(user, shown.rows) : undefined;
@@ -85,7 +84,6 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     assignee: { name: 'dev', label: mod.labels?.assignee ?? 'Developer', options: who(devs, 'Unassigned') },
     ...(owners.length && !shownTable?.hide?.includes('owner') ? { owner: { name: 'sme', label: mod.labels?.owner ?? 'SME', options: who(owners, 'None') } } : {}),
     ...(developers.length && shownTable?.extra?.some(c => c.field === 'developer') ? { developer: { name: 'developer', label: extraLabel('developer', 'Developer'), options: who(developers, 'Not assigned') } } : {}),
-    ...(peers.length && shownTable?.extra?.some(c => c.field === 'peerReviewer') ? { peerReviewer: { name: 'peer', label: extraLabel('peerReviewer', 'Peer reviewer'), options: who(peers, 'None') } } : {}),
     ...Object.fromEntries(
       dataSelectFields(mod)
         .filter(f => shownTable?.extra?.some(c => c.field === f.key))

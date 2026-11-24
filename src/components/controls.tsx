@@ -14,7 +14,6 @@ import {
   loadEditFieldsAction,
   setOwnerAction,
   setDeveloperAction,
-  setPeerReviewerAction,
   setVersionClosedAction,
   updateFieldsAction,
   type ActionResult,
@@ -98,8 +97,8 @@ export type PersonOption = { id: string; name: string; hint?: string };
 /** The relay's holder of a journey key: `holderId` is that person here, when they are in People. */
 export type RelayHolderProp = { key: string; holderId: string | null; holderName: string };
 
-/** Who works on the item (default), with `owner` who owns it (e.g. its SME reviewer), or with `peer` who peer-reviews it. */
-export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer, developer, color, label = 'Assign developer', none = 'Unassigned', relay }: { itemId: string; assigneeId: string | null; people: PersonOption[]; /** Journey: the relay's holder of the key. Choosing someone else asks first (the change is not blocked). */ relay?: RelayHolderProp; compact?: boolean; owner?: boolean; peer?: boolean; developer?: boolean; /** Tint of the select (the developer stage's colour). */ color?: string; label?: string; none?: string }) {
+/** Who works on the item (default), with `owner` who owns it (e.g. its SME reviewer), or with `developer` who checks its design. */
+export function AssignSelect({ itemId, assigneeId, people, compact, owner, developer, color, label = 'Assign developer', none = 'Unassigned', relay }: { itemId: string; assigneeId: string | null; people: PersonOption[]; /** Journey: the relay's holder of the key. Choosing someone else asks first (the change is not blocked). */ relay?: RelayHolderProp; compact?: boolean; owner?: boolean; developer?: boolean; /** Tint of the select (the developer stage's colour). */ color?: string; label?: string; none?: string }) {
   const { pending, result, exec } = useAction();
   const { confirm, dialog } = useConfirm();
   const [next, setNext] = useState<string | null>(null);
@@ -118,10 +117,10 @@ export function AssignSelect({ itemId, assigneeId, people, compact, owner, peer,
           const id = e.target.value || null;
           const save = () => {
             setNext(id ?? '');
-            exec(() => (developer ? setDeveloperAction(itemId, id) : peer ? setPeerReviewerAction(itemId, id) : owner ? setOwnerAction(itemId, id) : assignAction(itemId, id)));
+            exec(() => (developer ? setDeveloperAction(itemId, id) : owner ? setOwnerAction(itemId, id) : assignAction(itemId, id)));
           };
           // Allocations belong to the relay: a creator who is not its holder cannot work on the journey at a seat yet.
-          if (relay && id && id !== relay.holderId && !developer && !peer && !owner) {
+          if (relay && id && id !== relay.holderId && !developer && !owner) {
             const name = people.find(p => p.id === id)?.name ?? 'the new creator';
             void confirm({ title: `Change the creator to ${name}?`, description: `Relay holder: ${relay.holderName}. Ask an allocator to allocate ${relay.key} to ${name}.`, confirmLabel: 'Change creator', tone: 'warn' }).then(ok => ok && save());
             return;

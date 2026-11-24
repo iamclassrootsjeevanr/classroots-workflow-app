@@ -28,7 +28,7 @@ import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } fr
  * made in the dashboard; where the two still disagree the report says what to do (`mismatches`).
  * A reopen on the relay (the steward went back) lowers the Creation stage here to the stage the relay shows now; the review stage is not
  * moved back: a journey reopened while in review or later carries a note, and the chapter's stewards get one Inbox message.
- * Never touched here: any other stage, SME reviewer, peer reviewer, developer, feedback, and any person other than the creator.
+ * Never touched here: any other stage, SME reviewer, developer, feedback, and any person other than the creator.
  *
  * How much is read: the relay's change feed (`sync_feed`, contract in src/lib/relay-contract.ts) says which journeys something was recorded
  * for since the last run, and only those have their status read. Holders, stewards and teams come from one `allocations` call every run.

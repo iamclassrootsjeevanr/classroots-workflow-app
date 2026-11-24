@@ -18,7 +18,6 @@ A simple walkthrough for anyone new. It follows one example chapter, **G04C05** 
 - **Steward**: owns a chapter and a team. Adds journeys, picks reviewers, moves the after-review steps.
 - **SME creator**: builds the journey with Claude.
 - **SME reviewer**: reviews the journey.
-- **Peer reviewer**: the creator's review buddy.
 - **Developer**: checks and fixes the design after the review.
 
 ## The whole journey at a glance

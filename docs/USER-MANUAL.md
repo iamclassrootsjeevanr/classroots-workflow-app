@@ -117,7 +117,7 @@ Your chapters come from RELAY: the chapter's owner on RELAY is its steward here,
 1. **Chapters** tab: add a chapter with **+ New chapter**. You can remove one only when it has no journeys.
 2. Add journeys in your chapter and choose the **creator**. If RELAY already allocated them, they appear by themselves.
 3. Set the **pick-up date** (and "Picked up in" morning or afternoon) on each journey.
-4. **Teams** tab: keep your team, its default SME reviewer and each person's **peer reviewer** (buddy) up to date.
+4. **Teams** tab: keep your team and its default SME reviewer up to date.
 5. Make sure every submitted journey has an **SME reviewer**. You get a message if one has none.
 
 **Moving journeys after the review**

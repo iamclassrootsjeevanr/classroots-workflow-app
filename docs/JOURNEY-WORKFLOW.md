@@ -35,18 +35,18 @@ Ownership has two levels:
 1. **Chapter**: each chapter has a **steward**, the coordinator responsible for completing all its Journeys. The **Chapters** tab lists every chapter with its steward; **My chapters** shows only yours. A coordinator adds a chapter with **+ New chapter** and can remove one that has no Journeys.
 2. **Journey**: a Journey belongs to the coordinator of its creator's team, whoever allocated it and in whichever chapter. If Devjyoti allocates a Journey in her chapter to a creator from Team Arjun, Arjun owns its completion. The list and the Journey page show this person as **Steward**.
 
-| Team          | Steward (default SME reviewer) | Peer review buddies                    |
-| ------------- | ------------------------------ | -------------------------------------- |
-| Team Arjun    | Arjun                          | Kapil ↔ Animesh, Preethi ↔ Supriya     |
-| Team Devjyoti | Devjyoti                       | Vaishali ↔ Divyanshu, Krishna ↔ Manasa |
+| Team          | Steward (default SME reviewer) | Members                              |
+| ------------- | ------------------------------ | ------------------------------------ |
+| Team Arjun    | Arjun                          | Kapil, Animesh, Preethi, Supriya     |
+| Team Devjyoti | Devjyoti                       | Vaishali, Divyanshu, Krishna, Manasa |
 
-When a Journey is allocated, its **SME reviewer** is set to the default reviewer of the creator's team and its **Peer reviewer** to the creator's buddy. A coordinator can change either on one Journey.
+When a Journey is allocated, its **SME reviewer** is set to the default reviewer of the creator's team. A coordinator can change it on one Journey. There is no peer reviewer (removed on 24 Nov 2026).
 
 The **Teams** tab holds the settings. A team's coordinator can:
 
 - add or remove members (any SME creator who is not in a team yet);
 - change the **Default SME reviewer**, for example while they are away;
-- change a member's **Peer reviewer**.
+- change the **Default developer**.
 
 Changing a default also updates the team's open Journeys (review not closed) that have no reviewer or still have the old default. A reviewer picked by hand on a Journey is kept. **Fill missing reviewers** fills the empty ones. An admin adds teams and changes their coordinator.
 
@@ -193,7 +193,7 @@ If QA finds a defect, the coordinator must write feedback and use **Send back fo
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | SME creator     | Their own creation stage and Journey links (CMS, AI Tutor).                                                                                                                                            |
 | SME reviewer    | The assigned Journey's review date and Journey links.                                                                                                                                                  |
-| Steward         | In their chapters and on their team's Journeys: creator, SME reviewer, peer reviewer, pick-up date and half, creation stage, review date, links and `Needs video replacement`. Not the submitted date. |
+| Steward         | In their chapters and on their team's Journeys: creator, SME reviewer, pick-up date and half, creation stage, review date, links and `Needs video replacement`. Not the submitted date. |
 | Program manager | Nothing.                                                                                                                                                                                               |
 
 Stewards can add and delete Journeys in their own chapters. Creators and reviewers cannot create, allocate, or delete Journeys.
@@ -220,7 +220,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 ### Steward
 
 1. Create each Journey in the correct chapter, assign its creator, and set its pick-up date.
-1. Keep your team, its default SME reviewer and the peer reviewers up to date on the **Teams** tab.
+1. Keep your team and its default SME reviewer up to date on the **Teams** tab.
 1. Ensure a submitted Journey has an SME reviewer.
 1. Keep `Needs video replacement` accurate before post-review delivery.
 1. Move closed Journeys through design, migration, publishing, and QA. You can do the **Last look** and the **Design check** on the Journeys you can act on, and give feedback to the creator. The review buttons stay with the SME reviewer.

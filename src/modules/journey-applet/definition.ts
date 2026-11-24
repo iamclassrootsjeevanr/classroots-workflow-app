@@ -109,7 +109,7 @@ export const journeyApplet: WorkTypeDefinition = {
   relayBoard: true,
   teams: true,
   itemNoun: 'journey',
-  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', peer: 'Peer reviewer', accountable: 'Steward' },
+  labels: { assignee: 'SME creator', owner: 'SME reviewer', group: 'Chapter', due: 'Closure due', accountable: 'Steward' },
   categoryLabels: { queue: 'Not started', active: 'Being worked', review: 'In review', feedback: 'Changes asked', approved: 'Review closed', done: 'Done', hold: 'Paused' },
   importRoles: { assignee: 'sme-creator', owner: 'sme-reviewer' },
   developerHandoff: { after: 'closed', role: 'developer', label: 'Developer' },
@@ -117,7 +117,7 @@ export const journeyApplet: WorkTypeDefinition = {
   roles: [
     { key: 'sme-creator', name: 'SME creator', description: 'Builds journeys with Claude: sets the Creation stage (Spine, Script, Build, Ship, Published), submits them (the submitted date is stamped), makes the corrections, does the last look after design (and sends it back to the developer with feedback until it is right; the SME reviewer or the steward can do the last look too). Pick-up dates are set by the coordinator.', color: '#ef6c00', capabilities: ['work'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review, gives feedback to the creator, and after design does the last look (which is then the design check too) or checks the design after the creator’s last look (approve, or send back to the developer with feedback).', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
-    { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators, reviewers and peer reviewers, sets pick-up dates, edits details, moves journeys through the after-steps (also the last look and the design check, with the creator and the reviewer), gives feedback to the creator, and sends journeys back from QA for a fix. Also builds their own journeys like an SME creator. Acts in their own chapters, on every journey of their team and on their own journeys.', color: '#00897b', capabilities: ['work', 'assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
+    { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators and reviewers, sets pick-up dates, edits details, moves journeys through the after-steps (also the last look and the design check, with the creator and the reviewer), gives feedback to the creator, and sends journeys back from QA for a fix. Also builds their own journeys like an SME creator. Acts in their own chapters, on every journey of their team and on their own journeys.', color: '#00897b', capabilities: ['work', 'assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
     { key: 'developer', name: 'Developer', description: 'Checks and fixes design standardization once a journey’s review is closed: the journey is assigned to them automatically (least busy developer first). Marks Design done, which sends it to the creator’s last look, then the reviewer/steward’s design check. If the creator sends it back with feedback, they fix it and mark Design done again. Sees only the journeys assigned to them.', color: '#26a69a', capabilities: [], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'program-manager', name: 'Program manager', description: 'Watches the dashboards and reports; cannot change journeys.', color: '#546e7a', capabilities: [], dataScope: 'ALL', canEdit: false, pages: ['dashboard', 'items', 'reports', 'export'] },
   ],
@@ -186,11 +186,10 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'dueAt', label: 'Closure due' },
   ],
   table: {
-    // After Name: SME creator, Creation stage, Status, SME reviewer, Steward, Peer reviewer, Developer; then the rest.
-    order: ['assignee', 'creationStage', 'status', 'owner', 'teamOwner', 'peerReviewer', 'developer'],
+    // After Name: SME creator, Creation stage, Status, SME reviewer, Steward, Developer; then the rest.
+    order: ['assignee', 'creationStage', 'status', 'owner', 'teamOwner', 'developer'],
     extra: [
       { field: 'creationStage', label: 'Creation stage' },
-      { field: 'peerReviewer', label: 'Peer reviewer' },
       { field: 'teamOwner', label: 'Steward' },
       { field: 'developer', label: 'Developer' },
       { field: 'pickedUpAt', label: 'Picked up' },
