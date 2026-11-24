@@ -648,6 +648,26 @@ model RelayEvent {
 }
 
 /// Last run of the relay sync per work type (shown in Admin → Sync).
+/// A relay feed row recorded at a chapter key or a subtopic key (stage 1, the chapter read; stage 2, the scope), kept as the feed
+/// sent it. The Chapters page works a chapter's relay progress out from these; no journey row is made from them.
+model ChapterRelayEvent {
+  id        String   @id @default(cuid())
+  /// The feed's `seq` (`<source>:<row id>`): unique and stable, so reading the feed again adds nothing.
+  seq       String   @unique
+  /// The chapter the key is under: G05C02, G07P1C03.
+  chapter   String
+  /// The chapter key or the subtopic key the row was recorded at.
+  key       String
+  /// allocation | scope_mode | step | approval | baseline | reopen
+  entity    String
+  at        DateTime
+  by        String?
+  data      Json
+  createdAt DateTime @default(now())
+
+  @@index([chapter])
+}
+
 model RelaySyncState {
   workTypeId String   @id
   lastRunAt  DateTime

@@ -193,3 +193,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - `syncRelay` keeps each relay allocation as a `RelayEvent` of kind `allocation` (holder email in `approver`, none = released; id from `allocationEventId`). No schema change. `relayHolders` (`src/server/relay-holder.ts`) reads the latest per journey.
 - When the creator here is not that holder, the journey page and the Journeys list show "Relay holder: <name>. Ask an allocator to allocate <key> to <creator>." (`relayHolderNote`). The note goes when the relay's allocation agrees.
 - Changing the creator of such a journey asks first (not blocked) and sends the chapter's stewards one Inbox message. Nothing is written to the relay.
+
+## 2026-11-24 · Chapter and scope progress from the relay feed
+- Relay stages 1 and 2 live under chapter and subtopic keys, which have no journey row. `syncRelay` keeps those feed rows as sent in `ChapterRelayEvent` (migration `20261124150000_chapter_relay_events`): allocation, scope_mode, step, approval, baseline, reopen. It reads them with its own cursor (`cursor.chapterFeed`, from the feed's first row), so no journey row is made early.
+- The Chapters page shows a "Relay progress" card worked out from them (`chapterProgress`, `src/lib/relay-chapters.ts`): steward on the relay, chapter read, scopes approved of subtopics seen, scoped by steward or seats, journeys cut against journeys allocated here. A reopen takes back what was approved before it.
+- The relay sends a scope approval's `data.journeys` as JSON text (`[{key, name}]`); `scopeJourneys` reads that or a list.

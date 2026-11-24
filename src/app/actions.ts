@@ -678,6 +678,7 @@ export async function syncRelayAction(dryRun: boolean) {
     if (r.addedPeople?.length) bits.push(`${r.addedPeople.length} ${dryRun ? 'people to add' : 'people added'} from the relay (${r.addedPeople.map(p => p.name).join(', ')})`);
     if (r.peopleIssues?.length) bits.push(`people to check: ${r.peopleIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
+    if (r.chapterEvents) bits.push(`${r.chapterEvents} chapter and scope ${dryRun ? 'records to keep' : 'records kept'}`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
     if (r.feed?.mode === 'feed') bits.push(`${r.feed.events} relay changes since the last run, ${r.feed.read} journeys read`);
     bits.push(dryRun ? `${push.queued + push.pending} changes here to send to the relay` : `${push.sent} changes sent to the relay${push.pending ? `, ${push.pending} waiting` : ''}${push.failed ? `, ${push.failed} refused` : ''}`);

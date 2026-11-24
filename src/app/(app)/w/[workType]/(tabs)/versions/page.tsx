@@ -6,6 +6,9 @@ import { NewApkVersionButton } from '@/components/new-apk-version';
 import { Sheet } from '@/components/sheet';
 import { Card, Empty } from '@/components/ui';
 import { itemsUrl } from '@/lib/items-url';
+import { chapterProgress, type ChapterFeedRow } from '@/lib/relay-chapters';
+import { displayNameFromEmail } from '@/lib/relay-map';
+import { formatDate } from '@/lib/time';
 import { coordinatedPeople } from '@/lib/teams';
 import { loadVersionOptions } from '@/server/apk/queries';
 import { db } from '@/server/db';
@@ -40,6 +43,8 @@ export default async function VersionsPage({ params, searchParams }: { params: P
   const mine = Boolean(chapters) && view === 'mine';
   const items = mine ? all.filter(i => i.groupKey && chapters!.mine.has(i.groupKey)) : all;
   const rows = chapters ? chapters.rows.filter(r => !mine || chapters.mine.has(r.code)) : [];
+  // Journey: what the relay recorded for each chapter before its journeys exist here (the chapter read, the scopes).
+  const relay = mod.relayBoard && chapters ? (await relayProgress(wt.id)).filter(r => !mine || chapters.mine.has(r.code)) : [];
   const groupLabel = mod.groupSummary.label;
   // APK Testing: a version is a work item, so its name opens the version page.
   const versionId = new Map(mod.storage === 'apk' ? lite.map(i => [i.externalKey, i.id]) : []);
@@ -119,6 +124,66 @@ export default async function VersionsPage({ params, searchParams }: { params: P
           </Card>
         </>
       )}
+      {relay.length > 0 && (
+        <Card title="Relay progress" description={`What the relay recorded for each ${groupLabel.toLowerCase()} before its ${mod.itemNoun}s are allocated: the chapter read (stage 1) and the scopes (stage 2).`} className="mb-5">
+          <Sheet maxHeight="50vh">
+            <table className="sheet">
+              <thead>
+                <tr>
+                  <th className="pin">{groupLabel}</th>
+                  <th>Steward on the relay</th>
+                  <th>Chapter read</th>
+                  <th>Scopes approved</th>
+                  <th>Scoped by</th>
+                  <th>{mod.pages?.items ?? 'Items'} cut</th>
+                  <th>Allocated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {relay.map(r => (
+                  <tr key={r.code}>
+                    <td className="pin font-mono text-xs font-medium">
+                      {r.allocated ? (
+                        <Link className="link" href={itemsUrl(key, { group: r.code })}>
+                          {r.code}
+                        </Link>
+                      ) : (
+                        r.code
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap">{r.steward ?? <span className="text-muted">Not allocated</span>}</td>
+                    <td className="whitespace-nowrap" data-fv={r.read.approved ? 'Approved' : 'Not yet'}>
+                      {r.read.approved ? (
+                        <>
+                          Approved <span className="text-xs text-muted">{r.read.at ? formatDate(r.read.at, tz) : ''}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted">Not yet</span>
+                      )}
+                    </td>
+                    <td className="tabular-nums" title={r.scopesApproved.join(', ')}>
+                      {r.subtopics.length ? `${r.scopesApproved.length} of ${r.subtopics.length}` : <span className="text-muted">—</span>}
+                    </td>
+                    <td>{r.scopeMode === 'seats' ? 'Seats' : 'Steward'}</td>
+                    <td className="tabular-nums" title={r.journeysCut.join(', ')}>
+                      {r.journeysCut.length}
+                    </td>
+                    <td className="tabular-nums">
+                      {r.allocated ? (
+                        <Link className="link" href={itemsUrl(key, { group: r.code })}>
+                          {r.allocated}
+                        </Link>
+                      ) : (
+                        0
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Sheet>
+        </Card>
+      )}
       {items.length ? (
         <GroupSummaryCard
           mod={mod}
@@ -133,6 +198,21 @@ export default async function VersionsPage({ params, searchParams }: { params: P
       )}
     </>
   );
+
+  /** Each chapter's relay progress, from the feed rows kept (`ChapterRelayEvent`), with the journeys allocated here beside the journeys cut. */
+  async function relayProgress(workTypeId: string) {
+    const [events, counts, people] = await Promise.all([
+      db.chapterRelayEvent.findMany({ select: { seq: true, chapter: true, key: true, entity: true, at: true, by: true, data: true } }),
+      db.workItem.groupBy({ by: ['groupKey'], where: { workTypeId, archivedAt: null, parentId: null }, _count: { _all: true } }),
+      db.user.findMany({ where: { email: { not: null } }, select: { email: true, name: true } }),
+    ]);
+    const allocated = new Map(counts.map(c => [c.groupKey, c._count._all]));
+    const nameOf = new Map(people.map(u => [u.email!.toLowerCase(), u.name]));
+    const rows = events.map(e => ({ ...e, data: (e.data ?? {}) as Record<string, unknown> })) satisfies ChapterFeedRow[];
+    return [...chapterProgress(rows).values()]
+      .map(p => ({ ...p, steward: p.steward ? (nameOf.get(p.steward) ?? displayNameFromEmail(p.steward)) : null, allocated: allocated.get(p.code) ?? 0 }))
+      .sort((a, b) => natural(a.code, b.code));
+  }
 
   /** Chapters with journeys or a steward; "mine" = the ones I steer, plus those holding journeys of mine or of my team. */
   async function chapterList(workTypeId: string, list: ItemRow[], me: string, myGroups: ReadonlySet<string> | null) {

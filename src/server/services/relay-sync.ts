@@ -3,6 +3,7 @@ import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
+import { chapterFeedCursor, chapterFeedRows, keptChapterCursor } from '@/lib/relay-chapters';
 import { allocationEventId } from '@/lib/relay-holder';
 import { relayMismatch, reopenFollow, reopenLine, reopenStanding, reviewMoves, SUBMIT_MOVES, type RelayRow } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
@@ -41,7 +42,7 @@ const FEED_PAGES = 20;
 const FEED_LIMIT = 500;
 
 /** Where the pull stands: the feed cursor, and when every journey was last read. */
-type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null };
+type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null; /** Where the read of chapter and subtopic rows stands (its own cursor: it starts from the feed's first row). */ chapterFeed?: FeedCursor | null };
 
 export type RelayReport = {
   dryRun: boolean;
@@ -80,6 +81,8 @@ export type RelayReport = {
   stewardIssues: string[];
   skipped: string[];
   errors: { key: string; error: string }[];
+  /** Feed rows recorded at chapter and subtopic keys (the chapter read, the scopes) kept this run, for the Chapters page. */
+  chapterEvents?: number;
   /** How this run read the relay: `feed` = only journeys the change feed named, `full` = every journey, `off` = the relay has no feed (full). */
   feed?: { mode: 'feed' | 'full' | 'off'; events: number; read: number };
 };
@@ -139,6 +142,31 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     }
   } else if (!only) {
     report.feed = { mode: 'off', events: 0, read: 0 };
+  }
+
+  // Stages 1 and 2 are recorded under chapter and subtopic keys, which have no journey row here: those feed rows are kept as sent.
+  let nextChapterFeed: FeedCursor | null = null;
+  if (!only && client.syncFeed && report.feed.mode !== 'off') {
+    try {
+      let cursor = chapterFeedCursor(saved?.chapterFeed);
+      let kept = 0;
+      for (let page = 0; page < FEED_PAGES; page++) {
+        const got = parseFeed(await client.syncFeed({ after: cursor, limit: FEED_LIMIT }));
+        if (!got) break;
+        const rows = chapterFeedRows(got.events);
+        if (rows.length && !dryRun) kept += (await db.chapterRelayEvent.createMany({ data: rows.map(r => ({ ...r, data: r.data as Prisma.InputJsonValue })), skipDuplicates: true })).count;
+        else kept += rows.length;
+        cursor = { ...cursor, ...got.cursor };
+        if (!got.more) {
+          nextChapterFeed = keptChapterCursor(cursor);
+          break;
+        }
+      }
+      report.chapterEvents = kept;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!toolUnavailable(message)) report.errors.push({ key: 'chapter feed', error: message });
+    }
   }
 
   const allocReply = await client.allocations();
@@ -432,7 +460,10 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   if (!dryRun) {
     const ok = report.errors.length === 0;
     // The cursor moves only after a clean run of every key; one journey's run leaves it where it was.
-    const cursor: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
+    const base: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
+    // The chapter rows are kept by the feed's own id, so their cursor moves on its own: reading a row again adds nothing.
+    const chapterFeed = nextChapterFeed ?? saved?.chapterFeed ?? null;
+    const cursor: SyncCursor | null = base || chapterFeed ? { ...(base ?? {}), ...(chapterFeed ? { chapterFeed } : {}) } : null;
     const row = { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue, ...(cursor ? { cursor: cursor as unknown as Prisma.InputJsonValue } : {}) };
     await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, ...row }, update: row });
   }
