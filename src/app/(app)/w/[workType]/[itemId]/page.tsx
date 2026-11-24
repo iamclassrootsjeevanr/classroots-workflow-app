@@ -26,7 +26,7 @@ import { reviewDefaults } from '@/lib/teams';
 import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
 import { approvalLabel } from '@/lib/relay-map';
-import { PUBLISH_LABEL, relayMismatch } from '@/lib/relay-review';
+import { PUBLISH_LABEL, relayMismatch, reopenLine, reopenStanding } from '@/lib/relay-review';
 import { relaySettled } from '@/server/services/relay-push';
 import { journeyPart } from '@/modules/journey-applet/definition';
 
@@ -138,7 +138,10 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   const relayPublish = relayPublishEvent?.what ?? null;
   const relayDiffers = mod.relayBoard && !item.archivedAt ? relayMismatch(item.status, journeyPart(mod, item.status), relayPublish) : null;
   // Not a note when the stage here changed after the relay's status and the relay has been told.
-  const relayNote = relayDiffers && !(await relaySettled(item.id, relayPublishEvent?.at ?? null)) ? relayDiffers : null;
+  const relayPublishNote = relayDiffers && !(await relaySettled(item.id, relayPublishEvent?.at ?? null)) ? relayDiffers : null;
+  // Reopened on the relay while in review or later here: the stage here is not moved back, so the journey says so until it is shipped again.
+  const relayReopened = mod.relayBoard && !item.archivedAt ? reopenLine(journeyPart(mod, item.status), reopenStanding(relayEvents, typeof data.creationStage === 'string' ? data.creationStage : null)) : null;
+  const relayNote = [relayReopened, relayPublishNote].filter(Boolean).join(' ') || null;
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 

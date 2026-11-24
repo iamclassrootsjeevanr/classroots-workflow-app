@@ -671,6 +671,7 @@ export async function syncRelayAction(dryRun: boolean) {
     if (r.stewards.length) bits.push(`${r.stewards.length} chapter steward ${dryRun ? 'changes to make' : 'changes'} (${r.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : '✕'} ${x.steward}`).join(', ')})`);
     if (r.stewardIssues.length) bits.push(`stewards to check: ${r.stewardIssues.join('; ')}`);
     if (r.reassigned.length) bits.push(`${r.reassigned.length} journeys ${dryRun ? 'to move' : 'moved'} to the relay's creator (${r.reassigned.map(x => `${x.key} → ${x.to}`).join(', ')})`);
+    if (r.reopened?.length) bits.push(`${r.reopened.length} reopened on the relay, Creation stage ${dryRun ? 'to move back' : 'moved back'} (${r.reopened.map(x => `${x.key} → ${x.to ?? 'no stage'}`).join(', ')})`);
     if (r.creatorDiffers.length) bits.push(`${r.creatorDiffers.length} reassigned here after the relay, kept`);
     if (r.teamChanges.length) bits.push(`${r.teamChanges.length} team ${dryRun ? 'changes to make' : 'changes'} (${r.teamChanges.map(x => `${x.person} → ${x.team}`).join(', ')})`);
     if (r.teamIssues.length) bits.push(`teams to check: ${r.teamIssues.join('; ')}`);

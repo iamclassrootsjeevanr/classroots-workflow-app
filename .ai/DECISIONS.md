@@ -183,3 +183,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - **Admin → Sheet sync is now Admin → Integrations** (route `/admin/sync` unchanged).
 - **Relay people.** A person the relay names (journey holder or chapter owner) who is not in People is created by `syncRelay` when the email is in `OFFICE_DOMAINS` (`planRelayPeople`): SME creator role for a holder, Steward with the relay's chapters for a chapter owner. Other emails and deactivated people are reported (`peopleIssues`), never added.
 - **Team default developer.** `Team.developerId` (migration `20261124120000_team_default_developer`, seeded Jeevan → Team Devjyoti, Swathi → Team Arjun). When a review closes the journey goes to the developer already on it, else the creator's team's developer, else the least busy one. Changed on the Teams tab; journeys waiting in design on the old default follow.
+
+## 2026-11-24 · Relay reopen is followed for the Creation stage only
+- A reopen on the relay (`human-record-15`) lowers the Creation stage here to the stage the relay shows now; a reopen of the chapter or subtopic above leaves the journey with no Creation stage. A later change of the Creation stage made here stands.
+- The review stage is never moved back by a reopen. A journey reopened while in review or later carries a note (`reopenLine`), and the chapter's stewards get one Inbox message, when the reopen is first seen.
+- A reopen "stands" until the journey is back at Ship with an approval after it (`reopenStanding`), computed from the relay rows kept here, so journeys the feed did not name keep the note.

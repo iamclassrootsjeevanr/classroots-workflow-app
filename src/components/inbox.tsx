@@ -20,6 +20,7 @@ const ICONS: Record<string, typeof Bell> = {
   'feedback.reply': MessageSquare,
   'feedback.closed': CheckCircle2,
   'feedback.reopened': RotateCcw,
+  'item.relay-reopened': RotateCcw,
 };
 
 /** One inbox message: icon, title, text, time, unread dot and (for a deleted row) an Undo button while the 30 minutes last. */

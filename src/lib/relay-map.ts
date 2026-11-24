@@ -221,11 +221,12 @@ export function parseStatus(reply: unknown): RelayEventRow[] {
 }
 
 /** The journey_status reply's own summary: its current stage (the relay computes it), the time of its last step, its publish status. */
-export function parseStatusMeta(reply: unknown): { stage: string | null; at: Date | null; publishStatus: string | null; publishAt: Date | null } {
+export function parseStatusMeta(reply: unknown): { stage: string | null; at: Date | null; publishStatus: string | null; publishAt: Date | null; reopenedAbove: boolean } {
   const root = rec(reply);
   const last = rec(root.last_step);
   const publish = rec(root.publish_status);
-  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(publish.status) ? publishName(str(publish.status)!) : null, publishAt: when(publish.at) };
+  // `reopened_above`: the chapter or subtopic was reopened after this journey's last step, so nothing here counts until it is approved again.
+  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(publish.status) ? publishName(str(publish.status)!) : null, publishAt: when(publish.at), reopenedAbove: Boolean(str(root.reopened_above)) };
 }
 
 /**

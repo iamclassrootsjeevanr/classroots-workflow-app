@@ -500,7 +500,7 @@ function coerce(field: FieldDef, value: FieldValue): string | number | null {
   return String(value).trim();
 }
 
-async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date, cal: WorkCalendar) {
+async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, patch: Record<string, FieldValue>, now: Date, cal: WorkCalendar, note?: string) {
   const mod = requireModule(item.workType.key);
   const data = { ...((item.data ?? {}) as Record<string, unknown>) };
   const update: Prisma.WorkItemUncheckedUpdateInput = {};
@@ -531,7 +531,7 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
     }
     const after = value === null ? null : String(value);
     if (before === after) continue;
-    events.push({ itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: key, fromValue: before, toValue: after, source: actor.source, at: now });
+    events.push({ itemId: item.id, actorId: actor.userId, type: 'FIELD_CHANGED', field: key, fromValue: before, toValue: after, source: actor.source, at: now, ...(note ? { note } : {}) });
     const col = key === 'dueAt' ? columnFor(mod, 'dueAt') : columnFor(mod, 'data', key);
     if (col) columns.push(col);
   }
@@ -552,12 +552,12 @@ async function updateFieldsTx(tx: Tx, item: ItemWithType, actor: ChangeActor, pa
   }
 }
 
-export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date } = {}) {
+export async function updateFields(actor: ChangeActor, itemId: string, patch: Record<string, FieldValue>, opts: { at?: Date; note?: string } = {}) {
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal);
+    await updateFieldsTx(tx, item, actor, patch, opts.at ?? new Date(), cal, opts.note);
   });
 }
 
