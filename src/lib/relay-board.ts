@@ -27,7 +27,7 @@ export type BoardInput = {
   personName: string | null;
   /** The dashboard's Creation stage ("4 · Build", "Published") or empty. */
   creationStage: string | null;
-  /** The relay's latest publish status (up_for_review, corrections_wip, ready_for_student) or null. */
+  /** The relay's latest publish status (up_for_review, corrections_wip, ready_from_content) or null. */
   publishStatus: string | null;
   /** When the journey entered its current state (latest relay event, else the pick-up date). */
   since: Date | null;
@@ -57,7 +57,7 @@ export const gradeLabel = (key: string): string => {
 /** The column a journey sits in. Null = not on the board (finished). */
 export function columnOf(i: Pick<BoardInput, 'creationStage' | 'publishStatus' | 'finished'>): BoardColumnKey | null {
   if (i.finished) return null;
-  if (i.publishStatus === 'ready_for_student' || i.creationStage === 'Published') return 'ready';
+  if (i.publishStatus === 'ready_from_content' || i.creationStage === 'Published') return 'ready';
   const stage = CREATION_STAGES.find(s => s === i.creationStage);
   if (stage === '3a · Spine') return 'spine';
   if (stage === '3b · Script') return 'script';

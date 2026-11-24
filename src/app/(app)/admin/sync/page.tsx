@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import Link from 'next/link';
 import { SyncNowButton, SyncRelayButtons, SyncSettings } from '@/components/admin-controls';
 import { Card, PageHeader } from '@/components/ui';
@@ -27,6 +28,13 @@ export default async function SyncPage() {
     db.syncOutbox.count({ where: { status: 'PENDING' } }),
     db.workItem.findMany({ where: { sheetMissing: true }, select: { id: true, externalKey: true, title: true, workType: { select: { key: true } } }, take: 50 }),
   ]);
+  const [relayWaiting, relaySent, relayRefused, relayLastSent] = await Promise.all([
+    db.relayOutbox.count({ where: { status: 'PENDING' } }),
+    db.relayOutbox.count({ where: { status: 'SENT', payload: { not: Prisma.DbNull } } }),
+    db.relayOutbox.findMany({ where: { status: 'FAILED' }, include: { item: { select: { externalKey: true } } }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    db.relayOutbox.findFirst({ where: { status: 'SENT', sentAt: { not: null } }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } }),
+  ]);
+  const feedMode = relayReport?.feed?.mode;
 
   return (
     <>
@@ -39,7 +47,7 @@ export default async function SyncPage() {
       )}
 
       <div className="space-y-4">
-        <Card title="Journey relay (live)" description="The relay feeds creation: chapter stewards, who holds each journey, its Creation stage and approvals. Review and everything after it stay here. Pulled when the scheduled job calls /api/cron/run, or when you press Sync RELAY now.">
+        <Card title="Journey relay (live)" description="Two ways. From the relay: chapter stewards, who holds each journey, its Creation stage, approvals and publish status. To the relay: every change made here (stage, people, fields, feedback), kept in its dashboard log. Runs when the scheduled job calls /api/cron/run, or when you press Sync RELAY now.">
           {!relayOn && <p className="note-warn mb-3">RELAY_URL, RELAY_CF_CLIENT_ID and RELAY_CF_CLIENT_SECRET are not set in .env, so the relay can’t be read.</p>}
           <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <div>
@@ -52,7 +60,7 @@ export default async function SyncPage() {
             </div>
             <div>
               <div className="label">Last changes</div>
-              {relayReport ? `${relayReport.stageChanges.length} stage changes · ${relayReport.reviewMoves?.length ?? 0} submitted · ${relayReport.eventsAdded} events` : '—'}
+              {relayReport ? `${relayReport.stageChanges.length} stage changes · ${relayReport.reviewMoves?.length ?? 0} review moves · ${relayReport.eventsAdded} events` : '—'}
             </div>
             <div>
               <div className="label">Needs a look</div>
@@ -76,7 +84,7 @@ export default async function SyncPage() {
             <p className="mt-2 text-xs text-muted">Moved to the relay’s creator: {relayReport.reassigned.map(x => `${x.key} ${x.from ?? 'nobody'} → ${x.to}`).join(', ')}</p>
           )}
           {relayReport && (relayReport.reviewMoves?.length ?? 0) > 0 && (
-            <p className="mt-2 text-xs text-muted">Up for review on the relay, moved here: {relayReport.reviewMoves.map(x => `${x.key} ${x.from} → ${x.to}`).join(', ')}</p>
+            <p className="mt-2 text-xs text-muted">Moved here by the relay status: {relayReport.reviewMoves.map(x => `${x.key} ${x.from} → ${x.to}`).join(', ')}</p>
           )}
           {relayReport && (relayReport.mismatches?.length ?? 0) > 0 && (
             <div className="mt-2 text-xs text-warn">
@@ -99,6 +107,33 @@ export default async function SyncPage() {
           )}
           {relayReport && relayReport.unknownPeople.length > 0 && (
             <p className="mt-3 text-xs text-muted">Add these people in People (their email must match the relay), then sync again: {[...new Set(relayReport.unknownPeople.map(p => p.email))].join(', ')}</p>
+          )}
+          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="label">Read from the relay</div>
+              {feedMode === 'feed' ? `Change feed: ${relayReport?.feed?.events ?? 0} changes, ${relayReport?.feed?.read ?? 0} journeys read` : feedMode === 'full' ? `Full pass: ${relayReport?.feed?.read ?? 0} journeys read` : feedMode === 'off' ? 'Full pass (this relay has no change feed yet)' : '—'}
+            </div>
+            <div>
+              <div className="label">Sent to the relay</div>
+              {relaySent} changes{relayLastSent?.sentAt ? ` · last ${formatDateTime(relayLastSent.sentAt, tz)}` : ''}
+            </div>
+            <div>
+              <div className="label">Waiting to send</div>
+              {relayWaiting ? `${relayWaiting} changes` : 'nothing'}
+            </div>
+            <div>
+              <div className="label">Refused by the relay</div>
+              {relayRefused.length ? <span className="text-warn">{relayRefused.length} changes</span> : <span className="text-ok">nothing</span>}
+            </div>
+          </div>
+          {relayRefused.length > 0 && (
+            <ul className="mt-2 space-y-0.5 text-xs text-warn">
+              {relayRefused.map(x => (
+                <li key={x.id}>
+                  {x.item.externalKey}: {x.lastError}
+                </li>
+              ))}
+            </ul>
           )}
           <div className="mt-4">
             <SyncRelayButtons disabled={!relayOn} />

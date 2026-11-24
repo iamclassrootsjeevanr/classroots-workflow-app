@@ -1,8 +1,8 @@
 /**
- * The relay's publish status (human-record-16: up_for_review, corrections_wip, ready_for_student) against the dashboard's stage. Pure (no DB).
+ * The relay's publish status (human-record-16: up_for_review, corrections_wip, ready_from_content) against the dashboard's stage. Pure (no DB).
  * The relay says who has the next move on the published journey. "Up for review" on the relay submits the journey here and "ready for
  * students" closes its review here; wherever the two still disagree the journey carries a note that says what to do.
- * "Ready for students" on the relay is not Done: it means the review is over and the journey is final in UAT. It lines up with Review
+ * "Ready from content" on the relay is not Done: it means the review is over and the journey is final in UAT. It lines up with Review
  * closed here; design standardization, the prod steps and Done come after it and live only in the dashboard.
  */
 export type RelayPublish = { status: string; at: Date | null };
@@ -10,13 +10,13 @@ export type RelayPublish = { status: string; at: Date | null };
 /** Where a journey sits here (journeyPart in the Journey definition). */
 export type ReviewPart = 'not_started' | 'creating' | 'review' | 'changes' | 'closed' | 'after' | 'done';
 
-export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for review', corrections_wip: 'Corrections in progress', ready_for_student: 'Ready for students (review over, final in UAT)' };
+export const PUBLISH_LABEL: Record<string, string> = { up_for_review: 'Up for review', corrections_wip: 'Corrections in progress', ready_from_content: 'Ready from content (review over, final in UAT)' };
 
 /**
  * The stages the dashboard moves through because of the relay's publish status, in order:
  * - "up for review": a journey not yet submitted is submitted, and one in Changes asked goes to Correction verification (the corrections
  *   are published);
- * - "ready for students": the review is over on the relay, so it is closed here too (submitted and reviewed on the way, so the dates are
+ * - "ready from content": the review is over on the relay, so it is closed here too (submitted and reviewed on the way, so the dates are
  *   stamped). Closing hands the journey to a developer for design standardization, as any closed review does.
  * - "corrections in progress": the relay's review asked for changes, so the journey goes to Changes asked here (submitted and review
  *   started on the way); one in Correction verification goes back to Changes asked (asked again).
@@ -39,7 +39,7 @@ export function reviewMoves(status: string, publish: RelayPublish | null, lastHe
     if (status === 'correction_verification') return ['changes_asked'];
     return [];
   }
-  if (publish.status === 'ready_for_student') {
+  if (publish.status === 'ready_from_content') {
     const toClosed = ['creating', 'ready_for_review', 'review_in_progress', 'closed'];
     const at = ['allocated', ...toClosed].indexOf(status);
     if (at >= 0 && status !== 'closed') return toClosed.slice(at);
@@ -59,18 +59,18 @@ export function relayMismatch(status: string, part: ReviewPart, publish: string 
   if (publish === 'up_for_review') {
     if (early) return 'Up for review on the relay. Submit for review here.';
     if (status === 'changes_asked') return 'Up for review on the relay. Press Corrections done here.';
-    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here. Set the relay status: ready for students.';
+    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here. Set the relay status: ready from content.';
     return null;
   }
   if (publish === 'corrections_wip') {
     if (early) return 'In corrections on the relay. Submit for review here.';
     if (part === 'review') return 'In corrections on the relay. Ask for changes here, or set the relay status: up for review.';
-    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here, still in corrections on the relay. Set the relay status: ready for students.';
+    if (part === 'closed' || part === 'after' || part === 'done') return 'Review closed here, still in corrections on the relay. Set the relay status: ready from content.';
     return null;
   }
-  if (publish === 'ready_for_student') {
-    if (early) return 'Ready for students on the relay. Not submitted for review here.';
-    if (part === 'review' || part === 'changes') return 'Ready for students on the relay. Review not closed here.';
+  if (publish === 'ready_from_content') {
+    if (early) return 'Ready from content on the relay. Not submitted for review here.';
+    if (part === 'review' || part === 'changes') return 'Ready from content on the relay. Review not closed here.';
     return null;
   }
   return null;

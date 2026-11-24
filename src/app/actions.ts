@@ -16,6 +16,7 @@ import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } fro
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setMemberPeer, setTeamReviewer } from '@/server/services/teams';
 import { syncWorkType } from '@/server/sync/google-sheet';
 import { httpRelayClient, relayConfigured } from '@/server/relay/client';
+import { pushRelay } from '@/server/services/relay-push';
 import { syncRelay } from '@/server/services/relay-sync';
 import { addStage, removeStage, saveStage, type StageInput } from '@/server/stages';
 import { listNotifications, removeNotifications, setRead, unreadCount } from '@/server/services/notifications';
@@ -655,7 +656,9 @@ export async function syncRelayAction(dryRun: boolean) {
   return run(async () => {
     await requireAdmin();
     if (!relayConfigured()) throw new Error('The relay is not configured (RELAY_URL, RELAY_CF_CLIENT_ID, RELAY_CF_CLIENT_SECRET).');
-    const r = await syncRelay(httpRelayClient(), { dryRun });
+    const client = httpRelayClient();
+    const push = await pushRelay(client, { dryRun });
+    const r = await syncRelay(client, { dryRun });
     revalidatePath('/admin/sync');
     const bits = [`${r.allocated} journeys on the relay`, `${r.created.length} ${dryRun ? 'to add' : 'added'}`, `${r.stageChanges.length} Creation stage ${dryRun ? 'changes to make' : 'changes'}`];
     if (r.stewards.length) bits.push(`${r.stewards.length} chapter steward ${dryRun ? 'changes to make' : 'changes'} (${r.stewards.map(x => `${x.code} ${x.change === 'added' ? '→' : '✕'} ${x.steward}`).join(', ')})`);
@@ -666,6 +669,9 @@ export async function syncRelayAction(dryRun: boolean) {
     if (r.teamIssues.length) bits.push(`teams to check: ${r.teamIssues.join('; ')}`);
     if (r.unknownPeople.length) bits.push(`${r.unknownPeople.length} creators not in People`);
     if (r.errors.length) bits.push(`${r.errors.length} errors`);
+    if (r.feed?.mode === 'feed') bits.push(`${r.feed.events} relay changes since the last run, ${r.feed.read} journeys read`);
+    bits.push(dryRun ? `${push.queued + push.pending} changes here to send to the relay` : `${push.sent} changes sent to the relay${push.pending ? `, ${push.pending} waiting` : ''}${push.failed ? `, ${push.failed} refused` : ''}`);
+    if (push.note && !dryRun) bits.push(push.note);
     return (dryRun ? 'Dry run (nothing changed): ' : '') + bits.join(' · ');
   });
 }

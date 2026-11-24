@@ -27,6 +27,7 @@ import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { loadStewards, loadTeams } from '@/server/teams';
 import { approvalLabel } from '@/lib/relay-map';
 import { PUBLISH_LABEL, relayMismatch } from '@/lib/relay-review';
+import { relaySettled } from '@/server/services/relay-push';
 import { journeyPart } from '@/modules/journey-applet/definition';
 
 const EVENT_TEXT: Record<string, string> = {
@@ -133,8 +134,11 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
   }));
   // Journey: what the live relay recorded for it (approvals and steps), when any have been synced.
   const relayEvents = mod.teams ? await db.relayEvent.findMany({ where: { itemId: item.id }, orderBy: { at: 'asc' } }) : [];
-  const relayPublish = [...relayEvents].reverse().find(e => e.kind === 'publish' && !e.withdrawn)?.what ?? null;
-  const relayNote = mod.relayBoard && !item.archivedAt ? relayMismatch(item.status, journeyPart(mod, item.status), relayPublish) : null;
+  const relayPublishEvent = [...relayEvents].reverse().find(e => e.kind === 'publish' && !e.withdrawn) ?? null;
+  const relayPublish = relayPublishEvent?.what ?? null;
+  const relayDiffers = mod.relayBoard && !item.archivedAt ? relayMismatch(item.status, journeyPart(mod, item.status), relayPublish) : null;
+  // Not a note when the stage here changed after the relay's status and the relay has been told.
+  const relayNote = relayDiffers && !(await relaySettled(item.id, relayPublishEvent?.at ?? null)) ? relayDiffers : null;
   const delay = delayDays({ dueAt: item.dueAt, completedAt: item.completedAt, approvedAt: item.approvedAt, category: def.category, handedOff: mod.dueEndsAt === 'approved' && Boolean(item.approvedAt) }, now);
   const dueLabel = mod.labels?.due ?? 'Expected';
 

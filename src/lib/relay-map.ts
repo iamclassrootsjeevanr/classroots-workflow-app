@@ -3,6 +3,7 @@
  * The relay answers JSON; field names below follow the relay's records (journey-kit state.py): stage 0 | 3a | 3b | 4 | 5, `event_id`,
  * `withdrawn[]` and `reopens[]`. Parsing is tolerant: a missing field is skipped, never fatal.
  */
+import { publishName } from './relay-contract';
 import { journeyKeyOf } from './journey';
 
 /** Relay stage → the dashboard's Creation stage. Stage 0 (nothing started) and unknown stages map to nothing. */
@@ -211,10 +212,10 @@ export function parseStatus(reply: unknown): RelayEventRow[] {
     // The relay may leave a reopen's event id empty: derive a stable one from the key and time.
     add({ ...r, event_id: str(r.event_id) ?? `reopen:${str(r.key) ?? ''}:${str(r.at) ?? ''}` }, 'reopen');
   }
-  // Relay-side publish status changes (up_for_review, corrections_wip, ready_for_student…): shown, not applied.
+  // Relay-side publish status changes (up_for_review, corrections_wip, ready_from_content…): kept as events here; what they move is in relay-review.ts.
   for (const e of list(root.publish_status_history)) {
     const r = rec(e);
-    if (r.id != null) add({ ...r, event_id: `publish:${str(r.key) ?? ''}:${String(r.id)}`, what: str(r.status), approver: str(r.set_by), stage: null }, 'publish');
+    if (r.id != null) add({ ...r, event_id: `publish:${str(r.key) ?? ''}:${String(r.id)}`, what: str(r.status) ? publishName(str(r.status)!) : null, approver: str(r.set_by), stage: null }, 'publish');
   }
   return [...rows.values()].sort((a, b) => a.at.getTime() - b.at.getTime());
 }
@@ -224,7 +225,7 @@ export function parseStatusMeta(reply: unknown): { stage: string | null; at: Dat
   const root = rec(reply);
   const last = rec(root.last_step);
   const publish = rec(root.publish_status);
-  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(publish.status), publishAt: when(publish.at) };
+  return { stage: creationStageOfRelay(root.stage), at: when(last.at), publishStatus: str(publish.status) ? publishName(str(publish.status)!) : null, publishAt: when(publish.at) };
 }
 
 /**
