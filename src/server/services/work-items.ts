@@ -606,6 +606,37 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
   });
 }
 
+/**
+ * The relay sync archives a journey the relay cut (`archive: true`) or brings it back when the relay allocates it again. No rights
+ * check and no undo window: the actor is the sync. The note marks the event, so only a journey the sync archived is brought back.
+ */
+export async function relayArchive(actor: ChangeActor, itemId: string, archive: boolean, note: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    if (Boolean(item.archivedAt) === archive) return;
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: archive ? now : null });
+    if (archive) await tx.syncOutbox.deleteMany({ where: { itemId, status: 'PENDING' } });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt?.toISOString() ?? null, toValue: archive ? now.toISOString() : null, source: actor.source, note, at: now },
+    });
+  });
+}
+
+/** The relay sync names a journey that has no name here (or still carries the relay's earlier name). */
+export async function relayRename(actor: ChangeActor, itemId: string, title: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    if (item.title === title) return;
+    const now = new Date();
+    await saveItem(tx, item, { title });
+    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'title', fromValue: item.title, toValue: title, source: actor.source, note: 'Name from the relay', at: now } });
+    const mod = requireModule(item.workType.key);
+    const col = columnFor(mod, 'title');
+    if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  });
+}
+
 /** Bring back a deleted row, within the undo window (30 minutes). */
 export async function restoreItem(actor: ChangeActor, itemId: string) {
   return db.$transaction(async tx => {

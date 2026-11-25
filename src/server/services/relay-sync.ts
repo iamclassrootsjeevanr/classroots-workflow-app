@@ -6,6 +6,8 @@ import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStew
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
 import { chapterFeedCursor, chapterFeedRows, keptChapterCursor } from '@/lib/relay-chapters';
 import { allocationEventId } from '@/lib/relay-holder';
+import { journeyNameUpdates, NAME_FEED_SOURCE, relayJourneyNames } from '@/lib/relay-names';
+import { RELAY_CUT_NOTE, relayAllocationChapters, relayCutJourneys } from '@/lib/relay-cut';
 import { relayMismatch, reopenFollow, reopenLine, reopenStanding, reviewMoves, SUBMIT_MOVES, type RelayRow } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
 import { nextActiveAfter } from '@/lib/stages';
@@ -19,7 +21,7 @@ import type { RelayClient } from '../relay/client';
 import { notify, stewardIds } from './notifications';
 import { relaySettled } from './relay-push';
 import { addTeamMember } from './teams';
-import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } from './work-items';
+import { assign, changeStatus, createItemTx, relayArchive, relayRename, updateFields, type ChangeActor } from './work-items';
 
 /**
  * Pull the journey relay's ledger into the dashboard. The relay feeds creation (who holds a journey, its Creation stage, its approvals);
@@ -43,7 +45,7 @@ const FEED_PAGES = 20;
 const FEED_LIMIT = 500;
 
 /** Where the pull stands: the feed cursor, and when every journey was last read. */
-type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null; /** Where the read of chapter and subtopic rows stands (its own cursor: it starts from the feed's first row). */ chapterFeed?: FeedCursor | null };
+type SyncCursor = { feed?: FeedCursor | null; fullAt?: string | null; /** Where the read of chapter and subtopic rows stands (its own cursor: it starts from the feed's first row). */ chapterFeed?: FeedCursor | null; /** Journey names: where the read of `journey_state` rows stands, and the relay's latest name per journey. */ names?: { cursor: FeedCursor; byKey: Record<string, string> } | null };
 
 export type RelayReport = {
   dryRun: boolean;
@@ -76,6 +78,11 @@ export type RelayReport = {
   dashboardAhead: { key: string; dashboard: string; relay: string }[];
   /** Dashboard journeys the relay has no allocation for (old tracker imports). */
   notOnRelay: string[];
+  /** Journeys the relay cut, archived here (made by the relay, never started); `cutBack`: archived so, allocated again, restored. */
+  cut?: string[];
+  cutBack?: string[];
+  /** Journeys named from the relay (`journey_state.name`). */
+  journeyNames?: { key: string; from: string; to: string }[];
   /** Chapter stewards from the relay's chapter owners: added to (and handed over from) coordinators' chapter lists. */
   stewards: { code: string; steward: string; change: 'added' | 'removed' }[];
   /** Chapter owners the dashboard could not apply (reported, nothing changed). */
@@ -176,7 +183,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
 
   const allocReply = await client.allocations();
   const [items, users, chapters, cal] = await Promise.all([
-    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, groupKey: true, data: true, assignee: { select: { name: true } } } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, groupKey: true, data: true, firstStartedAt: true, assignee: { select: { name: true } }, events: { where: { type: 'CREATED' }, select: { source: true }, take: 1 } } }),
     db.user.findMany({ where: { active: true }, select: { id: true, email: true, name: true } }),
     db.chapter.findMany({ select: { id: true, code: true } }),
     workCalendar(),
@@ -196,6 +203,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   const chapterByCode = new Map(chapters.map(c => [c.code, c.id]));
   const relayKeys = new Set(allocations.map(a => a.key));
   if (!only) report.notOnRelay = items.filter(i => !i.archivedAt && !relayKeys.has(i.externalKey.toUpperCase()) && parseJourneyKey(i.externalKey)).map(i => i.externalKey).sort();
+  if (!only) await followCuts();
 
   // Someone the relay names and the dashboard lacks is added first, so this same run gives them their journeys and chapters.
   const willAdd = new Set<string>();
@@ -267,6 +275,38 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     }
   }
 
+  /** Archive the journeys the relay cut; bring back one archived so that the relay allocates again (before syncOne skips it). */
+  async function followCuts() {
+    try {
+      const cut = relayCutJourneys(
+        items.map(i => ({ key: i.externalKey, status: i.status, archived: Boolean(i.archivedAt), started: Boolean(i.firstStartedAt), madeByRelay: i.events[0]?.source === 'RELAY' })),
+        relayKeys,
+        relayAllocationChapters(allocationKeys(allocReply)),
+        mod.initialStatus,
+      );
+      report.cut = cut;
+      report.notOnRelay = report.notOnRelay.filter(k => !cut.includes(k));
+      const archivedBack = items.filter(i => i.archivedAt && relayKeys.has(i.externalKey.toUpperCase()));
+      const lastArchive = archivedBack.length
+        ? await db.workItemEvent.findMany({ where: { itemId: { in: archivedBack.map(i => i.id) }, field: 'archivedAt' }, orderBy: { at: 'desc' }, select: { itemId: true, note: true } })
+        : [];
+      const back = archivedBack.filter(i => lastArchive.find(e => e.itemId === i.id)?.note === RELAY_CUT_NOTE);
+      report.cutBack = back.map(i => i.externalKey).sort();
+      if (dryRun) return;
+      for (const key of cut) {
+        const i = byKey.get(key.toUpperCase())!;
+        await relayArchive(ACTOR, i.id, true, RELAY_CUT_NOTE);
+        i.archivedAt = new Date();
+      }
+      for (const i of back) {
+        await relayArchive(ACTOR, i.id, false, 'Allocated again on the relay');
+        i.archivedAt = null;
+      }
+    } catch (e) {
+      report.errors.push({ key: 'cut journeys', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   async function syncOne(a: RelayAllocation) {
     let item = byKey.get(a.key);
     const existed = Boolean(item);
@@ -290,7 +330,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
           if (assigneeId) await notify(tx, assigneeId, { kind: 'item.assigned', title: `Journey allocated to you: ${shortKey(a.key)}`, body: row.title, href: `/w/${JOURNEY}/${row.id}` });
           return row;
         });
-        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, groupKey: parsed.chapter, data: created.data, assignee: null };
+        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, groupKey: parsed.chapter, data: created.data, firstStartedAt: created.firstStartedAt, assignee: null, events: [{ source: 'RELAY' as const }] };
         byKey.set(a.key, item);
       }
     } else if (assigneeId && !item.assigneeId) {
@@ -463,6 +503,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   }
 
   if (!only) await nameChapters(client, report, dryRun);
+  const nextNames = only ? null : await nameJourneys(client, report, dryRun, wt.id, saved?.names ?? null);
 
   if (!dryRun) {
     const ok = report.errors.length === 0;
@@ -470,7 +511,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     const base: SyncCursor | null = only ? saved : ok ? { feed: nextFeed, fullAt: touched ? (saved?.fullAt ?? null) : new Date().toISOString() } : saved;
     // The chapter rows are kept by the feed's own id, so their cursor moves on its own: reading a row again adds nothing.
     const chapterFeed = nextChapterFeed ?? saved?.chapterFeed ?? null;
-    const cursor: SyncCursor | null = base || chapterFeed ? { ...(base ?? {}), ...(chapterFeed ? { chapterFeed } : {}) } : null;
+    const names = nextNames ?? saved?.names ?? null;
+    const cursor: SyncCursor | null = base || chapterFeed || names ? { ...(base ?? {}), ...(chapterFeed ? { chapterFeed } : {}), ...(names ? { names } : {}) } : null;
     const row = { lastRunAt: new Date(), ok, report: report as unknown as Prisma.InputJsonValue, ...(cursor ? { cursor: cursor as unknown as Prisma.InputJsonValue } : {}) };
     await db.relaySyncState.upsert({ where: { workTypeId: wt.id }, create: { workTypeId: wt.id, ...row }, update: row });
   }
@@ -582,4 +624,40 @@ async function syncTeams(workTypeId: string, holders: { userId: string; team: st
       report.teamIssues.push(`${nameById.get(j.userId)}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+}
+
+/**
+ * Journey names. The relay names a journey only in its `journey_state` feed rows; this reads that source alone, from where the last
+ * run stopped (the first run reads it all), keeps the latest name per journey, and names the journeys that have none here. A journey
+ * still carrying the relay's earlier name follows a rename; a name given here is never changed. Returns the cursor to keep.
+ */
+async function nameJourneys(client: RelayClient, report: RelayReport, dryRun: boolean, workTypeId: string, saved: SyncCursor['names']): Promise<SyncCursor['names']> {
+  if (!client.syncFeed) return null;
+  try {
+    let cursor: FeedCursor = { ...Object.fromEntries(['allocations', 'scope_modes', 'steps', 'statuses', 'notes', 'writes'].map(s => [s, Number.MAX_SAFE_INTEGER])), [NAME_FEED_SOURCE]: saved?.cursor?.[NAME_FEED_SOURCE] ?? 0 };
+    let byKey = { ...(saved?.byKey ?? {}) };
+    const before = { ...byKey };
+    for (let page = 0; page < 50; page++) {
+      const got = parseFeed(await client.syncFeed({ after: cursor, limit: FEED_LIMIT }));
+      if (!got) return null;
+      byKey = relayJourneyNames(got.events, byKey);
+      if (Number.isInteger(got.cursor[NAME_FEED_SOURCE])) cursor = { ...cursor, [NAME_FEED_SOURCE]: got.cursor[NAME_FEED_SOURCE] };
+      if (!got.more || !got.events.length) break;
+    }
+    const items = await db.workItem.findMany({ where: { workTypeId, archivedAt: null, parentId: null }, select: { id: true, externalKey: true, title: true } });
+    const updates = journeyNameUpdates(items.map(i => ({ key: i.externalKey, title: i.title })), byKey, before);
+    report.journeyNames = updates;
+    if (!dryRun) for (const u of updates) await relayRename(ACTOR, items.find(i => i.externalKey === u.key)!.id, u.to);
+    return { cursor: { [NAME_FEED_SOURCE]: cursor[NAME_FEED_SOURCE] }, byKey };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (!toolUnavailable(message)) report.errors.push({ key: 'journey names', error: message });
+    return null;
+  }
+}
+
+/** Every allocation row's key, whatever its level. */
+function allocationKeys(reply: unknown): string[] {
+  const rows = reply && typeof reply === 'object' ? (reply as { allocations?: unknown }).allocations : reply;
+  return Array.isArray(rows) ? rows.map(r => String((r as { key?: unknown } | null)?.key ?? '')) : [];
 }

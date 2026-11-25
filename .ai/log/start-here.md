@@ -33,3 +33,5 @@
 - 2026-11-25T12:00Z | claude-code | Handoff: Overdue and My dashboard counts match their lists; PR to development
 - 2026-11-25T12:16Z | claude-code | Handoff: default capacity 10; PR to development
 - 2026-11-25T12:19Z | claude-code | Handoff: PR 33 merged to development; next check its Render deploy
+- 2026-11-25T12:58Z | claude-code | Handoff: chapter part codes and picker live (PR 34); relay chapter names merged (PR 35), deploy to confirm
+- 2026-11-25T13:19Z | claude-code | Relay audit fixed: Grade 9 parts, cut journeys archived, journey names from relay (PR 36 open)
