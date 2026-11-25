@@ -1,5 +1,6 @@
 import { businessMinutesBetween, formatDateTime, type WorkCalendar } from '@/lib/time';
 import { flowTimes, kpis, qualityRates, reviewAndCorrection } from '@/lib/analytics-core';
+import { peopleNames } from '@/lib/role-names';
 import { workCalendar } from '../settings';
 import { calendarFor, loadIntervals, loadItems, type Filters, type ItemRow } from './analytics';
 
@@ -14,15 +15,16 @@ function span(a: Date | null, b: Date | null, cal: WorkCalendar) {
 export function itemReportRows(items: ItemRow[], cal: WorkCalendar) {
   const tz = cal.tz;
   const teams = items.some(i => i.teamOwnerName);
+  const names = peopleNames(items.map(i => i.workTypeKey));
   return items.map(i => ({
     'Work type': i.workTypeName,
     Key: i.externalKey,
     Title: i.title,
     Group: i.groupKey ?? '',
     Chapter: i.chapterTitle ?? '',
-    SME: i.ownerName ?? '',
-    Developer: i.assigneeName ?? '',
-    ...(teams ? { Owner: i.teamOwnerName ?? '' } : {}),
+    [names.owner]: i.ownerName ?? '',
+    [names.assignee]: i.assigneeName ?? '',
+    ...(teams ? { [names.accountable]: i.teamOwnerName ?? '' } : {}),
     Status: i.statusLabel,
     'Due date': formatDateTime(i.dueAt, tz),
     'Received at': formatDateTime(i.receivedAt, tz),
@@ -45,14 +47,14 @@ export function itemReportRows(items: ItemRow[], cal: WorkCalendar) {
 
 export type SummaryRow = Record<string, string | number>;
 
-function summaryRow(label: string, items: ItemRow[], intervals: Awaited<ReturnType<typeof loadIntervals>>, cal: WorkCalendar, now: Date): SummaryRow {
+function summaryRow(label: string, items: ItemRow[], intervals: Awaited<ReturnType<typeof loadIntervals>>, cal: WorkCalendar, now: Date, column = 'Scope'): SummaryRow {
   const k = kpis(items, now);
   const f = flowTimes(items, cal);
   const ids = new Set(items.map(i => i.id));
   const r = reviewAndCorrection(intervals.filter(iv => ids.has(iv.itemId)), cal);
   const q = qualityRates(items);
   return {
-    Scope: label,
+    [column]: label,
     Total: k.total,
     Unassigned: k.unassigned,
     'In progress': k.inProgress,
@@ -70,7 +72,7 @@ function summaryRow(label: string, items: ItemRow[], intervals: Awaited<ReturnTy
   };
 }
 
-/** Summary per work type, combined, and per developer. */
+/** Summary per work type and combined; per work type, one row per person who holds its items. */
 export async function buildReport(filters: Filters) {
   const now = new Date();
   let items = await loadItems(filters);
@@ -85,18 +87,22 @@ export async function buildReport(filters: Filters) {
 
   const byType = new Map<string, ItemRow[]>();
   for (const i of items) byType.set(i.workTypeName, [...(byType.get(i.workTypeName) ?? []), i]);
-  const byDev = new Map<string, ItemRow[]>();
-  for (const i of items) {
-    const name = i.assigneeName ?? 'Unassigned';
-    byDev.set(name, [...(byDev.get(name) ?? []), i]);
-  }
+  const people = [...byType].map(([workType, list]) => {
+    const role = peopleNames([list[0].workTypeKey]).assignee;
+    const byPerson = new Map<string, ItemRow[]>();
+    for (const i of list) {
+      const name = i.assigneeName ?? 'Unassigned';
+      byPerson.set(name, [...(byPerson.get(name) ?? []), i]);
+    }
+    return { workType, role, rows: [...byPerson].sort((a, b) => a[0].localeCompare(b[0])).map(([name, mine]) => summaryRow(name, mine, intervals, cal, now, role)) };
+  });
 
   return {
     generatedAt: now,
     tz: cal.tz,
     workTypes: [...byType].map(([name, list]) => summaryRow(name, list, intervals, cal, now)),
     combined: summaryRow('All work types', items, intervals, cal, now),
-    developers: [...byDev].sort((a, b) => a[0].localeCompare(b[0])).map(([name, list]) => summaryRow(name, list, intervals, cal, now)),
+    people,
     items: itemReportRows(items, cal),
   };
 }
@@ -129,7 +135,8 @@ export async function toXlsx(report: Report): Promise<Buffer> {
     ws.views = [{ state: 'frozen', ySplit: 1 }];
   };
   add('Summary', [report.combined, ...report.workTypes]);
-  add('Developers', report.developers);
+  // Excel sheet names stop at 31 characters.
+  for (const p of report.people) add(`${p.workType} by ${p.role}`.slice(0, 31), p.rows);
   add('Items', report.items);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

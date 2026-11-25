@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
   const report = await buildReport({
     workTypeKeys: types.map(t => t.workTypeKey),
     where: scopeWhere(access, types),
-    assigneeId: p.get('dev') ?? undefined,
+    userId: p.get('user') ?? undefined,
+    q: p.get('q') ?? undefined,
     from: localDayBoundary(p.get('from'), false, appTz()),
     to: localDayBoundary(p.get('to'), true, appTz()),
   });

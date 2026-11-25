@@ -6,18 +6,20 @@ import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
 import { itemsUrl } from '@/lib/items-url';
+import { peopleNames } from '@/lib/role-names';
+import { lowerLabel } from '@/lib/text';
 import { addDays, formatDateTime, formatDuration } from '@/lib/time';
 import { allModules, getModule } from '@/modules/registry';
 import { db } from '@/server/db';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
-import { dashboard } from '@/server/services/analytics';
+import { dashboard, itemPeople } from '@/server/services/analytics';
 import { assignablePeople } from '@/server/view';
 import { FilterableTable } from '@/components/table-filters';
 
 export const metadata = { title: 'Admin overview' };
 
-type Search = { wt?: string; dev?: string; sme?: string; weeks?: string };
+type Search = { wt?: string; user?: string; q?: string; weeks?: string };
 
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<Search> }) {
   await requireAdmin();
@@ -25,13 +27,13 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   const tz = appTz();
   const weeks = Number(sp.weeks) || 12;
   const d = await dashboard(
-    { workTypeKeys: sp.wt ? [sp.wt] : undefined, assigneeId: sp.dev, ownerId: sp.sme, from: addDays(new Date(), -7 * weeks) },
+    { workTypeKeys: sp.wt ? [sp.wt] : undefined, userId: sp.user, q: sp.q, from: addDays(new Date(), -7 * weeks) },
     { weeks, heatmapDays: 21 },
   );
 
-  const [types, smes, syncStates, people] = await Promise.all([
+  const [types, users, syncStates, people] = await Promise.all([
     db.workType.findMany({ where: { state: { not: 'ARCHIVED' } }, orderBy: { name: 'asc' } }),
-    db.user.findMany({ where: { ownedItems: { some: {} } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    itemPeople({ archivedAt: null, ...(sp.wt ? { workType: { key: sp.wt } } : {}) }),
     db.syncState.findMany({ include: { workType: { select: { name: true, config: true } } } }),
     assignablePeople(d.items),
   ]);
@@ -44,7 +46,11 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   const overdue = d.items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < d.now).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
   const statusSeries = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
   const one = sp.wt;
-  const itemsHref = one && itemsUrl(one);
+  // The role's own name when one work type is picked, else "User".
+  const who = peopleNames(one ? [one] : []).assignee;
+  // Tiles and charts open the item list with the same person and search.
+  const shared = { user: sp.user, q: sp.q };
+  const itemsHref = one && itemsUrl(one, shared);
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
   const flowHint = 'business hours';
@@ -55,20 +61,20 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       <FilterBar
         filters={[
+          { name: 'q', label: 'Search', type: 'search' },
           { name: 'wt', label: 'Work type', options: types.map(t => ({ value: t.key, label: t.name })) },
-          { name: 'dev', label: 'Developer', options: d.users.map(u => ({ value: u.id, label: u.name })) },
-          { name: 'sme', label: 'SME', options: smes.map(s => ({ value: s.id, label: s.name ?? '?' })) },
+          { name: 'user', label: 'User', options: users },
           { name: 'weeks', label: 'Period', options: [4, 8, 12, 26, 52].map(w => ({ value: String(w), label: `Last ${w} weeks` })) },
         ]}
       />
 
       <KpiGrid>
         <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
-        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { dev: 'none' })} />
-        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
-        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { cat: 'review' })} />
-        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { cat: 'done' })} />
-        <Kpi label="Overdue" value={d.kpis.overdue} href={one && itemsUrl(one, { scope: 'overdue' })} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
+        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { ...shared, dev: 'none' })} />
+        <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { ...shared, cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
+        <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { ...shared, cat: 'review' })} />
+        <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { ...shared, cat: 'done' })} />
+        <Kpi label="Overdue" value={d.kpis.overdue} href={one && itemsUrl(one, { ...shared, scope: 'overdue' })} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`first-pass ${pct(d.quality.firstPassRate)}`} />
       </KpiGrid>
 
@@ -83,7 +89,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
         const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.groupItems.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={key} itemsHref={itemsUrl(key, shared)} mod={mod} items={d.groupItems.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
 
 
@@ -91,7 +97,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         <Card title="By status">
           <StatusPie slices={statusSeries} itemsHref={itemsHref} />
         </Card>
-        <Card title="Work per developer" className="lg:col-span-2">
+        <Card title={`Work per ${lowerLabel(who)}`} className="lg:col-span-2">
           <StackedByPerson rows={d.byDeveloper} series={statusSeries} itemsHref={itemsHref} />
         </Card>
       </div>
@@ -99,7 +105,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       {[...new Set(d.items.map(i => i.workTypeKey))].map(key => {
         const mod = getModule(key);
-        return mod?.groupSummary ? <GroupSummaryCard only="table" key={key} itemsHref={`/w/${key}/items`} mod={mod} items={d.groupItems.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={key} itemsHref={itemsUrl(key, shared)} mod={mod} items={d.groupItems.filter(i => i.workTypeKey === key)} tz={tz} title={`${mod.name} · by ${mod.groupSummary.label}`} /> : null;
       })}
 
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
@@ -108,7 +114,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
           <table className="table">
             <thead>
               <tr>
-                <th>Developer</th>
+                <th>{who}</th>
                 <th>Load</th>
                 <th>To start</th>
                 <th>Working</th>
@@ -123,7 +129,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
               {d.workload.map(w => (
                 <tr key={w.userId}>
                   <td className="font-medium whitespace-nowrap">
-                    <Link className="hover:text-brand" href={`/admin?dev=${w.userId}`}>
+                    <Link className="hover:text-brand" href={`/admin?user=${w.userId}`}>
                       {w.name}
                     </Link>
                   </td>

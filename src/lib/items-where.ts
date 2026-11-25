@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { StatusCategory, WorkTypeDefinition } from '@/modules/types';
 import { inList } from './items-url';
+import { searchWords } from './search';
 import { teamOf, teamPeople, type TeamLite } from './teams';
 
 /**
@@ -15,6 +16,8 @@ export type ItemsFilters = {
   sme?: string;
   /** The developer of the handoff slot. */
   developer?: string;
+  /** A person in any role on the item: assignee, SME reviewer or developer (Overview and Reports). */
+  user?: string;
   group?: string;
   grade?: string;
   q?: string;
@@ -37,13 +40,28 @@ function person(field: 'assigneeId' | 'ownerId' | 'developerId', value: string |
   return parts.length === 1 ? parts[0] : { OR: parts };
 }
 
+/** The search box (see `searchWords`): every word in a key, a title, the chapter name or the name of someone on the item. */
+export function searchWhere(value: string | undefined, bySteward: (word: string) => Prisma.WorkItemWhereInput[] = () => []): Prisma.WorkItemWhereInput | null {
+  const words = searchWords(value).map(w => {
+    const has = { contains: w, mode: 'insensitive' as const };
+    return { OR: [{ externalKey: has }, { groupKey: has }, { title: has }, { chapter: { title: has } }, { assignee: { name: has } }, { owner: { name: has } }, { developer: { name: has } }, ...bySteward(w)] };
+  });
+  return words.length ? { AND: words } : null;
+}
+
+/** Items a person is on in any role: assignee, SME reviewer or developer. */
+export function userWhere(value: string | undefined): Prisma.WorkItemWhereInput | null {
+  const parts = [person('assigneeId', value), person('ownerId', value), person('developerId', value)].filter((p): p is Prisma.WorkItemWhereInput => Boolean(p));
+  return parts.length ? { OR: parts } : null;
+}
+
 /** The select fields of a work type that live in the item's data: the ones a column title can filter. */
 export const dataSelectFields = (mod: WorkTypeDefinition) => mod.fields.filter(f => f.type === 'select' && f.source === 'data' && f.options?.length);
 
 const keysOf = (mod: WorkTypeDefinition, test: (cat: StatusCategory) => boolean) => mod.statuses.filter(s => test(s.category)).map(s => s.key);
 
 /** The database filter for the Items page: the same rules the page used to apply in memory, now run by Postgres. */
-export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: string, now: Date = new Date(), teams: readonly TeamLite[] = []): Prisma.WorkItemWhereInput {
+export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: string, now: Date = new Date(), teams: readonly TeamLite[] = [], bySteward?: (word: string) => Prisma.WorkItemWhereInput[]): Prisma.WorkItemWhereInput {
   const and: Prisma.WorkItemWhereInput[] = [];
   if (f.status) and.push({ status: { in: mod.statuses.map(s => s.key).filter(k => inList(k, f.status)) } });
   if (f.cat) and.push({ status: { in: keysOf(mod, c => inList(c, f.cat)) } });
@@ -59,10 +77,7 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
     if (want.includes(NONE)) parts.push({ data: { path: [field.key], equals: Prisma.AnyNull } }, { data: { path: [field.key], equals: '' } });
     and.push(parts.length ? { OR: parts } : { id: '__none__' });
   }
-  if (f.q?.trim()) {
-    const q = f.q.trim();
-    and.push({ OR: [{ externalKey: { contains: q, mode: 'insensitive' } }, { title: { contains: q, mode: 'insensitive' } }, { chapter: { title: { contains: q, mode: 'insensitive' } } }] });
-  }
+  for (const w of [userWhere(f.user), searchWhere(f.q, bySteward)]) if (w) and.push(w);
   if (f.team) {
     const picked = teams.filter(t => list(f.team).includes(t.id));
     and.push(picked.length ? { assigneeId: { in: [...new Set(picked.flatMap(teamPeople))] } } : { id: '__none__' });

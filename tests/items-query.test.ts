@@ -21,6 +21,12 @@ describe('items list filters run in the database', () => {
     expect(w.AND[0].dueAt.lt).toEqual(now);
     expect(w.AND[0].status.notIn).toEqual(['pass', 'closed']);
   });
+  it('user = the person in any role; search = key, title or chapter', async () => {
+    const itemsWhere = await load();
+    expect(itemsWhere(apkTesting, { user: 'u2' }, 'u1', now)).toEqual({ AND: [{ OR: [{ assigneeId: { in: ['u2'] } }, { ownerId: { in: ['u2'] } }, { developerId: { in: ['u2'] } }] }] });
+    const w = itemsWhere(apkTesting, { q: ' Login ' }, 'u1', now) as { AND: { AND: { OR: unknown[] }[] }[] };
+    expect(w.AND[0].AND[0].OR).toContainEqual({ title: { contains: 'login', mode: 'insensitive' } });
+  });
   it('mine = assigned to or owned by the person; unassigned = no assignee', async () => {
     const itemsWhere = await load();
     expect(itemsWhere(apkTesting, { scope: 'mine' }, 'u1', now)).toEqual({ AND: [{ OR: [{ assigneeId: 'u1' }, { ownerId: 'u1' }] }] });

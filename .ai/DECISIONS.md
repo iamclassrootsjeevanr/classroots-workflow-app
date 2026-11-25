@@ -211,3 +211,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - **Columns dropped** (Jeevan's choice): migration `20261124160000_remove_peer_reviewer` drops `WorkItem.peerReviewerId` and `TeamMember.peerReviewerId`. On the live site that deletes the value on 95 journeys and 8 team members (counted 24 Nov). Apply it to Render before the deploy.
 - History events with the field "Peer reviewer" are kept and shown; `dashEventFor` skips them (`PEER_FIELD`), so they are not sent.
 - `src/lib/relay-contract.ts` and the fixture keep `peer_reviewer` in the role list: a value that is not sent does not move the contract. APK Testing is unchanged.
+
+## 2026-11-25 · One rule for every search box
+- Part or all of a word, any case; with several words each must match somewhere (`src/lib/search.ts`). Lists filtered in memory use `matchesSearch`, database lists `searchWhere` (`src/lib/items-where.ts`).
+- Items match on key, group, title, chapter name and the names of the creator/assignee, reviewer, developer and Steward (worked out from teams: `stewardMatches`).
+- `FilterBar`'s search applies as you type (400 ms pause), and at once on Enter.

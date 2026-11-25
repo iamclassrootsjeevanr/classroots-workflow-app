@@ -22,11 +22,12 @@ import {
 } from '@/lib/analytics-core';
 import { addDays, normalizeDate, withWorkDays, type WorkCalendar } from '@/lib/time';
 import { hydrateApkData } from '@/lib/apk-data';
+import { searchWhere, userWhere } from '@/lib/items-where';
 import { APK_INCLUDE } from '../apk/store';
 import { db } from '../db';
 import { workCalendar } from '../settings';
 import { reviewDefaults } from '@/lib/teams';
-import { loadStewards, loadTeams } from '../teams';
+import { loadStewards, loadTeams, stewardSearch } from '../teams';
 
 export type Filters = {
   workTypeKeys?: string[];
@@ -34,6 +35,10 @@ export type Filters = {
   /** Items where the person is the assignee or the developer (My work). */
   involvedId?: string;
   ownerId?: string;
+  /** Items the person is on in any role: assignee, SME reviewer or developer. */
+  userId?: string;
+  /** Search box: key, title or chapter name. */
+  q?: string;
   grade?: number;
   from?: Date;
   to?: Date;
@@ -67,6 +72,16 @@ export function workPeopleWhere(workTypeKeys?: string[]): Prisma.UserWhereInput 
       { assignedItems: { some: { archivedAt: null, ...wt } } },
     ],
   };
+}
+
+/** Everyone on these items in any role: the choices of the User filter. */
+export async function itemPeople(where: Prisma.WorkItemWhereInput): Promise<{ value: string; label: string }[]> {
+  const people = await db.user.findMany({
+    where: { OR: [{ assignedItems: { some: where } }, { ownedItems: { some: where } }, { developerItems: { some: where } }] },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: 'asc' },
+  });
+  return people.map(p => ({ value: p.id, label: p.name ?? p.email ?? '?' }));
 }
 
 export type ItemRow = ItemLite & {
@@ -141,7 +156,7 @@ export async function loadItems(filters: Filters = {}, opts: { includePausedType
     ...(filters.involvedId ? { OR: [{ assigneeId: filters.involvedId }, { developerId: filters.involvedId }] } : {}),
     ...(filters.ownerId ? { ownerId: filters.ownerId } : {}),
     ...(filters.grade ? { chapter: { grade: filters.grade } } : {}),
-    ...(filters.where ? { AND: [filters.where] } : {}),
+    AND: [filters.where, userWhere(filters.userId), searchWhere(filters.q, await stewardSearch(filters.q))].filter((w): w is Prisma.WorkItemWhereInput => Boolean(w)),
   };
   const rows = await db.workItem.findMany({
     where,
@@ -326,11 +341,13 @@ export async function dashboard(filters: Filters, opts: { heatmapDays?: number; 
   const completedInRange = items.filter(i => !i.completedAt || (i.completedAt >= from && i.completedAt <= to));
 
   const people = await db.user.findMany({
-    where: { ...workPeopleWhere(filters.workTypeKeys), ...(filters.assigneeId ? { id: filters.assigneeId } : {}) },
+    where: { ...workPeopleWhere(filters.workTypeKeys), ...(filters.assigneeId || filters.userId ? { id: filters.assigneeId ?? filters.userId } : {}) },
     select: { id: true, name: true, email: true, capacity: true },
     orderBy: { name: 'asc' },
   });
-  const users = people.map(p => ({ id: p.id, name: p.name ?? p.email ?? 'Unknown', capacity: p.capacity }));
+  // A search narrows the people tables and charts to those holding a matching item, not rows of zeros.
+  const holders = new Set(items.map(i => i.assigneeId));
+  const users = people.filter(p => !filters.q?.trim() || holders.has(p.id)).map(p => ({ id: p.id, name: p.name ?? p.email ?? 'Unknown', capacity: p.capacity }));
 
   const openIntervals = intervals.filter(iv => !iv.exitedAt);
   const rulesByType = new Map<string, ReturnType<typeof stuckRules>>();
