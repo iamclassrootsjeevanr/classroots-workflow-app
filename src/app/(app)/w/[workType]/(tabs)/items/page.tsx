@@ -60,7 +60,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
     mod.developerHandoff ? db.user.findMany({ where: { developerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
   ]);
-  const userChoices = sp.user ? await itemPeople({ workTypeId: wt.id, archivedAt: null, AND: [scope] }) : [];
+  const userChoices = sp.user || sp.holder ? await itemPeople({ workTypeId: wt.id, archivedAt: null, AND: [scope] }) : [];
   const hand = mod.developerHandoff;
   const developerEdits = hand && editable && !testsView ? await developerEditsFor(user, shown.rows) : undefined;
   const developerOptions = hand && developerEdits?.size ? await developerPeople(key, hand.role, nextActiveAfter(mod.statuses, hand.after)) : undefined;
@@ -139,6 +139,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
           ...(groupNames.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', multi: true, options: groupNames.map(g => ({ value: g, label: g })) }] : []),
           { name: 'cat', label: 'Stage', multi: true, options: stages },
           ...(sp.user ? [{ name: 'user', label: 'User', options: userChoices }] : []),
+          ...(sp.holder ? [{ name: 'holder', label: 'Work of', options: userChoices }] : []),
           ...(teams.length ? [{ name: 'team', label: 'Team', multi: true, options: teams.map(t => ({ value: t.id, label: t.name })) }] : []),
           ...(grades.length ? [{ name: 'grade', label: 'Grade', multi: true, options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
           { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, ...(hasTeam ? [{ value: 'team', label: 'My team' }] : []), { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },

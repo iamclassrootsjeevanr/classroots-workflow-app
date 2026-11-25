@@ -18,6 +18,8 @@ export type ItemsFilters = {
   developer?: string;
   /** A person in any role on the item: assignee, SME reviewer or developer (Overview and Reports). */
   user?: string;
+  /** The assignee or the developer: the items in a person's "My work". */
+  holder?: string;
   group?: string;
   grade?: string;
   q?: string;
@@ -55,6 +57,12 @@ export function userWhere(value: string | undefined): Prisma.WorkItemWhereInput 
   return parts.length ? { OR: parts } : null;
 }
 
+/** Items a person has to work on: assignee or developer (My dashboard's "My work" tiles). */
+export function holderWhere(value: string | undefined): Prisma.WorkItemWhereInput | null {
+  const parts = [person('assigneeId', value), person('developerId', value)].filter((p): p is Prisma.WorkItemWhereInput => Boolean(p));
+  return parts.length ? { OR: parts } : null;
+}
+
 /** The select fields of a work type that live in the item's data: the ones a column title can filter. */
 export const dataSelectFields = (mod: WorkTypeDefinition) => mod.fields.filter(f => f.type === 'select' && f.source === 'data' && f.options?.length);
 
@@ -77,7 +85,7 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
     if (want.includes(NONE)) parts.push({ data: { path: [field.key], equals: Prisma.AnyNull } }, { data: { path: [field.key], equals: '' } });
     and.push(parts.length ? { OR: parts } : { id: '__none__' });
   }
-  for (const w of [userWhere(f.user), searchWhere(f.q, bySteward)]) if (w) and.push(w);
+  for (const w of [userWhere(f.user), holderWhere(f.holder), searchWhere(f.q, bySteward)]) if (w) and.push(w);
   if (f.team) {
     const picked = teams.filter(t => list(f.team).includes(t.id));
     and.push(picked.length ? { assigneeId: { in: [...new Set(picked.flatMap(teamPeople))] } } : { id: '__none__' });
@@ -90,7 +98,8 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
     and.push(list.length ? { assigneeId: { in: [...new Set(list.flatMap(teamPeople))] } } : { id: '__none__' });
   }
   if (f.scope === 'review') and.push({ status: { in: keysOf(mod, c => c === 'review') } });
-  if (f.scope === 'overdue') and.push({ dueAt: { lt: now }, status: { notIn: keysOf(mod, c => c === 'done') } });
+  // The same rule as the Overdue tiles (`isOverdue`): where the due date ends at approval, an approved item is not overdue.
+  if (f.scope === 'overdue') and.push({ dueAt: { lt: now }, status: { notIn: keysOf(mod, c => c === 'done') }, ...(mod.dueEndsAt === 'approved' ? { approvedAt: null } : {}) });
   return and.length ? { AND: and } : {};
 }
 

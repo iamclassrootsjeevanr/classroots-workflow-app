@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { isDueBy, isOverdue } from '@/lib/analytics-core';
 import { apkTesting } from '@/modules/apk-testing/definition';
+import { journeyApplet } from '@/modules/journey-applet/definition';
 
 const load = async () => (await import('@/lib/items-where')).itemsWhere;
 
@@ -20,6 +22,24 @@ describe('items list filters run in the database', () => {
     const w = itemsWhere(apkTesting, { scope: 'overdue' }, 'u1', now) as { AND: { dueAt: { lt: Date }; status: { notIn: string[] } }[] };
     expect(w.AND[0].dueAt.lt).toEqual(now);
     expect(w.AND[0].status.notIn).toEqual(['pass', 'closed']);
+  });
+  it('where the due date ends at approval, an approved item is not overdue (as on the tile)', async () => {
+    const itemsWhere = await load();
+    const w = itemsWhere(journeyApplet, { scope: 'overdue' }, 'u1', now) as { AND: { approvedAt?: null }[] };
+    expect(w.AND[0].approvedAt).toBeNull();
+    expect((itemsWhere(apkTesting, { scope: 'overdue' }, 'u1', now) as { AND: object[] }).AND[0]).not.toHaveProperty('approvedAt');
+    const base = { category: 'approved' as const, dueAt: new Date('2026-11-01T00:00:00Z') };
+    expect(isOverdue({ ...base, handedOff: true }, now)).toBe(false);
+    expect(isOverdue({ ...base, handedOff: false }, now)).toBe(true);
+  });
+  it("holder = assignee or developer (My dashboard's tiles); due soon leaves out handed-off items", async () => {
+    const itemsWhere = await load();
+    expect(itemsWhere(journeyApplet, { holder: 'u2' }, 'u1', now)).toEqual({ AND: [{ OR: [{ assigneeId: { in: ['u2'] } }, { developerId: { in: ['u2'] } }] }] });
+    const item = { category: 'active' as const, dueAt: new Date('2026-11-05T00:00:00Z') };
+    const week = new Date('2026-11-10T00:00:00Z');
+    expect(isDueBy(item, week)).toBe(true);
+    expect(isDueBy({ ...item, handedOff: true }, week)).toBe(false);
+    expect(isDueBy({ ...item, category: 'done' }, week)).toBe(false);
   });
   it('user = the person in any role; search = key, title or chapter', async () => {
     const itemsWhere = await load();
