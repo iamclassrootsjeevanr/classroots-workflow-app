@@ -1,4 +1,5 @@
 import { nextActiveAfter } from '@/lib/stages';
+import { chapterCodeConflict, hasChapterName, parseChapterCode, partLabel } from '@/lib/chapter-codes';
 import { reviewDefaults, type TeamLite } from '@/lib/teams';
 import { requireModule } from '@/modules/registry';
 import { db } from '../db';
@@ -113,11 +114,23 @@ export async function fillMissingReviewers(actorId: string, workTypeId: string, 
 
 // ─── Chapters (groups) and their stewards ───────────────────────
 
+/** Grade, part and number of a new chapter row, from its code (G07P1C03 → grade 7, Part I, 3). */
+const placeOf = (code: string) => {
+  const c = parseChapterCode(code);
+  return { grade: c?.grade ?? null, part: partLabel(c?.part), chapterNo: c?.chapterNo ?? null };
+};
+
 /** Add a chapter to the list with its steward. `stewardId` must hold a limited coordinator membership (chapters named). */
 export async function addChapter(workTypeId: string, input: { code: string; title: string; stewardId: string }) {
   const code = input.code.trim().toUpperCase();
   const known = await db.chapter.findUnique({ where: { code } });
-  const title = input.title.trim() || known?.title || '';
+  if (!known) {
+    // A grade whose chapters carry the part (G07P1C03) takes no second row without it (G07C03).
+    const conflict = chapterCodeConflict(code, (await db.chapter.findMany({ select: { code: true } })).map(c => c.code));
+    if (conflict) throw new Error(conflict);
+  }
+  const typed = input.title.trim();
+  const title = hasChapterName(code, typed) ? typed : hasChapterName(code, known?.title) ? known!.title : '';
   if (!title) throw new Error('Give the chapter a name.');
   const member = await db.workTypeMember.findUnique({ where: { workTypeId_userId: { workTypeId, userId: input.stewardId } }, include: { roles: { include: { role: true } } } });
   const steward = Boolean(member?.roles.some(r => r.role.capAssign && r.role.canEdit));
@@ -125,21 +138,17 @@ export async function addChapter(workTypeId: string, input: { code: string; titl
     // An admin picked as steward gets the role through the hand-over path; anyone else needs it first.
     const admin = await db.user.findFirst({ where: { id: input.stewardId, active: true, isAdmin: true }, select: { id: true } });
     if (!admin) throw new Error('The steward needs the Steward role here.');
-    const grade = Number(/^G(\d+)C/.exec(code)?.[1]) || null;
-    const chapterNo = Number(/C(\d+)$/.exec(code)?.[1]) || null;
     if (known) await db.chapter.update({ where: { code }, data: { title } });
-    else await db.chapter.create({ data: { code, title, grade, chapterNo } });
+    else await db.chapter.create({ data: { code, title, ...placeOf(code) } });
     await moveChapter(workTypeId, code, input.stewardId);
     return { code, title, everyChapter: false };
   }
   if (!member) throw new Error('The steward needs the Steward role here.');
   const taken = await db.workTypeMember.findFirst({ where: { workTypeId, groupKeys: { has: code }, NOT: { userId: input.stewardId } }, include: { user: { select: { name: true } } } });
   if (taken) throw new ForbiddenError(`${code} is already ${taken.user.name ?? 'someone'}’s chapter. An admin can move it (People → their access).`);
-  const grade = Number(/^G(\d+)C/.exec(code)?.[1]) || null;
-  const chapterNo = Number(/C(\d+)$/.exec(code)?.[1]) || null;
   await db.$transaction(async tx => {
     if (known) await tx.chapter.update({ where: { code }, data: { title } });
-    else await tx.chapter.create({ data: { code, title, grade, chapterNo } });
+    else await tx.chapter.create({ data: { code, title, ...placeOf(code) } });
     // No chapters named = they steer every chapter already; naming one would cut the others off.
     if (member.groupKeys.length && !member.groupKeys.includes(code)) {
       await tx.workTypeMember.update({ where: { workTypeId_userId: { workTypeId, userId: input.stewardId } }, data: { groupKeys: [...member.groupKeys, code] } });
