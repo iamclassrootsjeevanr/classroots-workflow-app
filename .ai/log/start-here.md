@@ -29,3 +29,4 @@
 - 2026-11-23T12:19Z | claude-code | Handoff: PRs 25-27 merged; RELAY card browser-checked; relay sync applied on Render (24 moves)
 - 2026-11-25T06:36Z | claude-code | Handoff: Dashboard 3-7 live; relay PR 736 waits for the admin; next Dashboard 1 and 8
 - 2026-11-25T07:12Z | claude-code | Handoff: Overview/Reports filters, search and role names; PR to development
+- 2026-11-25T07:17Z | claude-code | Handoff: PR 31 merged to development; next check the Render deploy, then relay PR 736

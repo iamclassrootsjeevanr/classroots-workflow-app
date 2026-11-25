@@ -1,18 +1,18 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-25T07:13:00Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-25T07:17:14Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Close the gaps between the relay and the Dashboard, prompt by prompt, from the plan page `../RELAY/scratch/relay-dashboard-workflow.html` (tabs: Relay 1-5, Dashboard 1-11, Fix seat 1). Rule of 24 Nov: one side owns each action, the other side copies it. Each prompt has its own gates ("ask me before you build").
 
 ## Done this stretch (24-25 Nov)
-- **25 Nov, Overview / Reports / search** (commit 8162880, PR `start-here` → `development`, not merged):
+- **25 Nov, Overview / Reports / search** (commit 8162880), **merged** as PR 31 (merge commit be62fc2, 25 Nov 07:14Z); `start-here` = `development`. Render deploy not checked.
   - Overview and Reports: Search, Work type, User filters (`?q`, `?user`); tiles carry both to the item list.
   - Search: part or all of a word, every word anywhere, as you type (`src/lib/search.ts`, `searchWhere`, `stewardMatches`).
   - Reports: one table per work type, per person under the role name; mixed lists say User (`src/lib/role-names.ts`).
   - Sign-in: "Classroots users", no-password line removed.
-  - 305 tests and typecheck pass; checked in Chrome (desktop dark; Overview/Reports phone light and dark). `npm run build` not run here (CI does).
+  - 305 tests and typecheck pass; checked in Chrome (desktop dark; Overview/Reports phone light and dark). `npm run build` not run here; both PR checks passed.
 - **Dashboard 3, 4, 5, 6, 7 built, merged and live.** PR 30 (`start-here` → `development`, merge commit 5919aa7), Render deployed it and applied both migrations at 24 Nov 12:33Z. `start-here` = `development`.
   - 3 (9b26689): a relay reopen moves the Creation stage back (`reopenFollow`, `reopenStanding`, `reopenLine` in `src/lib/relay-review.ts`); the review stage never moves; stewards get one Inbox message.
   - 4 (8305184): the relay's holder is kept (`RelayEvent` kind `allocation`); "Relay holder: …" note; creator change asks first (`src/lib/relay-holder.ts`, `src/server/relay-holder.ts`).
@@ -30,7 +30,7 @@ Close the gaps between the relay and the Dashboard, prompt by prompt, from the p
 Nothing mid-edit. Both working trees clean.
 
 ## Next steps
-0. Merge the Overview/search PR to `development` on Jeevan's word (**Create a merge commit**); Render deploys it. No migration.
+0. Check the Render deploy of PR 31 (no migration): Overview/Reports show Search, Work type, User; sign-in says "Classroots users".
 1. When Jeevan says: resolve relay PR 736's conflicts (`docs/DASHBOARD-SYNC.md`, `relay/src/worker.js`: merge relay `main` into `workflow-dashboard`, `npm test`, push). Then wait for Aswin to merge. Check: `gh pr view 736 --repo classrootsedu/journey_studio_mcpiser --json state`. Do not merge it yourself.
 2. When Jeevan says "the relay is live": build **Dashboard 1** (count applet fixes from the feed's `data.journeys`; replaces the hand count of `dash-push fixes`) and **Dashboard 8** (review: the reviewer decides here, the relay copies; drop the "set the relay status" reminders that Relay 3 makes untrue; read `data.via`). Take each prompt's text from the plan page. One PR to `development`.
 3. Relay 2 (read-only check that a journey is on prod): the note `../RELAY/scratch/relay-2-prod-check-note.md` is written, not sent. Send it to Aswin on Jeevan's word; build Relay 2, then Dashboard 2, only after Aswin's yes.
