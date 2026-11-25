@@ -6,6 +6,7 @@ import { combineRoles, type RoleLite } from '@/lib/access-core';
 import { formatDateTime } from '@/lib/time';
 import { db } from '@/server/db';
 import { emailEnabled, env, googleEnabled } from '@/server/env';
+import { matchesSearch } from '@/lib/search';
 import { requireAdmin } from '@/server/rbac';
 import { appTz } from '@/server/settings';
 import { FilterableTable } from '@/components/table-filters';
@@ -55,9 +56,8 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     db.accessRole.findMany({ orderBy: [{ workType: { name: 'asc' } }, { name: 'asc' }], include: { workType: { select: { name: true } } } }),
   ]);
 
-  const q = sp.q?.toLowerCase();
   const shown = users.filter(u => {
-    if (q && !`${u.name ?? ''} ${u.email ?? ''}`.toLowerCase().includes(q)) return false;
+    if (!matchesSearch(sp.q, [u.name, u.email])) return false;
     if (sp.wt && !u.isAdmin && !u.memberships.some(m => m.workType.key === sp.wt)) return false;
     if (sp.role && !u.memberships.some(m => m.roles.some(r => r.role.id === sp.role))) return false;
     if (sp.status === 'active' && !u.active) return false;

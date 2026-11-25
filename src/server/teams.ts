@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
-import type { TeamLite } from '@/lib/teams';
+import { searchWords } from '@/lib/search';
+import { stewardMatches, type TeamLite } from '@/lib/teams';
+import { allModules } from '@/modules/registry';
 import { db } from './db';
 
 type Client = Prisma.TransactionClient | typeof db;
@@ -54,4 +56,13 @@ export async function loadStewards(client: Client, workTypeIds: string[]): Promi
     }
   }
   return out;
+}
+
+/** The search box's Steward matches (see `stewardMatches`), loaded once per search. */
+export async function stewardSearch(q: string | undefined): Promise<(word: string) => Prisma.WorkItemWhereInput[]> {
+  if (!searchWords(q).length) return () => [];
+  const keys = allModules().filter(m => m.teams).map(m => m.key);
+  const ids = (await db.workType.findMany({ where: { key: { in: keys } }, select: { id: true } })).map(w => w.id);
+  const [teams, stewards] = await Promise.all([loadTeams(db, ids), loadStewards(db, ids)]);
+  return word => stewardMatches(word, teams, stewards);
 }

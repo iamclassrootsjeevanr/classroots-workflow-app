@@ -8,6 +8,7 @@ import { PAGE_SIZE } from '@/lib/paging';
 import type { CaseRow } from '@/lib/test-cases';
 import { getModule, statusDef } from '@/modules/registry';
 import { loadVersionOptions } from '@/server/apk/queries';
+import { searchWords } from '@/lib/search';
 import { db } from '@/server/db';
 import { loadWorkTypePage } from '@/server/work-type-page';
 
@@ -24,8 +25,8 @@ export default async function CasesPage({ params, searchParams }: { params: Prom
   const { user, access, mod, wt, can, editable } = await loadWorkTypePage(key);
   if (!mod.versions) notFound();
 
-  const q = sp.q?.trim();
-  const where = { workTypeId: wt.id, archivedAt: null, ...(q ? { OR: [{ code: { contains: q, mode: 'insensitive' as const } }, { title: { contains: q, mode: 'insensitive' as const } }] } : {}) };
+  const words = searchWords(sp.q);
+  const where = { workTypeId: wt.id, archivedAt: null, AND: words.map(w => ({ OR: [{ code: { contains: w, mode: 'insensitive' as const } }, { title: { contains: w, mode: 'insensitive' as const } }] })) };
   const total = await db.apkTestCase.count({ where });
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(Math.max(1, Math.floor(Number(sp.page)) || 1), pages);

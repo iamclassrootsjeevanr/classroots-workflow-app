@@ -6,6 +6,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { Card, Kpi, KpiGrid, ToneChip } from '@/components/ui';
 import type { NavIcon } from '@/components/icons';
 import { formatDuration } from '@/lib/time';
+import { peopleNames } from '@/lib/role-names';
 import { lowerLabel } from '@/lib/text';
 import { itemsUrl } from '@/lib/items-url';
 import { WorkDoneCard } from '@/components/work-done';
@@ -51,7 +52,8 @@ export default async function OverviewPage({ params, searchParams }: { params: P
   const itemsHref = itemsUrl(key);
   const present = new Set(mod.statuses.map(s => s.category));
   const count = (c: StatusCategory) => d.items.filter(i => i.category === c).length;
-  const noun = lowerLabel(mod.labels?.assignee ?? 'developer');
+  // The role name, not the column title: APK Testing's column says "Tested by".
+  const noun = lowerLabel(peopleNames([key]).assignee);
 
   // By status and per-person bars leave Done out; the Done count lives on its card.
   const open = d.statusSlices.filter(s => s.category !== 'done');

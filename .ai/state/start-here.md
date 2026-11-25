@@ -1,42 +1,55 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-24T05:45:00Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-25T07:13:00Z · by: claude-code · owner: Jeevan
 
 ## Goal
-One flow across RELAY and the Dashboard, both ways, through one contract: the relay feeds creation and its publish status; the dashboard owns review and everything after, and tells the relay what happens here. The relay's own flow is not changed.
+Close the gaps between the relay and the Dashboard, prompt by prompt, from the plan page `../RELAY/scratch/relay-dashboard-workflow.html` (tabs: Relay 1-5, Dashboard 1-11, Fix seat 1). Rule of 24 Nov: one side owns each action, the other side copies it. Each prompt has its own gates ("ask me before you build").
 
-## Done this stretch (23-24 Nov)
-- **Two-way sync built and deployed on both sides.**
-  - Relay repo `classrootsedu/journey_studio_mcpiser` (local clone `../journey_studio_mcpiser`, branch `workflow-dashboard`): PRs 733 and 734 merged to `main`, deployed 24 Nov ~05:33Z. New tools: `sync_feed` (read), `dashboard_event` (write, this dashboard's token only, via `DASHBOARD_TOKENS`), `dashboard_log` (read). New table `dashboard_events`. Nothing existing changed. Contract doc: `docs/DASHBOARD-SYNC.md` there.
-  - Dashboard: commit 4c934c1 on `start-here`, live on Render (migrations `20261123140000_relay_two_way`, `20261124090000_relay_ready_from_content` applied 05:31Z). PR 28 (`start-here` → `development`) merged by Jeevan 24 Nov 05:29Z (1b2b259, CI green); `start-here` fast-forwarded to it.
-- **How it runs** (each cron tick, `src/server/jobs.ts` `relayJob`): `pushRelay` (queue every journey `WorkItemEvent` in `RelayOutbox`, send with `dashboard_event`) → `syncRelay` (`sync_feed` from `RelaySyncState.cursor`, `allocations`, `journey_status` only for journeys the feed names; full pass first time, daily, `--full`, or no feed).
-- **Relay renamed its final status** `ready_for_student` → `ready_from_content` on 23 Nov (relay PRs 730/731). The old Dashboard code did not close reviews for it. Fixed: new name everywhere, `publishName` reads the old one, stored publish events renamed (25 on Render).
-- Flags: a relay/dashboard status difference is not flagged once the later change here is in the relay's log (`relaySettled`); Published vs relay "5 · Ship" is not "ahead".
-- Checked: 262 tests, typecheck, `npm run build`; relay `npm test`; a local run of this repo's sync code against the relay's modules (281 changes sent, 0 refused, same stage both sides for 74/74 journeys); live `--probe` shows `sync_feed` and `dashboard_log` answering.
-- **First live run, Render 24 Nov 05:40Z:** full pass, 98 journeys read, 0 errors, 0 mismatches, cursor saved; 403 changes sent to the relay, 0 refused. `--log G06C07ST7J1` on the live relay gave 6 events, status changes_asked, creationStage 5 · Ship (same as here).
-- First relay deploy (PR 733) failed at the page mint: `/machinery` must list every tool as a chip (`relay/pages-src/machinery.html`). PR 734 added them.
+## Done this stretch (24-25 Nov)
+- **25 Nov, Overview / Reports / search** (commit 8162880, PR `start-here` → `development`, not merged):
+  - Overview and Reports: Search, Work type, User filters (`?q`, `?user`); tiles carry both to the item list.
+  - Search: part or all of a word, every word anywhere, as you type (`src/lib/search.ts`, `searchWhere`, `stewardMatches`).
+  - Reports: one table per work type, per person under the role name; mixed lists say User (`src/lib/role-names.ts`).
+  - Sign-in: "Classroots users", no-password line removed.
+  - 305 tests and typecheck pass; checked in Chrome (desktop dark; Overview/Reports phone light and dark). `npm run build` not run here (CI does).
+- **Dashboard 3, 4, 5, 6, 7 built, merged and live.** PR 30 (`start-here` → `development`, merge commit 5919aa7), Render deployed it and applied both migrations at 24 Nov 12:33Z. `start-here` = `development`.
+  - 3 (9b26689): a relay reopen moves the Creation stage back (`reopenFollow`, `reopenStanding`, `reopenLine` in `src/lib/relay-review.ts`); the review stage never moves; stewards get one Inbox message.
+  - 4 (8305184): the relay's holder is kept (`RelayEvent` kind `allocation`); "Relay holder: …" note; creator change asks first (`src/lib/relay-holder.ts`, `src/server/relay-holder.ts`).
+  - 5 (eb7078b): `ChapterRelayEvent` (migration `20261124150000`); "Relay progress" card on the Chapters page (`src/lib/relay-chapters.ts`).
+  - 6 (5c61940): last look by creator, SME reviewer or steward; Design check passed with the reviewer's or steward's look (`stageAfterOwnCheck`); a steward gives feedback only.
+  - 7 (1ef958f): peer reviewer removed; columns dropped (migration `20261124160000`, Jeevan's choice).
+- **Relay 1, 3, 4 built, pushed, not merged.** Repo `../journey_studio_mcpiser`, branch `workflow-dashboard` (in step with origin, 5 commits ahead of `main`, `main` merged in). PR https://github.com/classrootsedu/journey_studio_mcpiser/pull/736 is OPEN and CONFLICTING since Aswin merged relay PR 738 (25 Nov 06:43Z); no review. Aswin (relay admin) has the PR and details on Slack. Jeevan: push it later.
+  - 1: an applet fix step (`sim:<id>`) carries its journeys (`data.journeys`, JSON text). First step ~20 s.
+  - 3: the relay copies the reviewer's decision from `dashboard_event` (changes asked → `corrections_wip`, closed or later → `ready_from_content`); new table `dashboard_copies`; rows marked `via: "dashboard"`. Item 5 (tell the SME reviewer's own seat) left out.
+  - 4: project, detail and journey pages and `journey_status` show the dashboard stage.
+- Live check after the deploy: health 200; 12:40Z sync: `chapterFeedRows` 436, `relayHolderRows` 97, 0 errors, 0 mismatches, 0 reopened. Local DB is a fresh copy of Render (`npm run db:pull`, sheet sync off in the copy).
+- At the 24 Nov merge: typecheck, tests and build passed; relay `npm test` passed.
 
 ## In progress
-Nothing mid-edit. Local DB stopped; it has both migrations and no outbox rows.
+Nothing mid-edit. Both working trees clean.
 
 ## Next steps
-1. Look at the new admin section in a browser (never seen rendered; needs Jeevan's sign-in).
-2. Promote development → staging → main (Jeevan's call).
-3. Tell the team about the journeys the sync moved (Jeevan's go; not sent). Counts on 23 Nov: 14 design standardization, 8 reviewers, 1 correction verification, 5 changes asked.
-4. Later, on the relay (Jeevan will take it up): whether the relay's `publish_status` should follow the dashboard. Today a seat still sets it; the Inbox reminder to stewards on Review closed is unchanged.
-5. Render: confirm `RELAY_KEY` equals the one `RELAY/bin/dash-push` reads (401 = differs); `dash-push` not yet run against the live site.
+0. Merge the Overview/search PR to `development` on Jeevan's word (**Create a merge commit**); Render deploys it. No migration.
+1. When Jeevan says: resolve relay PR 736's conflicts (`docs/DASHBOARD-SYNC.md`, `relay/src/worker.js`: merge relay `main` into `workflow-dashboard`, `npm test`, push). Then wait for Aswin to merge. Check: `gh pr view 736 --repo classrootsedu/journey_studio_mcpiser --json state`. Do not merge it yourself.
+2. When Jeevan says "the relay is live": build **Dashboard 1** (count applet fixes from the feed's `data.journeys`; replaces the hand count of `dash-push fixes`) and **Dashboard 8** (review: the reviewer decides here, the relay copies; drop the "set the relay status" reminders that Relay 3 makes untrue; read `data.via`). Take each prompt's text from the plan page. One PR to `development`.
+3. Relay 2 (read-only check that a journey is on prod): the note `../RELAY/scratch/relay-2-prod-check-note.md` is written, not sent. Send it to Aswin on Jeevan's word; build Relay 2, then Dashboard 2, only after Aswin's yes.
+4. Phase 2, after phase 1: Relay 5, Dashboard 10, Dashboard 11 (after 6), Fix seat 1. Dashboard 9 is on hold ("Do not run this now").
+5. Offered, not asked for: update the plan page ("Gaps in this page", today's changes; its `dash-push` line is out of date).
+6. Promote development → staging → main (Jeevan's call; he said "Not yet").
 
 ## Blockers / open questions
+- Offered: split Reports' Items list per work type (it is still one list); desktop light mode not checked.
+- Relay PR 736 needs the conflicts fixed, then Aswin's review and merge. Nothing goes to the relay's `main` without his OK.
+- Relay 3 item 5 needs the admin told first.
+- The relay's full page build (`relay/scripts/build-pages.sh`) could not run on this Mac: the gh login cannot read `classrootsedu/kg-portal`. Only the tool-chip check was done by hand (52 tools match).
 - Render DB password was exposed in an earlier session: rotate it.
-- 5 Team Devjyoti journeys still have Arjun as SME reviewer; peer reviewer meaning; QA fix routing.
-- A reassignment here does not change the relay's allocation (stays a `creatorDiffers` report).
-- A stage an admin adds here is sent to the relay as a field named `status`, not as a status (the contract lists 15).
+- Test not written: "a reviewer who is not the steward" (went with Relay 3 item 5).
 
 ## Key files
-- Contract: `src/lib/relay-contract.ts`, `tests/fixtures/relay-contract.v1.json` (same file as the relay's `relay/test/fixtures/dashboard-contract.v1.json`)
-- Out: `src/lib/relay-push.ts`, `src/server/services/relay-push.ts`, model `RelayOutbox`
-- In: `src/server/services/relay-sync.ts`, `src/lib/relay-map.ts`, `src/lib/relay-review.ts`, `src/server/relay/client.ts`
-- `src/server/jobs.ts`, `scripts/relay-sync.ts` (`--probe`, `--full`, `--push`, `--log`), `src/app/(app)/admin/sync/page.tsx`
-- `tests/relay-contract.test.ts`; `.ai/DECISIONS.md` (23, 24 Nov); `.ai/LEARNINGS.md`
-- Relay: `relay/src/lib/{sync-feed,dashboard-events,dashboard-contract,readonly}.mjs`, `relay/src/worker.js`, `relay/wrangler.toml`
+- Plan: `../RELAY/scratch/relay-dashboard-workflow.html`; note: `../RELAY/scratch/relay-2-prod-check-note.md`
+- In: `src/server/services/relay-sync.ts`, `src/lib/relay-review.ts`, `src/lib/relay-map.ts`, `src/lib/relay-chapters.ts`, `src/lib/relay-holder.ts`
+- Out: `src/lib/relay-push.ts`, `src/server/services/relay-push.ts`; contract `src/lib/relay-contract.ts`, `tests/fixtures/relay-contract.v1.json` (unchanged this stretch)
+- Journey flow: `src/modules/journey-applet/definition.ts`, `src/lib/stages.ts`, `src/server/services/work-items.ts`, `src/components/controls.tsx`
+- `scripts/relay-sync.ts` (`--dry-run`, `--key`, `--fixture`, `--push`); `.ai/DECISIONS.md` (24 Nov, five entries); `.ai/LEARNINGS.md`
+- Relay: `relay/src/lib/{publish-status,sync-feed,dashboard-events,applet-uses,steps,project-page}.mjs`, `relay/src/worker.js`, `docs/DASHBOARD-SYNC.md`

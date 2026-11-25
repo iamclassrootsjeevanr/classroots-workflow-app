@@ -15,6 +15,7 @@ import { relayHolders } from '@/server/relay-holder';
 import { relayHolderNote } from '@/lib/relay-holder';
 import { shortKey } from '@/lib/notifications-core';
 import { loadVersionOptions } from '@/server/apk/queries';
+import { itemPeople } from '@/server/services/analytics';
 import { queryItemsPage, type ItemsFilters } from '@/server/services/items-query';
 import { loadWorkTypePage } from '@/server/work-type-page';
 import { assignableItemsFor, assignablePeople, deletableItemsFor, developerEditsFor, developerPeople, editableItemsFor, statusOptionsFor } from '@/server/view';
@@ -59,6 +60,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
     db.workItem.findMany({ where: { workTypeId: wt.id, archivedAt: null, chapter: { grade: { not: null } } }, distinct: ['chapterId'], select: { chapter: { select: { grade: true } } } }),
     mod.developerHandoff ? db.user.findMany({ where: { developerItems: { some: { workTypeId: wt.id } } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : Promise.resolve([]),
   ]);
+  const userChoices = sp.user ? await itemPeople({ workTypeId: wt.id, archivedAt: null, AND: [scope] }) : [];
   const hand = mod.developerHandoff;
   const developerEdits = hand && editable && !testsView ? await developerEditsFor(user, shown.rows) : undefined;
   const developerOptions = hand && developerEdits?.size ? await developerPeople(key, hand.role, nextActiveAfter(mod.statuses, hand.after)) : undefined;
@@ -129,12 +131,14 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
         </div>
       )}
 
+      {/* The Overview's tiles can arrive with a person: show it as a chip so it can be seen and cleared. */}
       <FilterBar
         also={Object.values(columnFilters).map(c => c.name)}
         filters={[
           { name: 'q', label: 'Search', type: 'search' },
           ...(groupNames.length ? [{ name: 'group', label: mod.labels?.group ?? 'Group', multi: true, options: groupNames.map(g => ({ value: g, label: g })) }] : []),
           { name: 'cat', label: 'Stage', multi: true, options: stages },
+          ...(sp.user ? [{ name: 'user', label: 'User', options: userChoices }] : []),
           ...(teams.length ? [{ name: 'team', label: 'Team', multi: true, options: teams.map(t => ({ value: t.id, label: t.name })) }] : []),
           ...(grades.length ? [{ name: 'grade', label: 'Grade', multi: true, options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
           { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, ...(hasTeam ? [{ value: 'team', label: 'My team' }] : []), { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },

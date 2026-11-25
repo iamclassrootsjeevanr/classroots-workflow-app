@@ -58,3 +58,23 @@ export function nextDefault(current: string | null, oldDefault: string | null, n
   if (!newDefault || current === newDefault) return undefined;
   return current === null || current === oldDefault ? newDefault : undefined;
 }
+
+/**
+ * The items whose Steward (the Owner column) is someone matching `word`. It is not stored on the item: the coordinator of the
+ * creator's team, else the stewards of the chapter. Returns database conditions, one per team or chapter that matches.
+ */
+export function stewardMatches(word: string, teams: readonly (TeamLite & { workTypeId: string; coordinatorName: string })[], stewards: ReadonlyMap<string, readonly { name: string }[]>) {
+  const has = (name: string) => name.toLowerCase().includes(word);
+  const ofType = (workTypeId: string) => teams.filter(t => t.workTypeId === workTypeId);
+  const byTeam = teams
+    .filter(t => has(t.coordinatorName))
+    .map(t => ({ workTypeId: t.workTypeId, assigneeId: { in: teamPeople(t).filter(p => teamOf(ofType(t.workTypeId), p)?.id === t.id) } }));
+  const byChapter = [...stewards]
+    .filter(([, people]) => people.some(p => has(p.name)))
+    .map(([key]) => {
+      const [workTypeId, ...group] = key.split(':');
+      const teamed = [...new Set(ofType(workTypeId).flatMap(teamPeople))];
+      return { workTypeId, groupKey: group.join(':'), OR: [{ assigneeId: null }, { assigneeId: { notIn: teamed } }] };
+    });
+  return [...byTeam, ...byChapter];
+}

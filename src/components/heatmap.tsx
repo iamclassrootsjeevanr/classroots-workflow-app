@@ -8,7 +8,7 @@ const COLORS: Record<LoadLevel, string> = {
   overloaded: 'var(--heat-over)',
 };
 
-/** Developer × day grid of items on each person's plate, coloured by load vs capacity. */
+/** Person × day grid of items on each person's plate, coloured by load vs capacity. */
 export function WorkloadHeatmap({
   days,
   rows,
@@ -16,7 +16,7 @@ export function WorkloadHeatmap({
   days: string[];
   rows: { name: string; capacity: number; counts: number[] }[];
 }) {
-  if (!rows.length) return <p className="py-6 text-center text-sm text-muted">No developers yet.</p>;
+  if (!rows.length) return <p className="py-6 text-center text-sm text-muted">No one yet.</p>;
   const weekday = (d: string) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-IN', { weekday: 'narrow', timeZone: 'UTC' });
   return (
     <div className="overflow-x-auto">

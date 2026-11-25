@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PasswordField } from '@/components/password-field';
 import { signIn } from '@/server/auth';
-import { env, googleEnabled } from '@/server/env';
+import { googleEnabled } from '@/server/env';
 import { currentUser } from '@/server/rbac';
 
 export const metadata = { title: 'Sign in' };
@@ -46,8 +46,6 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const { error, callbackUrl, email: invitedEmail, reset } = await searchParams;
   const emailValue = invitedEmail?.includes('@') ? invitedEmail.trim().toLowerCase() : undefined;
   const redirectTo = callbackUrl?.startsWith('/') ? callbackUrl : '/';
-  const office = env().OFFICE_DOMAINS;
-  const officeLabel = office.length ? office.map(d => `@${d}`).join(' / ') : 'office';
 
   return (
     <main className="safe-bottom flex min-h-screen items-center justify-center bg-[radial-gradient(70%_45%_at_50%_0%,var(--brand-soft),transparent)] p-4">
@@ -62,9 +60,9 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
           {error && <p className="note-bad mb-5">{ERRORS[error] ?? 'Sign-in failed. Try again.'}</p>}
           {reset && !error && <p className="note-ok mb-5">Password changed. Sign in with your new password.</p>}
 
-          {/* Office staff: Google sign-in (the admin must have added them) */}
+          {/* Classroots users: Google sign-in (the admin must have added them) */}
           <section>
-            <h2 className="mb-3 text-md font-semibold">Classroots staff</h2>
+            <h2 className="mb-3 text-md font-semibold">Classroots users</h2>
             <form
               action={async () => {
                 'use server';
@@ -80,7 +78,6 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
                 Sign in with Google
               </button>
             </form>
-            <p className="mt-2 text-center text-xs text-muted">For {officeLabel} Google accounts. No password needed.</p>
           </section>
 
           <div className="my-6 flex items-center gap-4 text-xs font-medium text-muted">

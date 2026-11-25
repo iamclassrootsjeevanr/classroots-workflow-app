@@ -2,6 +2,7 @@
 
 import { Search, X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { UrlFilter } from './column-filter';
 
 export type FilterDef =
@@ -18,7 +19,8 @@ export function FilterBar({ filters, also = [] }: { filters: FilterDef[]; also?:
   const params = useSearchParams();
 
   const set = (name: string, value: string) => {
-    const next = new URLSearchParams(params.toString());
+    // Read the address now: a search applies a moment after typing, and other filters may have changed meanwhile.
+    const next = new URLSearchParams(window.location.search);
     if (value) next.set(name, value);
     else next.delete(name);
     next.delete('page');
@@ -43,19 +45,7 @@ export function FilterBar({ filters, also = [] }: { filters: FilterDef[]; also?:
             <input className="bg-transparent text-ink outline-none" type="date" aria-label={f.label} value={params.get(f.name) ?? ''} onChange={e => set(f.name, e.target.value)} />
           </label>
         ) : (
-          <span key={f.name} className="relative block min-w-48 flex-1">
-            <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden="true" />
-            <input
-              key={params.get(f.name) ?? ''}
-              className="input pl-9"
-              type="search"
-              aria-label={f.label}
-              placeholder="Search"
-              defaultValue={params.get(f.name) ?? ''}
-              onKeyDown={e => e.key === 'Enter' && set(f.name, (e.target as HTMLInputElement).value.trim())}
-              onBlur={e => e.target.value.trim() !== (params.get(f.name) ?? '') && set(f.name, e.target.value.trim())}
-            />
-          </span>
+          <SearchBox key={f.name} label={f.label} value={params.get(f.name) ?? ''} onSearch={v => set(f.name, v)} />
         ),
       )}
       {active && (
@@ -65,5 +55,38 @@ export function FilterBar({ filters, also = [] }: { filters: FilterDef[]; also?:
         </button>
       )}
     </div>
+  );
+}
+
+/** Filters as you type (after a short pause), at once on Enter or on leaving the box. */
+function SearchBox({ label, value, onSearch }: { label: string; value: string; onSearch: (value: string) => void }) {
+  const [text, setText] = useState(value);
+  const input = useRef<HTMLInputElement>(null);
+  const sent = useRef(value);
+
+  // The address changed from outside (Clear, a link, Back): show it. Never overwrite what is being typed.
+  useEffect(() => {
+    sent.current = value;
+    if (document.activeElement !== input.current) setText(value);
+  }, [value]);
+
+  const send = () => {
+    const next = text.trim();
+    if (next === sent.current) return;
+    sent.current = next;
+    onSearch(next);
+  };
+  useEffect(() => {
+    const timer = setTimeout(send, 400);
+    return () => clearTimeout(timer);
+    // Only typing starts the pause.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  return (
+    <span className="relative block min-w-48 flex-1">
+      <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" aria-hidden="true" />
+      <input ref={input} className="input pl-9" type="search" aria-label={label} placeholder="Search key or name" value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} onBlur={send} />
+    </span>
   );
 }
