@@ -1,7 +1,7 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-25T13:35:00Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-25T13:36:54Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Close the gaps between the relay and the Dashboard, prompt by prompt, from the plan page `../RELAY/scratch/relay-dashboard-workflow.html` (tabs: Relay 1-5, Dashboard 1-11, Fix seat 1). Rule of 24 Nov: one side owns each action, the other side copies it. Each prompt has its own gates ("ask me before you build").
