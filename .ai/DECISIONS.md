@@ -216,3 +216,9 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - Part or all of a word, any case; with several words each must match somewhere (`src/lib/search.ts`). Lists filtered in memory use `matchesSearch`, database lists `searchWhere` (`src/lib/items-where.ts`).
 - Items match on key, group, title, chapter name and the names of the creator/assignee, reviewer, developer and Steward (worked out from teams: `stewardMatches`).
 - `FilterBar`'s search applies as you type (400 ms pause), and at once on Enter.
+
+## 2026-11-25 · Grade 7 and 8 chapters carry the part; the chapter picker
+- The chapter list had grades 7 and 8 under one number for the whole book (G07C01 to G07C15, G08C01 to G08C14). The relay and every journey key name the part (G07P1C03). The relay sync then made a second row per chapter, named by its code, and two stewarded chapters had no row at all (name "—").
+- Migration `20261125140000_chapter_part_codes` renumbers the 29 list rows to part codes (G07: 1-8 → P1, 9-15 → P2C01-07; G08: 1-7 → P1, 8-14 → P2C01-07), gives the four relay-made rows the list's name and details, and removes the four duplicates (no journey was on them). Mapping checked against the relay's `kg_nm_list_chapters`, 25 Nov 2026. Grades 9 and 10 are not changed: no journey key exists for them yet.
+- A name equal to the code is not a name (`hasChapterName`): the page says "No name" and the picker leaves such rows out. A new code without the part is refused where the grade has part codes (`chapterCodeConflict`).
+- The chapter code field is a picker (`ChapterPicker` in `src/components/chapters-panel.tsx`): chapters under their grade, found by code or name, keyboard and pointer; a code not in the list can still be typed.

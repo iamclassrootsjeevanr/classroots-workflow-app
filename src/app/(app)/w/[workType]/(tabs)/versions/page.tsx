@@ -5,6 +5,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { NewApkVersionButton } from '@/components/new-apk-version';
 import { Sheet } from '@/components/sheet';
 import { Card, Empty } from '@/components/ui';
+import { hasChapterName } from '@/lib/chapter-codes';
 import { itemsUrl } from '@/lib/items-url';
 import { chapterProgress, type ChapterFeedRow } from '@/lib/relay-chapters';
 import { displayNameFromEmail } from '@/lib/relay-map';
@@ -93,7 +94,7 @@ export default async function VersionsPage({ params, searchParams }: { params: P
                             {r.code}
                           </Link>
                         </td>
-                        <td>{r.title || '—'}</td>
+                        <td>{r.title || <span className="text-muted">No name</span>}</td>
                         <td className="whitespace-nowrap">{r.stewards || <span className="text-muted">No steward</span>}</td>
                         <td className="tabular-nums">
                           <Link className="link" href={itemsUrl(key, { group: r.code })}>
@@ -237,13 +238,13 @@ export default async function VersionsPage({ params, searchParams }: { params: P
     const isAdmin = access.isAdmin;
     return {
       mine: mineSet,
-      known: reference.filter(c => !steered.includes(c.code)),
+      known: reference.filter(c => !steered.includes(c.code) && hasChapterName(c.code, c.title)),
       coordinators: coordinators.map(u => ({ id: u.id, name: u.name ?? u.email ?? '?' })),
       rows: codes.map(code => {
         const inIt = list.filter(i => i.groupKey === code);
         return {
           code,
-          title: titleOf.get(code) ?? inIt[0]?.chapterTitle ?? '',
+          title: [titleOf.get(code), inIt[0]?.chapterTitle].find(t => hasChapterName(code, t)) ?? '',
           stewards: stewards.get(`${workTypeId}:${code}`)?.map(s => s.name).join(', ') ?? '',
           total: inIt.length,
           open: inIt.filter(i => i.category !== 'done').length,

@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { partLabel } from '@/lib/chapter-codes';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
@@ -278,7 +279,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
         const created = await db.$transaction(async tx => {
           let chapterId = chapterByCode.get(parsed.chapter);
           if (!chapterId) {
-            chapterId = (await tx.chapter.create({ data: { code: parsed.chapter, grade: parsed.grade, part: parsed.part ? String(parsed.part) : null, chapterNo: Number(parsed.chapter.slice(-2)), title: parsed.chapter } })).id;
+            chapterId = (await tx.chapter.create({ data: { code: parsed.chapter, grade: parsed.grade, part: partLabel(parsed.part), chapterNo: Number(parsed.chapter.slice(-2)), title: parsed.chapter } })).id;
             chapterByCode.set(parsed.chapter, chapterId);
           }
           const row = await createItemTx(tx, wt!, ACTOR, { externalKey: a.key, title: a.title ?? a.key, assigneeId, chapterId, groupKey: parsed.chapter, sortOrder: Number(parsed.subtopic.slice(2)) * 100 + parsed.journey, data: {} }, new Date(), cal);
