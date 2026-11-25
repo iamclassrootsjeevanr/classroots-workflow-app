@@ -243,6 +243,9 @@ export function loadLevel(open: number, capacity: number): LoadLevel {
   return 'overloaded';
 }
 
+/** What a new person can comfortably carry; the same number is the column's default in the database. */
+export const DEFAULT_CAPACITY = 10;
+
 export type UserLite = { id: string; name: string; capacity: number };
 
 export type Workload = {

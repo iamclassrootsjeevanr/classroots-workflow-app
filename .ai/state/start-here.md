@@ -1,12 +1,15 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-25T12:00:53Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-25T12:16:39Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Close the gaps between the relay and the Dashboard, prompt by prompt, from the plan page `../RELAY/scratch/relay-dashboard-workflow.html` (tabs: Relay 1-5, Dashboard 1-11, Fix seat 1). Rule of 24 Nov: one side owns each action, the other side copies it. Each prompt has its own gates ("ask me before you build").
 
 ## Done this stretch (24-25 Nov)
+- **25 Nov, capacity 10** (commit 5f60a1a), PR `start-here` → `development`. Migration `20261125120000` (column default 10), applied locally; Render gets it on deploy.
+  - Data: all 21 users set to 10 on the local and Render databases (were 3, one already 10).
+  - PR 32 (counts) merged 12:03Z and checked live: Overdue card 6 = list 6.
 - **25 Nov, counts vs lists** (commit eb9ce4a), PR `start-here` → `development`. PR 31's Render deploy was checked: live.
   - Overdue list leaves out approved items where the due date ends there (`isOverdue`); Overview's Overdue tile opens a list with no work type picked.
   - My dashboard "My work": tiles and lists = assignee or developer (`?holder`, chip "Work of"); due-in-7 leaves out handed-off items.
@@ -34,7 +37,7 @@ Close the gaps between the relay and the Dashboard, prompt by prompt, from the p
 Nothing mid-edit. Both working trees clean.
 
 ## Next steps
-0. After the counts PR merges (no migration): on Render, Journey Overdue card = its list (was 6 vs 22).
+0. After the capacity PR merges: on Render, People & access → Add person starts at capacity 10.
 0b. Count gaps found and not fixed (Jeevan said "fix 1–3 for now"): My dashboard charts open everyone's items; "Done (30 days)" and "Approved / done (30 days)" lists have no date filter; Reports chapter chart ignores From/To and drops User/Search; Overview "Period" does not change the tiles; "Unassigned" and Teams "open" lists would include done; many numbers are not clickable (Overview with no work type, workload table, charts, Work done, Reports summary); "In progress" includes corrections on Overview, not in the Journey header.
 1. When Jeevan says: resolve relay PR 736's conflicts (`docs/DASHBOARD-SYNC.md`, `relay/src/worker.js`: merge relay `main` into `workflow-dashboard`, `npm test`, push). Then wait for Aswin to merge. Check: `gh pr view 736 --repo classrootsedu/journey_studio_mcpiser --json state`. Do not merge it yourself.
 2. When Jeevan says "the relay is live": build **Dashboard 1** (count applet fixes from the feed's `data.journeys`; replaces the hand count of `dash-push fixes`) and **Dashboard 8** (review: the reviewer decides here, the relay copies; drop the "set the relay status" reminders that Relay 3 makes untrue; read `data.via`). Take each prompt's text from the plan page. One PR to `development`.

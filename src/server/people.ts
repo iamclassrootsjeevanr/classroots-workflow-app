@@ -1,4 +1,5 @@
 import 'server-only';
+import { DEFAULT_CAPACITY } from '@/lib/analytics-core';
 import type { UserInput } from '@/app/actions';
 import { roleCapabilities, rolePages } from '@/lib/access-core';
 import { getModule } from '@/modules/registry';
@@ -60,7 +61,7 @@ export async function userFormData(userId?: string) {
     .filter(p => p.id !== userId && p.memberships.length)
     .map(p => ({ id: p.id, name: p.name ?? p.email ?? '?', note: describe(p), access: p.memberships.map(toAccessInput) }));
 
-  let initial: UserInput = { name: '', email: '', capacity: 3, active: true, isAdmin: false, password: '', access: [] };
+  let initial: UserInput = { name: '', email: '', capacity: DEFAULT_CAPACITY, active: true, isAdmin: false, password: '', access: [] };
   let hasPassword = false;
   if (userId) {
     const u = await db.user.findUniqueOrThrow({

@@ -9,7 +9,7 @@ import { itemsUrl } from '@/lib/items-url';
 import { ItemsTables } from '@/components/items-table';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct } from '@/components/ui';
 import type { WorkTypeAccess } from '@/lib/access-core';
-import { flowTimes, isDueBy, isOverdue, workloadByUser } from '@/lib/analytics-core';
+import { DEFAULT_CAPACITY, flowTimes, isDueBy, isOverdue, workloadByUser } from '@/lib/analytics-core';
 import { addDays, businessMinutesBetween, formatDateTime, formatDuration } from '@/lib/time';
 import { requireAnyPage, scopeWhere } from '@/server/access';
 import { db } from '@/server/db';
@@ -227,7 +227,7 @@ async function TeamSection({ access, types, tz }: { access: Access; types: WorkT
           <ThroughputChart rows={d.throughput} />
         </Card>
         <Card title="Workload, last 2 weeks">
-          <WorkloadHeatmap days={d.heatmap.days} rows={d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }))} />
+          <WorkloadHeatmap days={d.heatmap.days} rows={d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? DEFAULT_CAPACITY, counts: r.counts }))} />
         </Card>
       </div>
       <p className="mb-5 text-xs text-muted">Times in business hours ({tz}).</p>
