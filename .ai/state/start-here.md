@@ -1,13 +1,18 @@
 # STATE — branch: start-here
 <!-- Overwritten on every handoff. Under 80 lines. Describes NOW. -->
 
-Updated: 2026-11-25T12:19:24Z · by: claude-code · owner: Jeevan
+Updated: 2026-11-25T12:58:00Z · by: claude-code · owner: Jeevan
 
 ## Goal
 Close the gaps between the relay and the Dashboard, prompt by prompt, from the plan page `../RELAY/scratch/relay-dashboard-workflow.html` (tabs: Relay 1-5, Dashboard 1-11, Fix seat 1). Rule of 24 Nov: one side owns each action, the other side copies it. Each prompt has its own gates ("ask me before you build").
 
 ## Done this stretch (24-25 Nov)
-- **25 Nov, capacity 10** (commit 5f60a1a), PR 33 **merged** 25 Nov 12:18Z, both checks passed; Render deploy not checked. Migration `20261125120000` (column default 10), applied locally.
+- **25 Nov, chapters** — both merged, `start-here` = `development`.
+  - PR 34 (8b13023, merge 0602ce5, 12:46Z), **live**: migration `20261125140000_chapter_part_codes` applied on Render 12:48Z. Grade 7 and 8 chapter rows renumbered to part codes (`G07C03` → `G07P1C03`), the four relay-made rows named, four duplicates removed (96 → 92 chapters, 69 journeys kept). Read back live: six names right, no old code left.
+  - New chapter picker (`ChapterPicker`, `src/components/chapters-panel.tsx`): by grade, search by code or name, keyboard. A code without the part is refused where the grade has parts (`chapterCodeConflict`); a name equal to the code shows "No name" (`src/lib/chapter-codes.ts`).
+  - PR 35 (f5da293, merge eb676e8, 12:54Z): `syncRelay` ends with `nameChapters`: a chapter with no name takes the relay's (`kg_nm_list_chapters`, CBSE only); a name that exists is never changed. Token probed: it can read the list. **Deploy not confirmed** (no migration, health has no build mark): at 12:57Z the last live sync was still 12:50Z, ok, no unnamed chapter.
+  - 315 tests, typecheck. Checked on the local copy in Chrome (dark and light). Not checked: phone width, a real Add chapter save, the live Chapters page signed-in, the new lines on Admin → Sheet sync.
+- **25 Nov, capacity 10** (commit 5f60a1a), PR 33 **merged** 25 Nov 12:18Z, both checks passed; **live** (applied on Render 12:20Z, default 10). Migration `20261125120000` (column default 10), applied locally.
   - Data: all 21 users set to 10 on the local and Render databases (were 3, one already 10).
   - PR 32 (counts) merged 12:03Z and checked live: Overdue card 6 = list 6.
 - **25 Nov, counts vs lists** (commit eb9ce4a), PR `start-here` → `development`. PR 31's Render deploy was checked: live.
@@ -37,7 +42,8 @@ Close the gaps between the relay and the Dashboard, prompt by prompt, from the p
 Nothing mid-edit. Both working trees clean.
 
 ## Next steps
-0. Check the Render deploy of PR 33: health, and People & access → Add person starts at capacity 10.
+0. Confirm PR 35 on Render: `RelaySyncState.lastRunAt` later than 12:58Z with `ok` true and no errors (read-only, see LEARNINGS). Then look at the live Chapters page and its picker signed-in.
+0a. Grade 9: the list has `G09C01`-`G09C08`; the relay numbers Grade 9 in two parts (`CBG09P1C01`…`CBG09P2C14`). If journey keys arrive as `G09P1C01`, renumber the list as was done for grades 7 and 8. Do not guess before a key exists.
 0b. Count gaps found and not fixed (Jeevan said "fix 1–3 for now"): My dashboard charts open everyone's items; "Done (30 days)" and "Approved / done (30 days)" lists have no date filter; Reports chapter chart ignores From/To and drops User/Search; Overview "Period" does not change the tiles; "Unassigned" and Teams "open" lists would include done; many numbers are not clickable (Overview with no work type, workload table, charts, Work done, Reports summary); "In progress" includes corrections on Overview, not in the Journey header.
 1. When Jeevan says: resolve relay PR 736's conflicts (`docs/DASHBOARD-SYNC.md`, `relay/src/worker.js`: merge relay `main` into `workflow-dashboard`, `npm test`, push). Then wait for Aswin to merge. Check: `gh pr view 736 --repo classrootsedu/journey_studio_mcpiser --json state`. Do not merge it yourself.
 2. When Jeevan says "the relay is live": build **Dashboard 1** (count applet fixes from the feed's `data.journeys`; replaces the hand count of `dash-push fixes`) and **Dashboard 8** (review: the reviewer decides here, the relay copies; drop the "set the relay status" reminders that Relay 3 makes untrue; read `data.via`). Take each prompt's text from the plan page. One PR to `development`.
