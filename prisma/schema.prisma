@@ -62,7 +62,7 @@ model User {
   isAdmin           Boolean   @default(false)
   active            Boolean   @default(true)
   /// Concurrent items this person can comfortably carry (workload level = open / capacity).
-  capacity          Int       @default(3)
+  capacity          Int       @default(10)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   lastLoginAt       DateTime?

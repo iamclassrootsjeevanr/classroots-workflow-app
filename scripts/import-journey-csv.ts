@@ -197,7 +197,7 @@ async function main() {
     const admin = t.admin ? { isAdmin: true } : {};
     user = user
       ? await db.user.update({ where: { id: user.id }, data: { email: t.email, active: true, ...admin } })
-      : await db.user.create({ data: { name: t.name, email: t.email, capacity: 3, active: true, ...admin } });
+      : await db.user.create({ data: { name: t.name, email: t.email, active: true, ...admin } });
     userIds.set(norm(t.name), user.id);
     const roles = t.roles.map(k => roleIds.get(k)).filter((x): x is string => Boolean(x));
     const groupKeys = t.chapters ?? [];

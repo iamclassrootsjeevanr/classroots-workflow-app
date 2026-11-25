@@ -5,7 +5,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
-import { isOverdue } from '@/lib/analytics-core';
+import { DEFAULT_CAPACITY, isOverdue } from '@/lib/analytics-core';
 import { itemsUrl } from '@/lib/items-url';
 import { peopleNames } from '@/lib/role-names';
 import { lowerLabel } from '@/lib/text';
@@ -57,7 +57,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   const overdueWt = one ?? (overdueTypes.length === 1 ? overdueTypes[0] : undefined);
   const overdueHref = overdueWt ? itemsUrl(overdueWt, { ...shared, scope: 'overdue' }) : overdueTypes.length ? '#overdue' : undefined;
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
-  const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
+  const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? DEFAULT_CAPACITY, counts: r.counts }));
   const flowHint = 'business hours';
 
   return (
