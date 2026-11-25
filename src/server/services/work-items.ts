@@ -606,6 +606,23 @@ export async function deleteItem(actor: ChangeActor, itemId: string) {
   });
 }
 
+/**
+ * The relay sync archives a journey the relay cut (`archive: true`) or brings it back when the relay allocates it again. No rights
+ * check and no undo window: the actor is the sync. The note marks the event, so only a journey the sync archived is brought back.
+ */
+export async function relayArchive(actor: ChangeActor, itemId: string, archive: boolean, note: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    if (Boolean(item.archivedAt) === archive) return;
+    const now = new Date();
+    await saveItem(tx, item, { archivedAt: archive ? now : null });
+    if (archive) await tx.syncOutbox.deleteMany({ where: { itemId, status: 'PENDING' } });
+    await tx.workItemEvent.create({
+      data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: item.archivedAt?.toISOString() ?? null, toValue: archive ? now.toISOString() : null, source: actor.source, note, at: now },
+    });
+  });
+}
+
 /** Bring back a deleted row, within the undo window (30 minutes). */
 export async function restoreItem(actor: ChangeActor, itemId: string) {
   return db.$transaction(async tx => {

@@ -6,6 +6,7 @@ import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStew
 import { feedTouched, isTouched, parseFeed, toolUnavailable, type FeedCursor, type FeedEvent, type Touched } from '@/lib/relay-contract';
 import { chapterFeedCursor, chapterFeedRows, keptChapterCursor } from '@/lib/relay-chapters';
 import { allocationEventId } from '@/lib/relay-holder';
+import { RELAY_CUT_NOTE, relayAllocationChapters, relayCutJourneys } from '@/lib/relay-cut';
 import { relayMismatch, reopenFollow, reopenLine, reopenStanding, reviewMoves, SUBMIT_MOVES, type RelayRow } from '@/lib/relay-review';
 import { shortKey } from '@/lib/notifications-core';
 import { nextActiveAfter } from '@/lib/stages';
@@ -19,7 +20,7 @@ import type { RelayClient } from '../relay/client';
 import { notify, stewardIds } from './notifications';
 import { relaySettled } from './relay-push';
 import { addTeamMember } from './teams';
-import { assign, changeStatus, createItemTx, updateFields, type ChangeActor } from './work-items';
+import { assign, changeStatus, createItemTx, relayArchive, updateFields, type ChangeActor } from './work-items';
 
 /**
  * Pull the journey relay's ledger into the dashboard. The relay feeds creation (who holds a journey, its Creation stage, its approvals);
@@ -76,6 +77,9 @@ export type RelayReport = {
   dashboardAhead: { key: string; dashboard: string; relay: string }[];
   /** Dashboard journeys the relay has no allocation for (old tracker imports). */
   notOnRelay: string[];
+  /** Journeys the relay cut, archived here (made by the relay, never started); `cutBack`: archived so, allocated again, restored. */
+  cut?: string[];
+  cutBack?: string[];
   /** Chapter stewards from the relay's chapter owners: added to (and handed over from) coordinators' chapter lists. */
   stewards: { code: string; steward: string; change: 'added' | 'removed' }[];
   /** Chapter owners the dashboard could not apply (reported, nothing changed). */
@@ -176,7 +180,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
 
   const allocReply = await client.allocations();
   const [items, users, chapters, cal] = await Promise.all([
-    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, groupKey: true, data: true, assignee: { select: { name: true } } } }),
+    db.workItem.findMany({ where: { workTypeId: wt.id }, select: { id: true, externalKey: true, title: true, status: true, ownerId: true, archivedAt: true, assigneeId: true, groupKey: true, data: true, firstStartedAt: true, assignee: { select: { name: true } }, events: { where: { type: 'CREATED' }, select: { source: true }, take: 1 } } }),
     db.user.findMany({ where: { active: true }, select: { id: true, email: true, name: true } }),
     db.chapter.findMany({ select: { id: true, code: true } }),
     workCalendar(),
@@ -196,6 +200,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
   const chapterByCode = new Map(chapters.map(c => [c.code, c.id]));
   const relayKeys = new Set(allocations.map(a => a.key));
   if (!only) report.notOnRelay = items.filter(i => !i.archivedAt && !relayKeys.has(i.externalKey.toUpperCase()) && parseJourneyKey(i.externalKey)).map(i => i.externalKey).sort();
+  if (!only) await followCuts();
 
   // Someone the relay names and the dashboard lacks is added first, so this same run gives them their journeys and chapters.
   const willAdd = new Set<string>();
@@ -267,6 +272,38 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     }
   }
 
+  /** Archive the journeys the relay cut; bring back one archived so that the relay allocates again (before syncOne skips it). */
+  async function followCuts() {
+    try {
+      const cut = relayCutJourneys(
+        items.map(i => ({ key: i.externalKey, status: i.status, archived: Boolean(i.archivedAt), started: Boolean(i.firstStartedAt), madeByRelay: i.events[0]?.source === 'RELAY' })),
+        relayKeys,
+        relayAllocationChapters(allocationKeys(allocReply)),
+        mod.initialStatus,
+      );
+      report.cut = cut;
+      report.notOnRelay = report.notOnRelay.filter(k => !cut.includes(k));
+      const archivedBack = items.filter(i => i.archivedAt && relayKeys.has(i.externalKey.toUpperCase()));
+      const lastArchive = archivedBack.length
+        ? await db.workItemEvent.findMany({ where: { itemId: { in: archivedBack.map(i => i.id) }, field: 'archivedAt' }, orderBy: { at: 'desc' }, select: { itemId: true, note: true } })
+        : [];
+      const back = archivedBack.filter(i => lastArchive.find(e => e.itemId === i.id)?.note === RELAY_CUT_NOTE);
+      report.cutBack = back.map(i => i.externalKey).sort();
+      if (dryRun) return;
+      for (const key of cut) {
+        const i = byKey.get(key.toUpperCase())!;
+        await relayArchive(ACTOR, i.id, true, RELAY_CUT_NOTE);
+        i.archivedAt = new Date();
+      }
+      for (const i of back) {
+        await relayArchive(ACTOR, i.id, false, 'Allocated again on the relay');
+        i.archivedAt = null;
+      }
+    } catch (e) {
+      report.errors.push({ key: 'cut journeys', error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   async function syncOne(a: RelayAllocation) {
     let item = byKey.get(a.key);
     const existed = Boolean(item);
@@ -290,7 +327,7 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
           if (assigneeId) await notify(tx, assigneeId, { kind: 'item.assigned', title: `Journey allocated to you: ${shortKey(a.key)}`, body: row.title, href: `/w/${JOURNEY}/${row.id}` });
           return row;
         });
-        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, groupKey: parsed.chapter, data: created.data, assignee: null };
+        item = { id: created.id, externalKey: a.key, title: created.title, status: created.status, ownerId: created.ownerId, archivedAt: null, assigneeId, groupKey: parsed.chapter, data: created.data, firstStartedAt: created.firstStartedAt, assignee: null, events: [{ source: 'RELAY' as const }] };
         byKey.set(a.key, item);
       }
     } else if (assigneeId && !item.assigneeId) {
@@ -582,4 +619,10 @@ async function syncTeams(workTypeId: string, holders: { userId: string; team: st
       report.teamIssues.push(`${nameById.get(j.userId)}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+}
+
+/** Every allocation row's key, whatever its level. */
+function allocationKeys(reply: unknown): string[] {
+  const rows = reply && typeof reply === 'object' ? (reply as { allocations?: unknown }).allocations : reply;
+  return Array.isArray(rows) ? rows.map(r => String((r as { key?: unknown } | null)?.key ?? '')) : [];
 }
