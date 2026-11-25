@@ -72,7 +72,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         <Kpi label={lbl('feedback', 'Corrections')} value={inCat('feedback')} tone={inCat('feedback') ? 'bad' : undefined} href={mineLink({ cat: 'feedback' })} />
         <Kpi label={lbl('review', 'Waiting on review')} value={inCat('review')} href={mineLink({ cat: 'review' })} />
         <Kpi label="Overdue" value={overdue} tone={overdue ? 'bad' : 'ok'} href={mineLink({ scope: 'overdue' })} />
-        <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" href={mineLink({ cat: 'done' })} />
+        <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" href={mineLink({ cat: 'done', done: '30' })} />
         <Kpi label="Avg cycle time" value={formatDuration(flow.cycleTime.avg)} hint="start → done, business hours" />
       </KpiGrid>
       </section>
@@ -81,11 +81,11 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
       <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mineGroups.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.groupSummary.unit ?? mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="chart" key={t.workTypeKey} itemsHref={itemsUrl(t.workTypeKey, { holder: user.id })} mod={mod} items={mineGroups.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.groupSummary.unit ?? mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-3">
         <Card title="My work by status">
-          <StatusPie slices={statusSlices(mine).filter(s => s.category !== 'done')} itemsHref={single ? `/w/${single.key}/items` : undefined} note={mine.some(i => i.category === 'done') ? `Done (${mine.filter(i => i.category === 'done').length}) is on its card above.` : undefined} />
+          <StatusPie slices={statusSlices(mine).filter(s => s.category !== 'done')} itemsHref={mineLink({})} note={mine.some(i => i.category === 'done') ? `Done (${mine.filter(i => i.category === 'done').length}) is on its card above.` : undefined} />
         </Card>
         <Card title="My time per stage vs team" className="lg:col-span-2">
           <MeVsTeamChart rows={meVsTeam} />
@@ -97,7 +97,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
       <>
       {types.map(t => {
         const mod = getModule(t.workTypeKey);
-        return mod?.groupSummary ? <GroupSummaryCard only="table" key={t.workTypeKey} itemsHref={`/w/${t.workTypeKey}/items`} mod={mod} items={mineGroups.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.groupSummary.unit ?? mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
+        return mod?.groupSummary ? <GroupSummaryCard only="table" key={t.workTypeKey} itemsHref={itemsUrl(t.workTypeKey, { holder: user.id })} mod={mod} items={mineGroups.filter(i => i.workTypeKey === t.workTypeKey)} tz={tz} title={`My ${mod.groupSummary.unit ?? mod.itemNoun}s by ${mod.groupSummary.label}`} /> : null;
       })}
       <div className="mb-5 grid gap-5 lg:grid-cols-2">
         <Card title="Due in the next 7 days">

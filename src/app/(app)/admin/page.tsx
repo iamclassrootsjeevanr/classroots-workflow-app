@@ -6,7 +6,7 @@ import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
 import { DEFAULT_CAPACITY, isOverdue } from '@/lib/analytics-core';
-import { itemsUrl } from '@/lib/items-url';
+import { itemsUrl, OPEN_CATS } from '@/lib/items-url';
 import { peopleNames } from '@/lib/role-names';
 import { lowerLabel } from '@/lib/text';
 import { addDays, formatDateTime, formatDuration } from '@/lib/time';
@@ -75,7 +75,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
 
       <KpiGrid>
         <Kpi label="Total items" value={d.kpis.total} href={itemsHref} />
-        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { ...shared, dev: 'none' })} />
+        <Kpi label="Unassigned" value={d.kpis.unassigned} tone={d.kpis.unassigned ? 'warn' : undefined} href={one && itemsUrl(one, { ...shared, dev: 'none', cat: OPEN_CATS })} />
         <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { ...shared, cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
         <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { ...shared, cat: 'review' })} />
         <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { ...shared, cat: 'done' })} />

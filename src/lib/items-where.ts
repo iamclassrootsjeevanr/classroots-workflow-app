@@ -28,6 +28,8 @@ export type ItemsFilters = {
   team?: string;
   /** APK Testing: `tests` = list the test results, not the APK versions. */
   view?: string;
+  /** A number of days: items finished (completedAt) in the last N days, as the "Done (30 days)" tiles count. */
+  done?: string;
 } & { [field: `f_${string}`]: string | undefined };
 
 export const NONE = 'none';
@@ -100,6 +102,14 @@ export function itemsWhere(mod: WorkTypeDefinition, f: ItemsFilters, userId: str
   if (f.scope === 'review') and.push({ status: { in: keysOf(mod, c => c === 'review') } });
   // The same rule as the Overdue tiles (`isOverdue`): where the due date ends at approval, an approved item is not overdue.
   if (f.scope === 'overdue') and.push({ dueAt: { lt: now }, status: { notIn: keysOf(mod, c => c === 'done') }, ...(mod.dueEndsAt === 'approved' ? { approvedAt: null } : {}) });
+  const days = doneDays(f.done);
+  if (days) and.push({ completedAt: { gte: new Date(now.getTime() - days * 86_400_000) } });
   return and.length ? { AND: and } : {};
+}
+
+/** The `done` filter as whole days, 1 to 366; anything else is no filter. */
+export function doneDays(value: string | undefined): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 366 ? n : null;
 }
 
