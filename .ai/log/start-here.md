@@ -36,3 +36,4 @@
 - 2026-11-25T12:58Z | claude-code | Handoff: chapter part codes and picker live (PR 34); relay chapter names merged (PR 35), deploy to confirm
 - 2026-11-25T13:19Z | claude-code | Relay audit fixed: Grade 9 parts, cut journeys archived, journey names from relay (PR 36 open)
 - 2026-11-25T13:31Z | claude-code | PR 36 live on Render: Grade 9 parts, 2 cut journeys archived, 85 journeys named
+- 2026-11-25T13:32Z | claude-code | Chapter-titles note sent to Aswin on Slack
