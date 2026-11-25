@@ -30,3 +30,4 @@
 - 2026-11-25T06:36Z | claude-code | Handoff: Dashboard 3-7 live; relay PR 736 waits for the admin; next Dashboard 1 and 8
 - 2026-11-25T07:12Z | claude-code | Handoff: Overview/Reports filters, search and role names; PR to development
 - 2026-11-25T07:17Z | claude-code | Handoff: PR 31 merged to development; next check the Render deploy, then relay PR 736
+- 2026-11-25T12:00Z | claude-code | Handoff: Overdue and My dashboard counts match their lists; PR to development
