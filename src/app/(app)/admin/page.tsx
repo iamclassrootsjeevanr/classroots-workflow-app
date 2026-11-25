@@ -5,6 +5,7 @@ import { GroupSummaryCard } from '@/components/group-summary';
 import { WorkloadHeatmap } from '@/components/heatmap';
 import { AssignSelect } from '@/components/controls';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct, StatusBadge } from '@/components/ui';
+import { isOverdue } from '@/lib/analytics-core';
 import { itemsUrl } from '@/lib/items-url';
 import { peopleNames } from '@/lib/role-names';
 import { lowerLabel } from '@/lib/text';
@@ -43,7 +44,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   const cat = (c: 'queue' | 'active' | 'feedback' | 'review' | 'done', dflt: string) => single?.categoryLabels?.[c] ?? dflt;
 
   const unassigned = d.items.filter(i => !i.assigneeId && i.category !== 'done').slice(0, 12);
-  const overdue = d.items.filter(i => i.category !== 'done' && i.dueAt && i.dueAt < d.now).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
+  const overdue = d.items.filter(i => isOverdue(i, d.now)).sort((a, b) => (b.delay ?? 0) - (a.delay ?? 0)).slice(0, 10);
   const statusSeries = d.statusSlices.filter(s => s.category !== 'done').map(s => ({ label: s.label, color: s.color, count: s.count, key: s.key }));
   const one = sp.wt;
   // The role's own name when one work type is picked, else "User".
@@ -51,6 +52,10 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   // Tiles and charts open the item list with the same person and search.
   const shared = { user: sp.user, q: sp.q };
   const itemsHref = one && itemsUrl(one, shared);
+  // With no work type picked, the Overdue tile still opens a list: the one work type that has them, else the list below.
+  const overdueTypes = [...new Set(d.items.filter(i => isOverdue(i, d.now)).map(i => i.workTypeKey))];
+  const overdueWt = one ?? (overdueTypes.length === 1 ? overdueTypes[0] : undefined);
+  const overdueHref = overdueWt ? itemsUrl(overdueWt, { ...shared, scope: 'overdue' }) : overdueTypes.length ? '#overdue' : undefined;
   const loadById = new Map(d.workload.map(w => [w.userId, w]));
   const heatRows = d.heatmap.rows.map(r => ({ name: loadById.get(r.userId)?.name ?? '?', capacity: loadById.get(r.userId)?.capacity ?? 3, counts: r.counts }));
   const flowHint = 'business hours';
@@ -74,7 +79,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         <Kpi label={cat('active', 'In progress')} value={d.kpis.inProgress + d.kpis.corrections} href={one && itemsUrl(one, { ...shared, cat: ['active', 'feedback'] })} hint={`${d.kpis.corrections} ${cat('feedback', 'in corrections').toLowerCase()}`} />
         <Kpi label={cat('review', 'In review')} value={d.kpis.inReview} href={one && itemsUrl(one, { ...shared, cat: 'review' })} />
         <Kpi label={cat('done', 'Done')} value={d.kpis.done} tone="ok" href={one && itemsUrl(one, { ...shared, cat: 'done' })} />
-        <Kpi label="Overdue" value={d.kpis.overdue} href={one && itemsUrl(one, { ...shared, scope: 'overdue' })} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
+        <Kpi label="Overdue" value={d.kpis.overdue} href={overdueHref} tone={d.kpis.overdue ? 'bad' : 'ok'} hint={`${d.kpis.dueThisWeek} due this week`} />
         <Kpi label="On time" value={pct(d.quality.onTimeRate)} hint={`first-pass ${pct(d.quality.firstPassRate)}`} />
       </KpiGrid>
 
@@ -208,7 +213,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
           ) : (
             <p className="mb-4 text-sm text-muted">Nothing is stuck.</p>
           )}
-          <h3 className="mb-1 text-xs font-semibold text-muted uppercase">Overdue</h3>
+          <h3 id="overdue" className="mb-1 scroll-mt-20 text-xs font-semibold text-muted uppercase">Overdue</h3>
           {overdue.length ? (
             <ul className="divide-y divide-line text-sm">
               {overdue.map(i => (

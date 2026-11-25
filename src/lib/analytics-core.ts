@@ -65,6 +65,12 @@ export function summarize(values: number[]): Summary {
 const isClosed = (c: StatusCategory) => c === 'done';
 const isOpen = (c: StatusCategory) => c !== 'done';
 
+/** Past due and still the assignee's to finish: the count on every Overdue tile (the list filter is `scope=overdue`). */
+export const isOverdue = (it: Pick<ItemLite, 'category' | 'dueAt' | 'handedOff'>, now: Date) => isOpen(it.category) && !it.handedOff && Boolean(it.dueAt && it.dueAt < now);
+
+/** Still to finish and due on or before `until`: what "Due in the next 7 days" lists (late items included). */
+export const isDueBy = (it: Pick<ItemLite, 'category' | 'dueAt' | 'handedOff'>, until: Date) => isOpen(it.category) && !it.handedOff && Boolean(it.dueAt && it.dueAt <= until);
+
 export type Kpis = {
   total: number;
   unassigned: number;
@@ -92,7 +98,7 @@ export function kpis(items: ItemLite[], now: Date): Kpis {
     if (it.category === 'done') k.done++;
     if (it.category === 'hold') k.onHold++;
     if (isOpen(it.category) && it.dueAt && !it.handedOff) {
-      if (it.dueAt < now) k.overdue++;
+      if (isOverdue(it, now)) k.overdue++;
       else if (it.dueAt <= weekEnd) k.dueThisWeek++;
     }
   }

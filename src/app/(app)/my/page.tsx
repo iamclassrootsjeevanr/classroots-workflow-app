@@ -9,7 +9,7 @@ import { itemsUrl } from '@/lib/items-url';
 import { ItemsTables } from '@/components/items-table';
 import { Card, Delay, Kpi, KpiGrid, LoadBadge, PageHeader, pct } from '@/components/ui';
 import type { WorkTypeAccess } from '@/lib/access-core';
-import { flowTimes, workloadByUser } from '@/lib/analytics-core';
+import { flowTimes, isDueBy, isOverdue, workloadByUser } from '@/lib/analytics-core';
 import { addDays, businessMinutesBetween, formatDateTime, formatDuration } from '@/lib/time';
 import { requireAnyPage, scopeWhere } from '@/server/access';
 import { db } from '@/server/db';
@@ -34,7 +34,6 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const cal = await workCalendar();
   const mine = await loadItems({ workTypeKeys: keys(types), involvedId: user.id }, { includePausedTypes: false });
   const mineGroups = types.some(t => getModule(t.workTypeKey)?.groupSummary) ? await loadItems({ workTypeKeys: keys(types), assigneeId: user.id, level: 'groups' }, { includePausedTypes: false }) : [];
-  const open = mine.filter(i => i.category !== 'done');
   const [options, edits, deletable, meVsTeam, recent] = await Promise.all([
     statusOptionsFor(user, capPerType(mine)),
     editableItemsFor(user, capPerType(mine)),
@@ -51,11 +50,14 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
   const monthAgo = addDays(now, -30);
   const doneThisMonth = mine.filter(i => i.completedAt && i.completedAt >= monthAgo);
   const flow = flowTimes(doneThisMonth.length ? doneThisMonth : mine.filter(i => i.completedAt), cal);
-  const dueSoon = open.filter(i => i.dueAt && i.dueAt <= addDays(now, 7)).sort((a, b) => a.dueAt!.getTime() - b.dueAt!.getTime());
+  const dueSoon = mine.filter(i => isDueBy(i, addDays(now, 7))).sort((a, b) => a.dueAt!.getTime() - b.dueAt!.getTime());
   // Stage names follow the work type when only one is in view (e.g. "Failed" instead of "Corrections" for APK tests).
   const single = types.length === 1 ? getModule(types[0].workTypeKey) : undefined;
   /** Tiles open this person's rows of the work type (only when one work type is in view). */
-  const mineLink = (f: Parameters<typeof itemsUrl>[1]) => (single ? itemsUrl(single.key, { dev: user.id, ...f }) : undefined);
+  const mineLink = (f: Parameters<typeof itemsUrl>[1]) => (single ? itemsUrl(single.key, { holder: user.id, ...f }) : undefined);
+  // Every tile counts what its list holds: my items as assignee or developer.
+  const inCat = (c: ItemRow['category']) => mine.filter(i => i.category === c).length;
+  const overdue = mine.filter(i => isOverdue(i, now)).length;
   const lbl = (cat: 'queue' | 'active' | 'feedback' | 'review' | 'done', dflt: string) => single?.categoryLabels?.[cat] ?? dflt;
 
   return {
@@ -65,11 +67,11 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
         My work <LoadBadge level={load.level} /> <span className="text-xs font-normal text-muted">{load.active}/{user.capacity} active</span>
       </h2>
       <KpiGrid>
-        <Kpi label={lbl('queue', 'To start')} value={load.queued} tone={load.queued ? 'brand' : undefined} href={mineLink({ cat: 'queue' })} />
-        <Kpi label={lbl('active', 'In progress')} value={mine.filter(i => i.category === 'active').length} href={mineLink({ cat: 'active' })} />
-        <Kpi label={lbl('feedback', 'Corrections')} value={mine.filter(i => i.category === 'feedback').length} tone={mine.some(i => i.category === 'feedback') ? 'bad' : undefined} href={mineLink({ cat: 'feedback' })} />
-        <Kpi label={lbl('review', 'Waiting on review')} value={load.inReview} href={mineLink({ cat: 'review' })} />
-        <Kpi label="Overdue" value={load.overdue} tone={load.overdue ? 'bad' : 'ok'} href={mineLink({ scope: 'overdue' })} />
+        <Kpi label={lbl('queue', 'To start')} value={inCat('queue')} tone={inCat('queue') ? 'brand' : undefined} href={mineLink({ cat: 'queue' })} />
+        <Kpi label={lbl('active', 'In progress')} value={inCat('active')} href={mineLink({ cat: 'active' })} />
+        <Kpi label={lbl('feedback', 'Corrections')} value={inCat('feedback')} tone={inCat('feedback') ? 'bad' : undefined} href={mineLink({ cat: 'feedback' })} />
+        <Kpi label={lbl('review', 'Waiting on review')} value={inCat('review')} href={mineLink({ cat: 'review' })} />
+        <Kpi label="Overdue" value={overdue} tone={overdue ? 'bad' : 'ok'} href={mineLink({ scope: 'overdue' })} />
         <Kpi label={`${lbl('done', 'Done')} (30 days)`} value={doneThisMonth.length} tone="ok" href={mineLink({ cat: 'done' })} />
         <Kpi label="Avg cycle time" value={formatDuration(flow.cycleTime.avg)} hint="start → done, business hours" />
       </KpiGrid>
@@ -140,7 +142,7 @@ async function MyWorkSection({ user, types, tz }: { user: CurrentUser; types: Wo
     ),
     items: (
       <Card title="My items" actions={<span className="text-xs text-muted">change status inline · open an item for links, feedback and its timeline</span>}>
-        <ItemsTables items={mine} moreFilter={{ dev: user.id }} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={mine.some(i => i.assigneeId !== user.id)} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
+        <ItemsTables items={mine} moreFilter={{ holder: user.id }} statusOptions={options} fieldEdits={edits} deletable={deletable} showAssignee={mine.some(i => i.assigneeId !== user.id)} tz={tz} linkable={openable(types)} empty="Nothing is assigned to you yet." />
       </Card>
     ),
   } satisfies Part;
