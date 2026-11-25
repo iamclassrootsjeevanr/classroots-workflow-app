@@ -623,6 +623,20 @@ export async function relayArchive(actor: ChangeActor, itemId: string, archive: 
   });
 }
 
+/** The relay sync names a journey that has no name here (or still carries the relay's earlier name). */
+export async function relayRename(actor: ChangeActor, itemId: string, title: string) {
+  return db.$transaction(async tx => {
+    const item = await loadItem(tx, itemId);
+    if (item.title === title) return;
+    const now = new Date();
+    await saveItem(tx, item, { title });
+    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FIELD_CHANGED', field: 'title', fromValue: item.title, toValue: title, source: actor.source, note: 'Name from the relay', at: now } });
+    const mod = requireModule(item.workType.key);
+    const col = columnFor(mod, 'title');
+    if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
+  });
+}
+
 /** Bring back a deleted row, within the undo window (30 minutes). */
 export async function restoreItem(actor: ChangeActor, itemId: string) {
   return db.$transaction(async tx => {

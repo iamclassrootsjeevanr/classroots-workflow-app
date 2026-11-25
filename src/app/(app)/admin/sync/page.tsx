@@ -90,6 +90,9 @@ export default async function SyncPage() {
           {relayReport && (relayReport.chapterNames?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Chapters named from the relay: {relayReport.chapterNames!.map(x => `${x.code} ${x.title}`).join(', ')}</p>
           )}
+          {relayReport && (relayReport.journeyNames?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Journeys named from the relay: {relayReport.journeyNames!.map(x => `${x.key} ${x.to}`).join(', ')}</p>
+          )}
           {relayReport && (relayReport.cut?.length ?? 0) > 0 && <p className="mt-2 text-xs text-muted">Cut on the relay, removed here: {relayReport.cut!.join(', ')}</p>}
           {relayReport && (relayReport.cutBack?.length ?? 0) > 0 && <p className="mt-2 text-xs text-muted">Allocated again on the relay, back here: {relayReport.cutBack!.join(', ')}</p>}
           {relayReport && (relayReport.notOnRelay?.length ?? 0) > 0 && <p className="mt-2 text-xs text-warn">Not on the relay (worked on or made here, kept): {relayReport.notOnRelay.join(', ')}</p>}
