@@ -87,6 +87,10 @@ export default async function SyncPage() {
           {relayReport && (relayReport.reviewMoves?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Moved here by the relay status: {relayReport.reviewMoves.map(x => `${x.key} ${x.from} → ${x.to}`).join(', ')}</p>
           )}
+          {relayReport && (relayReport.chapterNames?.length ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">Chapters named from the relay: {relayReport.chapterNames!.map(x => `${x.code} ${x.title}`).join(', ')}</p>
+          )}
+          {relayReport && (relayReport.chapterUnnamed?.length ?? 0) > 0 && <p className="mt-2 text-xs text-warn">Chapters with no name (give one on the Chapters page): {relayReport.chapterUnnamed!.join(', ')}</p>}
           {relayReport && (relayReport.reopened?.length ?? 0) > 0 && (
             <p className="mt-2 text-xs text-muted">Reopened on the relay, Creation stage moved back: {relayReport.reopened!.map(x => `${x.key} ${x.from} → ${x.to ?? 'no stage'} (reopened at ${x.reopenStage})`).join(', ')}</p>
           )}

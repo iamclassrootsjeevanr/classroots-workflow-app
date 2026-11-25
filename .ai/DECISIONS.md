@@ -222,3 +222,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - Migration `20261125140000_chapter_part_codes` renumbers the 29 list rows to part codes (G07: 1-8 → P1, 9-15 → P2C01-07; G08: 1-7 → P1, 8-14 → P2C01-07), gives the four relay-made rows the list's name and details, and removes the four duplicates (no journey was on them). Mapping checked against the relay's `kg_nm_list_chapters`, 25 Nov 2026. Grades 9 and 10 are not changed: no journey key exists for them yet.
 - A name equal to the code is not a name (`hasChapterName`): the page says "No name" and the picker leaves such rows out. A new code without the part is refused where the grade has part codes (`chapterCodeConflict`).
 - The chapter code field is a picker (`ChapterPicker` in `src/components/chapters-panel.tsx`): chapters under their grade, found by code or name, keyboard and pointer; a code not in the list can still be typed.
+
+## 2026-11-25 · A chapter with no name takes the relay's
+- `syncRelay` ends with `nameChapters`: a chapter row whose name is empty or its own code takes the title from the relay's chapter list (`kg_nm_list_chapters`, CBSE rows only; the dashboard's read-only token may read it, probed 25 Nov 2026). A chapter that has a name is never changed, and the relay is read only when a chapter needs a name.
+- Matching (`relayChapterName`): the relay's code is ours with `CB` in front and always a part. A code here with the part matches exactly; a code without it takes the one chapter of that grade with that number; two candidates = no name, nothing guessed. Such chapters are listed in the report (`chapterUnnamed`) and on Admin → Sheet sync.
+- No rows are made from the relay's list: the picker still shows only the dashboard's own chapter list.
