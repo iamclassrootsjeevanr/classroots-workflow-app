@@ -12,6 +12,8 @@ export interface RelayClient {
   dashboardEvents?(events: unknown[]): Promise<unknown>;
   /** Read the relay's dashboard log back: one key's events and state, or the events after an id. */
   dashboardLog?(args: { key?: string; after?: number; limit?: number }): Promise<unknown>;
+  /** The relay's chapter list with each chapter's title (KG, read-only). Used only to name a chapter that has no name here. */
+  chapters?(): Promise<unknown>;
 }
 
 export class RelayHttpError extends Error {}
@@ -101,5 +103,6 @@ export function httpRelayClient(): RelayClient {
     syncFeed: args => callAll('sync_feed', args),
     dashboardEvents: events => callAll('dashboard_event', { events }),
     dashboardLog: args => callAll('dashboard_log', args),
+    chapters: () => callAll('kg_nm_list_chapters', {}),
   };
 }

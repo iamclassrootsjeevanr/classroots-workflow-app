@@ -50,3 +50,36 @@ export function chapterCodeConflict(code: string, existing: readonly string[]): 
   });
   return withPart ? `Grade ${c.grade} codes carry the part of the book, like ${withPart}.` : null;
 }
+
+/** A chapter as the relay's chapter list names it (KG, `kg_nm_list_chapters`): its code there (CBG07P1C03) and its title. */
+export type RelayChapter = { code: string; title: string };
+
+/**
+ * The relay's chapter list, as far as a name needs it: CBSE chapters with a code and a title. Anything else in the reply is ignored
+ * (other curricula number the same grades again, so they must not name a chapter here).
+ */
+export function parseRelayChapters(reply: unknown): RelayChapter[] {
+  const list = reply && typeof reply === 'object' ? (reply as { chapters?: unknown }).chapters : null;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap(c => {
+    const r = (c ?? {}) as Record<string, unknown>;
+    const code = typeof r.code === 'string' ? r.code.trim().toUpperCase() : '';
+    const title = typeof r.title === 'string' ? r.title.trim() : '';
+    return r.curriculum === 'cbse' && code.startsWith('CB') && parseChapterCode(code.slice(2)) && title ? [{ code, title }] : [];
+  });
+}
+
+/**
+ * The relay's name for a chapter code used here, or null. The relay's code is ours with `CB` in front and always a part (CBG04P1C05).
+ * A code here with the part (G07P1C03) must match exactly. A code without it (G04C05) takes the one chapter of that grade with that
+ * number; where two parts both have it (grade 7: P1C03 and P2C03) there is no answer, and nothing is guessed.
+ */
+export function relayChapterName(code: string, relay: readonly RelayChapter[]): string | null {
+  const c = parseChapterCode(code);
+  if (!c) return null;
+  const hits = relay.filter(r => {
+    const p = parseChapterCode(r.code.slice(2));
+    return p && p.grade === c.grade && p.chapterNo === c.chapterNo && (c.part === null || p.part === c.part);
+  });
+  return hits.length === 1 ? hits[0].title : null;
+}

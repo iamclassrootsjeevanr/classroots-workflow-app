@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { partLabel } from '@/lib/chapter-codes';
+import { hasChapterName, parseRelayChapters, partLabel, relayChapterName } from '@/lib/chapter-codes';
 import { CREATION_STAGES, journeyKeyOf, parseJourneyKey } from '@/lib/journey';
 import { currentCreationStage, nameFromEmail, parseAllocations, parseChapterStewards, planRelayPeople,
   type StewardMember, parseStatus, parseStatusMeta, planStewards, planTeams, relayHolderWins, subtopicHeldJourneys, type RelayAllocation } from '@/lib/relay-map';
@@ -82,6 +82,10 @@ export type RelayReport = {
   stewardIssues: string[];
   skipped: string[];
   errors: { key: string; error: string }[];
+  /** Chapters that had no name here and took the relay's (never one that had a name). */
+  chapterNames?: { code: string; title: string }[];
+  /** Chapters still without a name: the relay's chapter list does not settle them. */
+  chapterUnnamed?: string[];
   /** Feed rows recorded at chapter and subtopic keys (the chapter read, the scopes) kept this run, for the Chapters page. */
   chapterEvents?: number;
   /** How this run read the relay: `feed` = only journeys the change feed named, `full` = every journey, `off` = the relay has no feed (full). */
@@ -458,6 +462,8 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
     return last && at < last.at ? last.at : at;
   }
 
+  if (!only) await nameChapters(client, report, dryRun);
+
   if (!dryRun) {
     const ok = report.errors.length === 0;
     // The cursor moves only after a clean run of every key; one journey's run leaves it where it was.
@@ -472,6 +478,40 @@ export async function syncRelay(client: RelayClient, opts: { dryRun?: boolean; k
 }
 
 /** The relay's chapter owner is the chapter's steward: a coordinator whose chapter list holds the code (see `planStewards`). */
+/**
+ * Chapters without a name here (none, or their own code: what this sync writes for a chapter it has not seen) take the name the relay's
+ * chapter list gives. A chapter that has a name is never changed. The relay is read only when a chapter needs a name, and a relay
+ * without the list, or a token that may not read it, is not an error: the chapters stay listed as unnamed.
+ */
+async function nameChapters(client: RelayClient, report: RelayReport, dryRun: boolean) {
+  const unnamed = (await db.chapter.findMany({ select: { id: true, code: true, title: true } })).filter(c => !hasChapterName(c.code, c.title));
+  // A row made in this dry run does not exist yet: report it as it would be.
+  const pending = dryRun ? [...new Set(report.created.map(k => parseJourneyKey(k)?.chapter).filter((c): c is string => Boolean(c)))] : [];
+  const known = dryRun && pending.length ? new Set((await db.chapter.findMany({ where: { code: { in: pending } }, select: { code: true } })).map(c => c.code)) : new Set<string>();
+  const need = [...unnamed.map(c => ({ id: c.id as string | null, code: c.code })), ...pending.filter(c => !known.has(c)).map(code => ({ id: null, code }))];
+  if (!need.length || !client.chapters) return;
+  let relay: ReturnType<typeof parseRelayChapters>;
+  try {
+    relay = parseRelayChapters(await client.chapters());
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (!toolUnavailable(message)) report.errors.push({ key: 'chapter names', error: message });
+    report.chapterUnnamed = need.map(c => c.code);
+    return;
+  }
+  report.chapterNames = [];
+  report.chapterUnnamed = [];
+  for (const c of need) {
+    const title = relayChapterName(c.code, relay);
+    if (!title) {
+      report.chapterUnnamed.push(c.code);
+      continue;
+    }
+    report.chapterNames.push({ code: c.code, title });
+    if (!dryRun && c.id) await db.chapter.update({ where: { id: c.id }, data: { title } });
+  }
+}
+
 async function syncStewards(workTypeId: string, stewards: { code: string; email: string }[], report: RelayReport, dryRun: boolean) {
   if (!stewards.length) return;
   const rows = await db.workTypeMember.findMany({

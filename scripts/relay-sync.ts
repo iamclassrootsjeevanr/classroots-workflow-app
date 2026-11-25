@@ -40,7 +40,7 @@ async function main() {
     const all = await client.allocations();
     console.log('allocations', JSON.stringify(shape(all), null, 2));
     if (keyArg) console.log('journey_status', JSON.stringify(shape(await client.journeyStatus(keyArg)), null, 2));
-    for (const [name, call] of [['sync_feed (head)', () => client.syncFeed?.({ head: true })], ['dashboard_log', () => client.dashboardLog?.({ limit: 1 })]] as const) {
+    for (const [name, call] of [['sync_feed (head)', () => client.syncFeed?.({ head: true })], ['dashboard_log', () => client.dashboardLog?.({ limit: 1 })], ['kg_nm_list_chapters', () => client.chapters?.()]] as const) {
       try {
         console.log(name, JSON.stringify(shape(await call()), null, 2));
       } catch (e) {
