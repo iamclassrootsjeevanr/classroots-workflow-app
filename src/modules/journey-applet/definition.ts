@@ -17,6 +17,9 @@ const REVIEWER = ['OWNER'] as const;
 const COORDINATOR = ['assign'] as const;
 const DEVELOPER = ['DEVELOPER', 'assign'] as const;
 const CHECKER = ['OWNER', 'assign'] as const; // the SME reviewer or the steward
+/** A creator's fix after a QA send-back goes to prod again: the review handoff and the design steps are not repeated. */
+const QA_FIX = { field: 'qaFix', equals: 'Yes' } as const;
+const QA = ['qa', 'assign'] as const; // user testing and QA: a person with the QA role, or the steward
 const LOOKER = ['ASSIGNEE', 'OWNER', 'assign'] as const; // the last look: the SME creator, the SME reviewer or the steward (24 Nov 2026)
 
 const statuses: StatusDef[] = [
@@ -25,22 +28,22 @@ const statuses: StatusDef[] = [
   { key: 'creating', label: 'In creation', color: '#fb8c00', category: 'active', marks: ['started'], phase: 'creation', next: { label: 'Submit for review', by: [...CREATOR], stamp: ['submittedAt'] } },
   // Review (the journey's SME reviewer). Review date = the day the review is done (feedback sent or review closed).
   { key: 'ready_for_review', label: 'Ready for review', color: '#7e57c2', category: 'review', marks: ['submitted'], stuckHours: 4.5, next: { label: 'Start review', by: [...REVIEWER] } },
-  { key: 'review_in_progress', label: 'In progress', color: '#5c6bc0', category: 'review', marks: ['review'], stuckHours: 4.5, locked: true, next: { label: 'Close review', by: [...REVIEWER], stamp: ['reviewDate'] } },
+  { key: 'review_in_progress', label: 'In progress', color: '#5c6bc0', category: 'review', marks: ['review'], stuckHours: 4.5, locked: true, next: { label: 'Close review', by: [...REVIEWER], stamp: ['reviewDate'], settles: true } },
   { key: 'changes_asked', label: 'Changes asked', color: '#e53935', category: 'feedback', marks: ['feedback'], stuckHours: 4.5, line: 'side' },
   { key: 'correction_verification', label: 'Correction verification', color: '#8e24aa', category: 'review', marks: ['submitted', 'review'], stuckHours: 2.25, line: 'side' },
-  { key: 'closed', label: 'Closed', color: '#43a047', category: 'approved', marks: ['approved'], locked: true, next: { label: 'Send to design standardization', by: [...COORDINATOR] } },
+  { key: 'closed', label: 'Closed', color: '#43a047', category: 'approved', marks: ['approved'], locked: true, skipWhen: QA_FIX, next: { label: 'Send to design standardization', by: [...COORDINATOR] } },
   // After-steps (SME's first version, 5 Nov 2026; may change once they begin).
   // A developer is assigned when the review closes and checks the design standardization (developerHandoff).
-  { key: 'design_standardization', label: 'Design standardization', color: '#26a69a', category: 'active', marks: ['started'], next: { label: 'Design done', by: [...DEVELOPER] } },
-  { key: 'last_look', label: 'Last look after design', color: '#00897b', category: 'review', stuckHours: 4.5, next: { label: 'Last look done', by: [...LOOKER] } },
+  { key: 'design_standardization', label: 'Design standardization', color: '#26a69a', category: 'active', marks: ['started'], skipWhen: QA_FIX, next: { label: 'Design done', by: [...DEVELOPER] } },
+  { key: 'last_look', label: 'Last look after design', color: '#00897b', category: 'review', stuckHours: 4.5, skipWhen: QA_FIX, next: { label: 'Last look done', by: [...LOOKER], settles: true } },
   // The second loop: the developer's fix gets a last look (the creator, the SME reviewer or the steward), then the SME reviewer or steward
   // checks the design; each can send it back to the developer. A last look by the SME reviewer or a steward is the design check too.
-  { key: 'design_check', label: 'Design check', color: '#009688', category: 'review', stuckHours: 4.5, passedByMover: true, next: { label: 'Design approved', by: [...CHECKER] } },
-  { key: 'video_replacement', label: 'Video replacement', color: '#00796b', category: 'active', skipWhen: { field: 'needsVideoReplacement', equals: 'No' }, next: { label: 'Videos replaced', by: [...COORDINATOR] } },
+  { key: 'design_check', label: 'Design check', color: '#009688', category: 'review', stuckHours: 4.5, passedByMover: true, skipWhen: QA_FIX, next: { label: 'Design approved', by: [...CHECKER], settles: true } },
+  { key: 'video_replacement', label: 'Video replacement', color: '#00796b', category: 'active', skipWhen: [{ field: 'needsVideoReplacement', equals: 'No' }, QA_FIX], next: { label: 'Videos replaced', by: [...COORDINATOR] } },
   // Engineering migrates; the coordinator moves it on.
-  { key: 'uat_to_prod', label: 'UAT → prod migration', color: '#0288d1', category: 'active', next: { label: 'Migrated to prod', by: [...COORDINATOR] } },
+  { key: 'uat_to_prod', label: 'UAT → prod migration', color: '#0288d1', category: 'active', clears: ['qaFix'], next: { label: 'Migrated to prod', by: [...COORDINATOR] } },
   { key: 'published_prod', label: 'Published on prod', color: '#1976d2', category: 'approved', next: { label: 'Start user testing', by: [...COORDINATOR] } },
-  { key: 'user_testing_qa', label: 'User testing and QA', color: '#3949ab', category: 'review', next: { label: 'Mark done', by: [...COORDINATOR] } },
+  { key: 'user_testing_qa', label: 'User testing and QA', color: '#3949ab', category: 'review', next: { label: 'Mark done', by: [...QA], settles: true } },
   { key: 'done', label: 'Done', color: '#1e88e5', category: 'done', marks: ['completed'] },
 ];
 
@@ -105,7 +108,7 @@ export const journeyApplet: WorkTypeDefinition = {
   name: 'Journey',
   description: 'Journeys built by SME creators with Claude, reviewed by an SME reviewer, then standardised and taken to prod.',
   icon: 'route',
-  pages: { groups: 'Chapters', items: 'Journeys', teams: 'Teams', board: 'Relay board' },
+  pages: { groups: 'Chapters', items: 'Journeys', teams: 'Teams', board: 'Relay board', feedback: 'Feedback' },
   relayBoard: true,
   teams: true,
   itemNoun: 'journey',
@@ -119,6 +122,7 @@ export const journeyApplet: WorkTypeDefinition = {
     { key: 'sme-reviewer', name: 'SME reviewer', description: 'Reviews the journeys where they are the reviewer: starts the review, asks for changes, verifies corrections, closes the review, gives feedback to the creator, and after design does the last look (which is then the design check too) or checks the design after the creator’s last look (approve, or send back to the developer with feedback).', color: '#7e57c2', capabilities: ['review'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
     { key: 'coordinator', name: 'Steward', description: 'Coordinator of a team and chapters:  adds chapters and journeys, allocates creators and reviewers, sets pick-up dates, edits details, moves journeys through the after-steps (also the last look and the design check, with the creator and the reviewer), gives feedback to the creator, and sends journeys back from QA for a fix. Also builds their own journeys like an SME creator. Acts in their own chapters, on every journey of their team and on their own journeys.', color: '#00897b', capabilities: ['work', 'assign', 'create', 'manageFields'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items', 'reports', 'export'] },
     { key: 'developer', name: 'Developer', description: 'Checks and fixes design standardization once a journey’s review is closed: the journey is assigned to them automatically (least busy developer first). Marks Design done, which sends it to the creator’s last look, then the reviewer/steward’s design check. If the creator sends it back with feedback, they fix it and mark Design done again. Sees only the journeys assigned to them.', color: '#26a69a', capabilities: [], dataScope: 'OWN', canEdit: true, pages: ['dashboard', 'items', 'reports'] },
+    { key: 'qa', name: 'QA', description: 'Tests a journey once it is published on prod (User testing and QA): marks it done, or sends it back with a ticket, to the SME creator for a content fix or to the developer for a design fix. The fix then goes to prod again and comes back to QA.', color: '#3949ab', capabilities: ['qa'], dataScope: 'ALL', canEdit: true, pages: ['dashboard', 'items'] },
     { key: 'program-manager', name: 'Program manager', description: 'Watches the dashboards and reports; cannot change journeys.', color: '#546e7a', capabilities: [], dataScope: 'ALL', canEdit: false, pages: ['dashboard', 'items', 'reports', 'export'] },
   ],
   statuses,
@@ -129,10 +133,13 @@ export const journeyApplet: WorkTypeDefinition = {
     { from: 'review_in_progress', to: 'changes_asked', by: [...REVIEWER], label: 'Ask for changes', requires: 'feedback', stamp: ['reviewDate'] },
     { from: 'changes_asked', to: 'correction_verification', by: [...CREATOR], label: 'Corrections done' },
     { from: 'correction_verification', to: 'changes_asked', by: [...REVIEWER], label: 'Ask for changes again', requires: 'feedback' },
-    { from: 'correction_verification', to: '@next:review_in_progress', by: [...REVIEWER], label: 'Close review', stamp: ['reviewDate'] },
+    { from: 'correction_verification', to: '@next:review_in_progress', by: [...REVIEWER], label: 'Close review', stamp: ['reviewDate'], settles: true },
     { from: 'last_look', to: 'design_standardization', by: [...LOOKER], label: 'Send back to design', requires: 'feedback' },
     { from: 'design_check', to: 'design_standardization', by: [...CHECKER], label: 'Send back to design', requires: 'feedback' },
-    { from: 'user_testing_qa', to: 'changes_asked', by: [...COORDINATOR], label: 'Send back for a fix', requires: 'feedback' },
+    // QA sends a fault to the person who fixes it. A creator's fix is verified by the SME reviewer and then goes to prod again (QA_FIX);
+    // a developer's fix walks the design steps and then goes to prod again.
+    { from: 'user_testing_qa', to: 'changes_asked', by: [...QA], label: 'Send to creator', requires: 'feedback', set: { qaFix: 'Yes' } },
+    { from: 'user_testing_qa', to: 'design_standardization', by: [...QA], label: 'Send to developer', requires: 'feedback' },
   ],
 
   fieldMoves: [{ field: 'creationStage', from: 'allocated', to: 'creating' }],
@@ -169,6 +176,7 @@ export const journeyApplet: WorkTypeDefinition = {
       daysTaken: z.number().optional(),
       reviewDate: z.string().optional(),
       needsVideoReplacement: z.enum(['Yes', 'No']).optional(),
+      qaFix: z.string().optional(),
       subtopic: z.string().optional(),
       cmsUrl: z.string().optional(),
       aiTutorUrl: z.string().optional(),

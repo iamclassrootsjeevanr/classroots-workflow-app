@@ -3,7 +3,7 @@
  * Built from their WorkTypeMember rows (roles, data scope, edit tick, page ticks); admins get everything.
  */
 
-export const CAPABILITIES = ['work', 'review', 'assign', 'create', 'manageFields'] as const;
+export const CAPABILITIES = ['work', 'review', 'assign', 'create', 'manageFields', 'qa'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
 export const CAPABILITY_LABELS: Record<Capability, { label: string; help: string }> = {
@@ -12,6 +12,7 @@ export const CAPABILITY_LABELS: Record<Capability, { label: string; help: string
   assign: { label: 'Assign people', help: 'Choose who works on each item.' },
   create: { label: 'Add new items', help: 'Create new items in the list.' },
   manageFields: { label: 'Edit item details', help: 'Change due dates, owner details and other item fields.' },
+  qa: { label: 'Test finished items', help: 'Check an item at its QA stage: mark it done, or send it back with a ticket.' },
 };
 
 export const PAGES = ['dashboard', 'items', 'reports', 'export'] as const;
@@ -35,6 +36,8 @@ export type RoleLite = {
   capAssign: boolean;
   capCreate: boolean;
   capManageFields: boolean;
+  /** Optional so role rows read before the column existed still fit. */
+  capQa?: boolean;
   dataScope: DataScope;
   canEdit: boolean;
   pageDashboard: boolean;
@@ -77,13 +80,14 @@ export type Access = {
   byKey: Map<string, WorkTypeAccess>;
 };
 
-export function roleCapabilities(r: Pick<RoleLite, 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields'>): Capability[] {
+export function roleCapabilities(r: Pick<RoleLite, 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'capQa'>): Capability[] {
   const out: Capability[] = [];
   if (r.capWork) out.push('work');
   if (r.capReview) out.push('review');
   if (r.capAssign) out.push('assign');
   if (r.capCreate) out.push('create');
   if (r.capManageFields) out.push('manageFields');
+  if (r.capQa) out.push('qa');
   return out;
 }
 

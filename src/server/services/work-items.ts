@@ -14,7 +14,7 @@ import { notify, stewardIds } from './notifications';
 import { relayHolderNote } from '@/lib/relay-holder';
 import { relayHolders } from '../relay-holder';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
-import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel } from '@/lib/feedback';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel, ticketReader } from '@/lib/feedback';
 import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -155,7 +155,7 @@ function computed(mod: WorkTypeDefinition, externalKey: string, data: Record<str
 
 // ─── Status ─────────────────────────────────────────────────────
 
-type StatusOpts = { note?: string; expectedVersion?: number; /** Feedback is being given with this move (the Feedback card). */ withFeedback?: boolean };
+type StatusOpts = { note?: string; expectedVersion?: number; /** Feedback is being given with this move (the Feedback card). */ withFeedback?: boolean; /** The person saw the open tickets and goes ahead: they are closed with the move. */ closeTickets?: boolean };
 
 async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to: string, now: Date, calendar: WorkCalendar, opts: StatusOpts = {}) {
   const mod = requireModule(item.workType.key);
@@ -169,6 +169,10 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   if (actor.ctx && move?.requires === 'feedback' && !opts.withFeedback) {
     throw new Error(`Write the feedback first: “${move.label ?? statusDef(mod, to).label}” is in the Feedback card.`);
   }
+  // A move that settles the stage's work (Close review, Design approved, Mark done) closes the journey's open tickets: the person
+  // is shown them first and goes ahead knowingly. A change the system makes (the relay sync) leaves tickets as they are.
+  const openTickets = actor.ctx && move?.settles ? await tx.feedback.findMany({ where: { itemId: item.id, resolvedAt: null }, select: { id: true, ticketNo: true, title: true, authorId: true, toId: true }, orderBy: { ticketNo: 'asc' } }) : [];
+  if (openTickets.length && !opts.closeTickets) throw new Error(openTicketsMessage(openTickets.length));
   const data = { ...((item.data ?? {}) as Record<string, unknown>) };
   const today = dayKey(now, cal.tz);
   for (const f of move?.stamp ?? []) {
@@ -183,9 +187,15 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   const ctx = actor.ctx;
   const afterCheck = stageAfterOwnCheck(mod.statuses, item.status, to, reached, ctx ? by => actorMatches(by, ctx) : null);
   const landing = afterCheck ? landingStage(mod.statuses, afterCheck, data) : reached;
-  const note = [opts.note, reached !== to ? `${statusDef(mod, to).label} not needed` : null, afterCheck ? `${check.label} done with ${statusDef(mod, item.status).label}` : null].filter(Boolean).join(' · ') || undefined;
+  const closedNote = openTickets.length ? `Closed ${openTickets.length === 1 ? 'ticket' : `${openTickets.length} tickets`} ${openTickets.map(t => ticketCode(t.ticketNo)).join(', ')}` : null;
+  // One stage passed over is named; a run of them (a creator's fix after QA) says where the item went instead.
+  const passed = reached === to ? null : nextActiveAfter(mod.statuses, to) === reached ? `${statusDef(mod, to).label} not needed` : `Went straight to ${statusDef(mod, reached).label}`;
+  const note = [opts.note, passed, afterCheck ? `${check.label} done with ${statusDef(mod, item.status).label}` : null, closedNote].filter(Boolean).join(' · ') || undefined;
   const update: Prisma.WorkItemUncheckedUpdateInput = { ...stagePatch(mod, item, landing, now) };
-  if (move?.stamp?.length || move?.set || mod.compute) {
+  // Marks that end where the item now is (Journey: the QA-fix mark, once the fix is on its way to prod again).
+  const clears = (statusDef(mod, landing).clears ?? []).filter(f => f in data);
+  for (const f of clears) delete data[f];
+  if (move?.stamp?.length || move?.set || clears.length || mod.compute) {
     const c = computed(mod, item.externalKey, data, cal);
     update.data = mod.dataSchema.parse(c.data) as Prisma.InputJsonValue;
     if (c.dueAt !== undefined) update.dueAt = c.dueAt;
@@ -195,6 +205,17 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
     data: { itemId: item.id, actorId: actor.userId, type: 'STATUS_CHANGED', field: 'status', fromValue: item.status, toValue: landing, source: actor.source, note, at: now },
   });
   await rollInterval(tx, item.id, landing, item.assigneeId, now, cal);
+  if (openTickets.length) {
+    await tx.feedback.updateMany({ where: { id: { in: openTickets.map(t => t.id) } }, data: { resolvedAt: now, closedById: actor.userId } });
+    if (actor.source === 'APP') {
+      const how = move?.label ?? statusDef(mod, landing).label;
+      for (const t of openTickets) {
+        for (const userId of ticketAudience(t, actor.userId)) {
+          await notify(tx, userId, { kind: 'feedback.closed', title: `${ticketCode(t.ticketNo)} closed with “${how}” on ${shortKey(item.externalKey)}`, body: t.title ?? '', href: `/w/${item.workType.key}/${item.id}/feedback` });
+        }
+      }
+    }
+  }
   const col = columnFor(mod, 'status');
   if (col) await enqueue(tx, item.id, item.workType, mod, actor, [col]);
   await notifyStage(tx, item, mod, actor, landing);
@@ -292,12 +313,21 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
   }
 }
 
-export async function changeStatus(actor: ChangeActor, itemId: string, to: string, opts: { note?: string; expectedVersion?: number; at?: Date } = {}) {
+/** What a settling move says when tickets are still open and the person has not confirmed (the client asks, then sends `closeTickets`). */
+export const openTicketsMessage = (n: number) => `${n === 1 ? '1 ticket is' : `${n} tickets are`} still open. Confirm to close ${n === 1 ? 'it' : 'them'} with this move.`;
+
+/** The open tickets of an item, for the question a settling move asks first. */
+export async function openTicketsOf(itemId: string) {
+  const rows = await db.feedback.findMany({ where: { itemId, resolvedAt: null }, select: { ticketNo: true, title: true, body: true }, orderBy: { ticketNo: 'asc' } });
+  return rows.map(r => ({ code: ticketCode(r.ticketNo), title: ticketTitle(r.title, r.body) }));
+}
+
+export async function changeStatus(actor: ChangeActor, itemId: string, to: string, opts: { note?: string; expectedVersion?: number; at?: Date; closeTickets?: boolean } = {}) {
   const cal = await workCalendar();
   return db.$transaction(async tx => {
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
-    await changeStatusTx(tx, item, actor, to, opts.at ?? new Date(), cal, { note: opts.note, expectedVersion: opts.expectedVersion });
+    await changeStatusTx(tx, item, actor, to, opts.at ?? new Date(), cal, { note: opts.note, expectedVersion: opts.expectedVersion, closeTickets: opts.closeTickets });
   });
 }
 
@@ -673,7 +703,7 @@ export async function restoreItem(actor: ChangeActor, itemId: string) {
 export async function addFeedback(
   actor: ChangeActor,
   itemId: string,
-  input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean },
+  input: { title?: string; body: string; category?: string; severity?: string; /** Who the ticket is for: the item's creator, reviewer or developer. Left out = the usual other side. */ toId?: string; /** Send the item back with the ticket: the stage of the send-back move. */ sendBackTo?: string },
 ) {
   const body = input.body.trim();
   if (!body) throw new Error('Describe the ticket first');
@@ -682,11 +712,14 @@ export async function addFeedback(
     const item = await loadItem(tx, itemId);
     guardActive(item, actor);
     const mod = requireModule(item.workType.key);
-    const sendsBack = input.requestCorrections && Boolean(correctionsMove(mod, item.status, actor.ctx));
+    const sendBack = input.sendBackTo ? correctionsMoves(mod, item.status, actor.ctx).find(t => t.to === input.sendBackTo) : undefined;
+    if (input.sendBackTo && !sendBack) throw new ForbiddenError(`You can't send this ${mod.itemNoun} back from ${statusDef(mod, item.status).label}.`);
+    const sendsBack = Boolean(sendBack);
     if (actor.ctx && !canChat(actor.ctx) && !sendsBack) throw new ForbiddenError(`Only people working on this ${mod.itemNoun} can raise a ticket.`);
     const now = new Date();
     const round = Math.max(1, item.reviewRounds);
-    const toId = counterpart(actor.userId, item);
+    // A send-back ticket is for the person the move hands the item to; any other ticket is for whoever its writer picked.
+    const toId = ticketReader(actor.userId, item, { picked: input.toId, sentBackTo: sendBack ? statusDef(mod, sendBack.to).category === 'feedback' ? 'assignee' : 'developer' : null });
     const ticket = await tx.feedback.create({ data: { itemId, round, authorId: actor.userId, body, title: ticketTitle(input.title, body), toId, category: input.category || null, severity: input.severity || null, createdAt: now } });
     await saveItem(tx, item, { feedbackCount: { increment: 1 }, lastFeedbackAt: now });
     // Who wrote it and who it is for go with the event: the relay shows a reviewer's or a steward's feedback to the creator's seat.
@@ -702,21 +735,20 @@ export async function addFeedback(
       const from = writer?.name ? ` · from ${writer.name} (${writerRoleLabel(role, mod)})` : '';
       await notify(tx, toId, { kind: 'item.feedback', title: `New ticket ${ticketCode(ticket.ticketNo)} on ${shortKey(item.externalKey)}`, body: `${ticket.title}${from}`, href: `/w/${item.workType.key}/${item.id}/feedback` });
     }
-    if (input.requestCorrections) {
-      const fresh = await loadItem(tx, itemId);
-      const target = correctionsMove(mod, fresh.status, actor.ctx)?.to;
-      if (!target) throw new ForbiddenError(`You can't send this ${mod.itemNoun} back from ${statusDef(mod, fresh.status).label}.`);
-      await changeStatusTx(tx, fresh, actor, target, now, cal, { withFeedback: true });
-    }
+    if (sendBack) await changeStatusTx(tx, await loadItem(tx, itemId), actor, sendBack.to, now, cal, { withFeedback: true });
   });
 }
 
-/** The send-back move from this stage (to a "sent back" stage) this person may make, if any. */
-export function correctionsMove(mod: WorkTypeDefinition, from: string, ctx: ActorContext | null) {
+/**
+ * The send-back moves from this stage this person may make: every move that needs a ticket (Journey QA has two: to the creator and to
+ * the developer), else the one move to a "sent back" stage.
+ */
+export function correctionsMoves(mod: WorkTypeDefinition, from: string, ctx: ActorContext | null) {
   const moves = ctx ? allowedTransitions(mod, from, ctx) : mod.transitions.filter(t => t.from === from);
-  const move = moves.find(t => t.requires === 'feedback') ?? moves.find(t => statusDef(mod, t.to).category === 'feedback');
+  const withTicket = moves.filter(t => t.requires === 'feedback');
+  const found = withTicket.length ? withTicket : moves.filter(t => statusDef(mod, t.to).category === 'feedback').slice(0, 1);
   // An admin's "Set <status>" shortcut reads as a send-back here.
-  return move && !mod.transitions.includes(move) ? { ...move, label: `Send back (${statusDef(mod, move.to).label})` } : move;
+  return found.map(move => (mod.transitions.includes(move) ? move : { ...move, label: `Send back (${statusDef(mod, move.to).label})` }));
 }
 
 const ticketOf = (feedbackId: string) =>

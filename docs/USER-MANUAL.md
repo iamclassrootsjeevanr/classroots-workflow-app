@@ -56,7 +56,7 @@ RELAY (creation)                    DASHBOARD
                                     8. Reviewer or Steward: Design check  (Design approved, or Send back to design)
                                     9. Video replacement (only if needed)
                                    10. UAT → prod migration → Published on prod
-                                   11. User testing and QA  (Mark done, or Send back for a fix)
+                                   11. User testing and QA  (Mark done, or Send to creator / Send to developer)
                                    12. Done
 ```
 
@@ -128,7 +128,7 @@ Your chapters come from RELAY: the chapter's owner on RELAY is its steward here,
 | Video replacement | Set **Needs video replacement** to Yes or No early. If Yes, choose **→ Videos replaced** when done. |
 | UAT → prod migration | After engineering migrates it, choose **→ Migrated to prod**. |
 | Published on prod | Choose **→ Start user testing**. |
-| User testing and QA | **→ Mark done**, or raise a ticket and press **Send back for a fix**. The journey returns to Changes asked. |
+| User testing and QA | QA or the steward. **→ Mark done**, or raise a ticket and press **Send to creator** (content fix: the creator corrects it and the SME reviewer verifies it) or **Send to developer** (design fix: design standardization, last look, design check). After the fix the journey goes to **UAT → prod migration** again and comes back to QA. |
 
 **Watch**
 - **Relay board** tab: every creator in your scope, each stage, days waiting, and `r` (up for review) / `c` (corrections) marks from RELAY.
@@ -180,7 +180,7 @@ Each problem is a **ticket** with its own chat, like `TICK-00012`.
 2. Write a short **Title** and a clear **Description** (where it is, what is wrong, what it should be).
 3. Pick the **Severity** (Low, Medium, High) and a category if you want.
 4. Press **Raise ticket**. The other person is told.
-5. Reviewers (and the creator, the SME reviewer or the steward at last look, and the steward at QA) also see a red button, for example **Ask for changes**. It raises the ticket **and** sends the journey back in one step.
+5. Reviewers (and the creator, the SME reviewer or the steward at last look, and QA or the steward at QA) also see a red button, for example **Ask for changes**. It raises the ticket **and** sends the journey back in one step. QA sees two: **Send to creator** and **Send to developer**.
 
 **Chat**
 - Open a ticket (click its row). Both sides write messages in the box and press **Send** (or Ctrl or Cmd + Enter).
@@ -192,9 +192,23 @@ Each problem is a **ticket** with its own chat, like `TICK-00012`.
 - The filter at the top shows **Open**, **Closed** or **All**. Open tickets show first.
 
 **Who gets the ticket**
-- Raised by the reviewer, steward or admin: goes to the creator.
-- Raised by the creator: goes to the developer (or the reviewer if there is no developer).
-- Raised by the developer: goes to the creator.
+- The **To** field picks the person: the SME creator, the SME reviewer or the developer of the journey. It starts on the usual person:
+  - Raised by the reviewer, steward, QA or admin: the creator.
+  - Raised by the creator: the developer (or the reviewer if there is no developer).
+  - Raised by the developer: the creator.
+- A ticket that sends the journey back always goes to the person who gets the work back.
+
+**Open tickets when a stage is finished**
+- **Close review**, **Last look done**, **Design approved** and **Mark done** show the tickets that are still open on the journey.
+- Press **Close and continue** to go ahead: the open tickets are closed with the move, and the people on them get a message. Press **Cancel** to keep them open and stay.
+- **Corrections done** and **Design done** do not close tickets: the person who raised them still has to look.
+
+**Links**
+- A web link in a ticket or a chat message shows as a small link chip. Press it to open the page in a new tab.
+
+**The Feedback tab**
+- Journey → **Feedback** lists your tickets: **Assigned to me** first, then **Opened by me**. Choose **Open**, **Closed** or **All**. An admin also sees **All tickets**.
+- Press a ticket number to open the ticket. View-only people do not have this tab.
 
 ---
 

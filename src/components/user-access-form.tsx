@@ -29,6 +29,7 @@ function toRoleLite(r: RoleOption): RoleLite {
     capAssign: r.capabilities.includes('assign'),
     capCreate: r.capabilities.includes('create'),
     capManageFields: r.capabilities.includes('manageFields'),
+    capQa: r.capabilities.includes('qa'),
     dataScope: r.dataScope,
     canEdit: r.canEdit,
     pageDashboard: r.pages.includes('dashboard'),

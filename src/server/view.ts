@@ -41,7 +41,7 @@ export function statusOptions(mod: WorkTypeDefinition, status: string, ctx: Acto
     .map(t => {
       // A check stage this person may approve themself is passed with the move: the option names the stage the item really reaches.
       const reached = stageAfterOwnCheck(mod.statuses, status, t.to, t.to, by => actorMatches(by, ctx)) ?? t.to;
-      return { to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, reached).label };
+      return { to: t.to, label: t.label ?? statusDef(mod, t.to).label, statusLabel: statusDef(mod, reached).label, ...(t.settles ? { settles: true } : {}) };
     });
 }
 

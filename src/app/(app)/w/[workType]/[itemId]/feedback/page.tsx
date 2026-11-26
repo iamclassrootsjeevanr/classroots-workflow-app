@@ -4,12 +4,12 @@ import { notFound } from 'next/navigation';
 import { FeedbackTickets, type TicketView } from '@/components/feedback-tickets';
 import { PageHeader } from '@/components/ui';
 import { canSeeItem } from '@/lib/access-core';
-import { canChat, canCloseTicket, ticketCode } from '@/lib/feedback';
+import { canChat, canCloseTicket, ticketCode, counterpart, ticketChoices } from '@/lib/feedback';
 import { formatDateTime } from '@/lib/time';
 import { getModule } from '@/modules/registry';
 import { actorContextFor, requireWorkTypePage } from '@/server/access';
 import { db } from '@/server/db';
-import { correctionsMove } from '@/server/services/work-items';
+import { correctionsMoves } from '@/server/services/work-items';
 import { appTz } from '@/server/settings';
 
 export const metadata = { title: 'Feedback' };
@@ -54,7 +54,13 @@ export default async function FeedbackPage({ params }: { params: Promise<{ workT
     canReply: editable && canChat(ctx, f, user.id),
     messages: f.messages.map(m => ({ id: m.id, authorId: m.authorId, authorName: m.authorId ? (names.get(m.authorId) ?? 'Someone') : 'Someone', body: m.body, at: formatDateTime(m.createdAt, tz) })),
   }));
-  const sendBack = editable ? correctionsMove(mod, item.status, ctx) : undefined;
+  const sendBacks = editable ? correctionsMoves(mod, item.status, ctx).map(t => ({ to: t.to, label: t.label ?? `Send back (${mod.statuses.find(s => s.key === t.to)?.label ?? t.to})` })) : [];
+  // Who a new ticket can go to: the people on the journey, the usual other side first.
+  const usual = counterpart(user.id, item);
+  const partLabel = { creator: mod.labels?.assignee ?? 'Assignee', reviewer: mod.labels?.owner ?? 'Reviewer', developer: mod.developerHandoff?.label ?? 'Developer' };
+  const choices = ticketChoices(user.id, item);
+  const readerNames = new Map((await db.user.findMany({ where: { id: { in: choices.map(c => c.id) } }, select: { id: true, name: true, email: true } })).map(u => [u.id, u.name ?? u.email ?? 'Someone']));
+  const readers = choices.map(c => ({ id: c.id, label: `${readerNames.get(c.id) ?? 'Someone'} · ${partLabel[c.role]}` })).sort((a, b) => Number(b.id === usual) - Number(a.id === usual));
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -67,7 +73,7 @@ export default async function FeedbackPage({ params }: { params: Promise<{ workT
           </Link>
         }
       />
-      <FeedbackTickets itemId={item.id} tickets={tickets} currentUserId={user.id} canRaise={editable && canChat(ctx)} correctionsLabel={sendBack?.label} />
+      <FeedbackTickets itemId={item.id} tickets={tickets} currentUserId={user.id} canRaise={editable && canChat(ctx)} readers={readers} sendBacks={sendBacks} />
     </div>
   );
 }

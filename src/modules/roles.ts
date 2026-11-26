@@ -48,6 +48,7 @@ export function templateColumns(t: RoleTemplate) {
     capAssign: t.capabilities.includes('assign'),
     capCreate: t.capabilities.includes('create'),
     capManageFields: t.capabilities.includes('manageFields'),
+    capQa: t.capabilities.includes('qa'),
     dataScope: t.dataScope,
     canEdit: t.canEdit,
     pageDashboard: t.pages.includes('dashboard'),
@@ -57,13 +58,14 @@ export function templateColumns(t: RoleTemplate) {
   };
 }
 
-type RightKey = 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'dataScope' | 'canEdit' | 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport';
+type RightKey = 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'capQa' | 'dataScope' | 'canEdit' | 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport';
 const RIGHTS: { key: RightKey; label: string }[] = [
   { key: 'capWork', label: 'work' },
   { key: 'capReview', label: 'review' },
   { key: 'capAssign', label: 'assign' },
   { key: 'capCreate', label: 'add items' },
   { key: 'capManageFields', label: 'edit details' },
+  { key: 'capQa', label: 'test finished items' },
   { key: 'dataScope', label: 'which items they see' },
   { key: 'canEdit', label: 'can make changes' },
   { key: 'pageDashboard', label: 'Dashboard page' },

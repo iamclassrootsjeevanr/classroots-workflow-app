@@ -27,7 +27,11 @@ export type NextMove = {
   stamp?: string[];
   /** Fields set to these values when pressed (if empty). */
   set?: Record<string, string>;
+  /** See `Transition.settles`. */
+  settles?: boolean;
 };
+
+export type SkipRule = { field: string; equals: string };
 
 export type StatusDef = {
   key: string;
@@ -53,8 +57,10 @@ export type StatusDef = {
   baseCategory?: StatusCategory;
   /** Set by applyStageConfig: added by an admin, not in the module code. */
   custom?: boolean;
-  /** Items whose field has this value pass straight on to the next stage (e.g. no videos to replace). */
-  skipWhen?: { field: string; equals: string };
+  /** Items whose field has this value pass straight on to the next stage (e.g. no videos to replace). A list = any of the rules. */
+  skipWhen?: SkipRule | SkipRule[];
+  /** Fields of the item's data removed when it enters this stage (Journey: the QA-fix mark, once the fix is on its way to prod). */
+  clears?: string[];
   /**
    * A check stage that is passed at once when the person who moved the item into it may press its own button too: the same person
    * would check twice (Journey: Design check, when the SME reviewer or a steward does the last look).
@@ -81,6 +87,8 @@ export type Transition = {
   set?: Record<string, string>;
   /** Can only be done together with feedback (the Feedback card's send-back button). */
   requires?: 'feedback';
+  /** The move settles the stage's work: open tickets are shown first and closed with it (Close review, Design approved, Mark done). */
+  settles?: boolean;
 };
 
 export type FieldType = 'text' | 'longtext' | 'url' | 'date' | 'number' | 'select';
@@ -252,7 +260,7 @@ export type WorkTypeDefinition = {
   /** APK Testing: the columns of a version's test results (the work is the version; its results are listed on its page). */
   runTable?: { hide?: ('owner' | 'expected' | 'delay')[]; extra?: { field: string; label: string }[] };
   /** Tab names for this work type's pages (defaults: Overview, Items; a groups tab shows when there is a groupSummary). */
-  pages?: { groups?: string; items?: string; cases?: string; teams?: string; board?: string };
+  pages?: { groups?: string; items?: string; cases?: string; teams?: string; board?: string; /** A tab with the tickets waiting on me and the ones I raised. */ feedback?: string };
   /** Journey: a Relay board tab (people × creation stage, days in stage). Needs the reports page. */
   relayBoard?: boolean;
   /** Groups can be added in the app (an APK version = a group of tests copied from an earlier one). */

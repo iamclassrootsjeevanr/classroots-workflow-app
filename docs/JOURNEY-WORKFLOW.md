@@ -171,11 +171,13 @@ Once a Journey is **Closed**, the coordinator moves it through the delivery step
 | Video replacement      | Steward                | **Videos replaced**. This stage is skipped automatically when `Needs video replacement` is `No`.                                                                                                        |
 | UAT → prod migration   | Steward                | Advance after Engineering has migrated it.                                                                                                                                                              |
 | Published on prod      | Steward                | Start user testing.                                                                                                                                                                                     |
-| User testing and QA    | Steward                | **Mark done**, or use feedback and **Send back for a fix**.                                                                                                                                             |
+| User testing and QA    | QA or steward          | **Mark done**, or use feedback and **Send to creator** or **Send to developer**.                                                                                                                                             |
 
 **Developer:** when a review closes, the journey moves to Design standardization and goes to the developer with the fewest journeys waiting there (Jeevan and Swathi today). The Developer role is given in Admin → People; the coordinator or the journey's own SME creator can change the developer on the journey page (the list shows how many journeys each developer is checking) and in the Developer column of the Journeys list. The developer can be set or changed only while the journey is in Design standardization. If that stage is paused in Admin → Work types → Stages, journeys wait there with no developer; assign one once the stage is active again. The developer sees it in My work.
 
-If QA finds a defect, the coordinator must write feedback and use **Send back for a fix**. The Journey returns to **Changes asked**, so the creator and reviewer use the normal correction and verification loop again.
+If QA finds a defect, QA (a person with the QA role) or the steward writes a ticket and sends the Journey to the person who fixes it. **Send to creator** returns it to **Changes asked**: the creator corrects it, the SME reviewer verifies it and closes the review, and the Journey then goes straight to **UAT → prod migration** (the review handoff and the design steps are not repeated). **Send to developer** returns it to **Design standardization**: design done, last look, design check, then **UAT → prod migration**. In both cases it comes back to **User testing and QA** after it is published on prod again.
+
+A move that finishes a stage (**Close review**, **Last look done**, **Design approved**, **Mark done**) shows the tickets still open on the Journey; going ahead closes them.
 
 ## Dates, workload, and alerts
 
@@ -224,7 +226,7 @@ Stewards can add and delete Journeys in their own chapters. Creators and reviewe
 1. Ensure a submitted Journey has an SME reviewer.
 1. Keep `Needs video replacement` accurate before post-review delivery.
 1. Move closed Journeys through design, migration, publishing, and QA. You can do the **Last look** and the **Design check** on the Journeys you can act on, and give feedback to the creator. The review buttons stay with the SME reviewer.
-1. If QA fails, leave feedback and use **Send back for a fix**.
+1. If QA fails, leave feedback and use **Send to creator** or **Send to developer** (a person with the QA role can do this too).
 1. Monitor Inbox alerts and overdue review closure due dates for your chapters.
 
 <!-- ## Related documentation

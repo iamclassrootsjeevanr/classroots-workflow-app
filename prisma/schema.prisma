@@ -206,6 +206,8 @@ model AccessRole {
   capCreate       Boolean              @default(false)
   /// Can edit owner-side fields (due date, SME details).
   capManageFields Boolean              @default(false)
+  /// Can act at a QA stage: mark the item done or send it back with a ticket.
+  capQa           Boolean              @default(false)
   /// Which items people with this role see; a person with several roles gets the widest.
   dataScope       DataScope            @default(OWN)
   /// False = view only. A person can edit if any of their roles can.

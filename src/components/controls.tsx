@@ -9,6 +9,7 @@ import { rememberDeletion } from './undo-toasts';
 import {
   assignAction,
   changeStatusAction,
+  openTicketsAction,
   deleteItemAction,
   commentAction,
   loadEditFieldsAction,
@@ -37,7 +38,7 @@ export function ActionMessage({ result }: { result: ActionResult | null }) {
   return <p className="mt-1 text-xs text-bad">{result.error}</p>;
 }
 
-export type StatusOption = { to: string; label: string; statusLabel: string };
+export type StatusOption = { to: string; label: string; statusLabel: string; /** The move settles the stage: open tickets are shown first and closed with it. */ settles?: boolean };
 
 /** Current status as a coloured select; options are only the moves this user may make. */
 export function StatusSelect({
@@ -54,8 +55,40 @@ export function StatusSelect({
   compact?: boolean;
 }) {
   const { pending, result, exec } = useAction();
+  const { confirm, dialog } = useConfirm();
   // Show the chosen status at once; the server round trip finishes in the background.
   const [next, setNext] = useState<string | null>(null);
+  /** A move that settles the stage asks first when tickets are open; going ahead closes them. */
+  const move = async (o: StatusOption | undefined, to: string) => {
+    let closeTickets = false;
+    if (o?.settles) {
+      const open = await openTicketsAction(itemId).catch(() => []);
+      if (open.length) {
+        const ok = await confirm({
+          title: open.length === 1 ? '1 ticket is still open' : `${open.length} tickets are still open`,
+          description: (
+            <>
+              <span className="block">
+                “{o.label}” closes {open.length === 1 ? 'it' : 'them'}. The people on {open.length === 1 ? 'it are' : 'them are'} told.
+              </span>
+              <span className="mt-2 block max-h-40 overflow-y-auto rounded-lg border border-line bg-surface-2 p-2 text-left text-xs">
+                {open.map(t => (
+                  <span key={t.code} className="block truncate py-0.5">
+                    <b className="font-mono font-semibold">{t.code}</b> {t.title}
+                  </span>
+                ))}
+              </span>
+            </>
+          ),
+          confirmLabel: 'Close and continue',
+          tone: 'warn',
+        });
+        if (!ok) return setNext(null);
+        closeTickets = true;
+      }
+    }
+    exec(() => changeStatusAction(itemId, to, version, undefined, { closeTickets }));
+  };
   useEffect(() => {
     if (!pending) setNext(null);
   }, [pending]);
@@ -78,7 +111,7 @@ export function StatusSelect({
         onChange={e => {
           const to = e.target.value;
           setNext(to);
-          exec(() => changeStatusAction(itemId, to, version));
+          void move(options.find(o => o.to === to), to);
         }}
       >
         <option value={current.key}>{current.label}</option>
@@ -88,6 +121,7 @@ export function StatusSelect({
           </option>
         ))}
       </select>
+      {dialog}
       {result && !result.ok && <ActionMessage result={result} />}
     </div>
   );
