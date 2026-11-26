@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { TICKET_FIELD } from '@/lib/feedback';
 import { notFound } from 'next/navigation';
 import { AssignSelect, CloseVersionButton, CommentForm, DeleteItemButton, FieldSelect, FieldsForm, StatusSelect, type EditableField } from '@/components/controls';
 import { StageTimeline } from '@/components/stage-timeline';
@@ -390,7 +391,7 @@ export default async function ItemPage({ params }: { params: Promise<{ workType:
                   <div className="text-xs text-muted tabular-nums">{formatDateTime(e.at, tz)}</div>
                   <div>
                     <b>{eventWho(e)}</b>{' '}
-                    <span className="text-muted">{EVENT_TEXT[e.type] ?? e.type.toLowerCase()}</span>{' '}
+                    <span className="text-muted">{e.type === 'FEEDBACK' && e.field === TICKET_FIELD ? (e.toValue === 'closed' ? 'closed ticket' : 'reopened ticket') : (EVENT_TEXT[e.type] ?? e.type.toLowerCase())}</span>{' '}
                     {e.type === 'STATUS_CHANGED' && (
                       <>
                         {label(e.fromValue)} → <b>{label(e.toValue)}</b>

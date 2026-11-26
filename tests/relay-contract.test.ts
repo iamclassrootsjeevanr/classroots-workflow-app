@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { ticketStateMeta, TICKET_FIELD } from '@/lib/feedback';
 import { describe, expect, it } from 'vitest';
 import { CONTRACT, contractData, DASHBOARD_ROLES, DASHBOARD_STATUSES, feedTouched, isTouched, mismatchSettled, parseFeed, publishFor, RelayContractError, toolUnavailable, type FeedEvent } from '@/lib/relay-contract';
 import { dashEventFor, eventIdFor, parsePushReply, PUSHED_TYPES, type EventRow, type PushContext } from '@/lib/relay-push';
@@ -101,6 +102,15 @@ describe('a change here as the event the relay keeps', () => {
     expect(sent({ type: 'IMPORTED', fromValue: null, toValue: 'allocated', source: 'IMPORT', note: null })).toMatchObject({ entity: 'item', action: 'create', to: 'allocated', data: { status: 'allocated', label: 'Allocated', source: 'IMPORT' } });
     expect(sent({ type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: null, toValue: '2026-11-23T05:30:00.000Z', note: 'Deleted' })).toMatchObject({ entity: 'item', action: 'delete' });
     expect(sent({ type: 'FIELD_CHANGED', field: 'archivedAt', fromValue: '2026-11-23T05:30:00.000Z', toValue: null, note: 'Restored' })).toMatchObject({ entity: 'item', action: 'update', data: { restored: true } });
+  });
+  it('a ticket closed or reopened is an update of that ticket, so the relay can tell which asks are open', () => {
+    const raised = sent({ type: 'FEEDBACK', field: null, fromValue: null, toValue: null, note: 'Max says it twice.', meta: { ticket: 'TICK-00012', title: 'Max twice', round: 1, role: 'reviewer' } });
+    expect([raised.action, raised.data.ticket, raised.data.title]).toEqual(['create', 'TICK-00012', 'Max twice']);
+    const meta = ticketStateMeta({ ticketNo: 12, title: 'Max twice', body: 'Max says it twice.', round: 1, createdAt: new Date('2026-11-23T05:30:00.000Z') }, 'closed', 'reviewer', 'Close review');
+    const closed = sent({ type: 'FEEDBACK', field: TICKET_FIELD, fromValue: 'open', toValue: 'closed', note: 'TICK-00012 · Max twice', meta });
+    expect(closed).toMatchObject({ entity: 'feedback', action: 'update', from: 'open', to: 'closed', data: { ticket: 'TICK-00012', title: 'Max twice', state: 'closed', round: 1, raised_at: '2026-11-23T05:30:00.000Z', role: 'reviewer', with: 'Close review' } });
+    const reopened = sent({ type: 'FEEDBACK', field: TICKET_FIELD, fromValue: 'closed', toValue: 'open', note: 'TICK-00012 · Max twice', meta: ticketStateMeta({ ticketNo: 12, title: null, body: 'Max says it twice.\nmore', round: 1, createdAt: new Date('2026-11-23T05:30:00.000Z') }, 'open', 'reviewer') });
+    expect([reopened.action, reopened.from, reopened.to, reopened.data.state, reopened.data.title, 'with' in reopened.data]).toEqual(['update', 'closed', 'open', 'open', 'Max says it twice.', false]);
   });
   it('what is not sent says why', () => {
     expect(dashEventFor(row({ externalKey: 'APK-1.2.3' }), ctx)).toEqual({ skip: 'not a journey key' });

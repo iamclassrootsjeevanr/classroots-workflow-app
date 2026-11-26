@@ -14,7 +14,7 @@ import { notify, stewardIds } from './notifications';
 import { relayHolderNote } from '@/lib/relay-holder';
 import { relayHolders } from '../relay-holder';
 import { shortKey, undoDeadline } from '@/lib/notifications-core';
-import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel, ticketReader } from '@/lib/feedback';
+import { canChat, canCloseTicket, counterpart, ticketAudience, ticketCode, ticketTitle, writerRole, writerRoleLabel, ticketReader, ticketStateMeta, TICKET_FIELD } from '@/lib/feedback';
 import { defaultDeveloper, nextDefault, reviewDefaults, teamPeople, type TeamLite } from '@/lib/teams';
 import { loadTeams } from '../teams';
 import { versionCloseBlocker, versionStatus } from '@/lib/apk-rollup';
@@ -171,7 +171,7 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   }
   // A move that settles the stage's work (Close review, Design approved, Mark done) closes the journey's open tickets: the person
   // is shown them first and goes ahead knowingly. A change the system makes (the relay sync) leaves tickets as they are.
-  const openTickets = actor.ctx && move?.settles ? await tx.feedback.findMany({ where: { itemId: item.id, resolvedAt: null }, select: { id: true, ticketNo: true, title: true, authorId: true, toId: true }, orderBy: { ticketNo: 'asc' } }) : [];
+  const openTickets = actor.ctx && move?.settles ? await tx.feedback.findMany({ where: { itemId: item.id, resolvedAt: null }, select: { id: true, ticketNo: true, title: true, body: true, round: true, createdAt: true, authorId: true, toId: true }, orderBy: { ticketNo: 'asc' } }) : [];
   if (openTickets.length && !opts.closeTickets) throw new Error(openTicketsMessage(openTickets.length));
   const data = { ...((item.data ?? {}) as Record<string, unknown>) };
   const today = dayKey(now, cal.tz);
@@ -207,8 +207,10 @@ async function changeStatusTx(tx: Tx, item: ItemWithType, actor: ChangeActor, to
   await rollInterval(tx, item.id, landing, item.assigneeId, now, cal);
   if (openTickets.length) {
     await tx.feedback.updateMany({ where: { id: { in: openTickets.map(t => t.id) } }, data: { resolvedAt: now, closedById: actor.userId } });
+    const how = move?.label ?? statusDef(mod, landing).label;
+    // Each close is its own history line, so the relay learns which asks are settled.
+    for (const t of openTickets) await ticketStateEvent(tx, item.id, actor, t, 'closed', now, how);
     if (actor.source === 'APP') {
-      const how = move?.label ?? statusDef(mod, landing).label;
       for (const t of openTickets) {
         for (const userId of ticketAudience(t, actor.userId)) {
           await notify(tx, userId, { kind: 'feedback.closed', title: `${ticketCode(t.ticketNo)} closed with “${how}” on ${shortKey(item.externalKey)}`, body: t.title ?? '', href: `/w/${item.workType.key}/${item.id}/feedback` });
@@ -311,6 +313,14 @@ async function notifyStage(tx: Tx, item: ItemWithType, mod: WorkTypeDefinition, 
       await notify(tx, userId, { kind: 'item.relay-ready', title: `${label}: ${shortKey(item.externalKey)}`, body: 'Set the relay status: ready from content', href });
     }
   }
+}
+
+/** The history line of a ticket closed or reopened. It is sent to the relay like the ticket itself (`dashEventFor`). */
+async function ticketStateEvent(tx: Tx, itemId: string, actor: ChangeActor, t: { ticketNo: number; title: string | null; body: string; round: number; createdAt: Date }, state: 'closed' | 'open', at: Date, how?: string | null) {
+  const meta = ticketStateMeta(t, state, writerRole(actor.ctx), how);
+  await tx.workItemEvent.create({
+    data: { itemId, actorId: actor.userId, type: 'FEEDBACK', field: TICKET_FIELD, fromValue: state === 'closed' ? 'open' : 'closed', toValue: state, note: `${meta.ticket} · ${meta.title}`, source: actor.source, meta, at },
+  });
 }
 
 /** What a settling move says when tickets are still open and the person has not confirmed (the client asks, then sends `closeTickets`). */
@@ -729,7 +739,7 @@ export async function addFeedback(
       toId ? tx.user.findUnique({ where: { id: toId }, select: { email: true } }) : null,
     ]);
     const forRole = toId === item.assigneeId ? 'creator' : toId === item.developerId ? 'developer' : toId === item.ownerId ? 'reviewer' : null;
-    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { round, category: input.category, severity: input.severity, role, ...(reader?.email ? { for: reader.email.toLowerCase(), for_role: forRole } : {}) }, at: now } });
+    await tx.workItemEvent.create({ data: { itemId, actorId: actor.userId, type: 'FEEDBACK', note: body, source: actor.source, meta: { ticket: ticketCode(ticket.ticketNo), title: ticket.title, round, category: input.category, severity: input.severity, role, ...(reader?.email ? { for: reader.email.toLowerCase(), for_role: forRole } : {}) }, at: now } });
     // The ticket goes to the other side: creator → developer (else reviewer), anyone else → creator. One message, with who wrote it.
     if (toId && toId !== actor.userId && actor.source === 'APP') {
       const from = writer?.name ? ` · from ${writer.name} (${writerRoleLabel(role, mod)})` : '';
@@ -759,8 +769,10 @@ export async function resolveFeedback(actor: ChangeActor, feedbackId: string) {
   const fb = await ticketOf(feedbackId);
   if (actor.ctx && !canCloseTicket(actor.ctx, fb, actor.userId)) throw new ForbiddenError('Only the person who raised this ticket can close it.');
   const closing = !fb.resolvedAt;
+  const now = new Date();
   await db.$transaction(async tx => {
-    await tx.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: closing ? new Date() : null, closedById: closing ? actor.userId : null } });
+    await tx.feedback.update({ where: { id: feedbackId }, data: { resolvedAt: closing ? now : null, closedById: closing ? actor.userId : null } });
+    await ticketStateEvent(tx, fb.itemId, actor, fb, closing ? 'closed' : 'open', now);
     if (actor.source !== 'APP') return;
     for (const userId of ticketAudience(fb, actor.userId)) {
       await notify(tx, userId, { kind: closing ? 'feedback.closed' : 'feedback.reopened', title: `${ticketCode(fb.ticketNo)} ${closing ? 'closed' : 'reopened'} on ${shortKey(fb.item.externalKey)}`, body: fb.title, href: `/w/${fb.item.workType.key}/${fb.item.id}/feedback` });

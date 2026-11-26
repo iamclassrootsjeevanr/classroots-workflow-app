@@ -50,7 +50,7 @@ export function buildTimeLog(events: LogEvent[], intervals: LogInterval[], look:
       case 'COMMENTED':
         return { ...base, kind: 'comment', text: 'Commented', detail: e.note ?? undefined };
       case 'FEEDBACK':
-        return { ...base, kind: 'comment', text: 'Gave feedback', detail: e.note ?? undefined };
+        return { ...base, kind: 'comment', text: e.field === 'ticket' ? (e.toValue === 'closed' ? 'Closed ticket' : 'Reopened ticket') : 'Gave feedback', detail: e.note ?? undefined };
       case 'FIELD_CHANGED': {
         const field = e.field ?? '';
         if (field === 'archivedAt') return { ...base, kind: 'field', text: 'Deleted' };
