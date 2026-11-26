@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { TeamCard, TeamForm, type TeamView } from '@/components/teams-panel';
 import { Card, Empty } from '@/components/ui';
-import { itemsUrl } from '@/lib/items-url';
+import { itemsUrl, OPEN_CATS } from '@/lib/items-url';
 import { teamPeople } from '@/lib/teams';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
@@ -42,9 +42,9 @@ export default async function TeamsPage({ params }: { params: Promise<{ workType
     reviewerId: t.reviewerId,
     developerId: t.developerId,
     developerName: t.developerName,
-    members: t.members.map(m => ({ ...m, open: openOf([m.userId]), href: itemsUrl(key, { dev: m.userId }) })),
+    members: t.members.map(m => ({ ...m, open: openOf([m.userId]), href: itemsUrl(key, { dev: m.userId, cat: OPEN_CATS }) })),
     canManage: editable && (access.isAdmin || (can('assign') && t.coordinatorId === user.id)),
-    itemsHref: itemsUrl(key, { team: t.id }),
+    itemsHref: itemsUrl(key, { team: t.id, cat: OPEN_CATS }),
     open: openOf(teamPeople(t)),
   }));
   // Your own team first.

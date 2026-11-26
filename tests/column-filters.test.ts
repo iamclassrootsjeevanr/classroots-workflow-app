@@ -61,4 +61,10 @@ describe('a team’s default developer', () => {
     expect(defaultDeveloper(teams, 'stranger')).toBeNull();
     expect(defaultDeveloper(teams, null)).toBeNull();
   });
+
+  it('lists what was finished in the last N days, and ignores a bad number', () => {
+    expect(where({ done: '30' })).toEqual([{ completedAt: { gte: new Date(now.getTime() - 30 * 86_400_000) } }]);
+    expect(itemsWhere(journeyApplet, { done: 'x' }, 'me', now)).toEqual({});
+    expect(itemsWhere(journeyApplet, { done: '0' }, 'me', now)).toEqual({});
+  });
 });

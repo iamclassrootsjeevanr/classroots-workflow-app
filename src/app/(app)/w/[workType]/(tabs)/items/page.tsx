@@ -8,7 +8,7 @@ import { Card } from '@/components/ui';
 import { developerStage, nextActiveAfter } from '@/lib/stages';
 import { getModule } from '@/modules/registry';
 import { db } from '@/server/db';
-import { dataSelectFields, NONE } from '@/lib/items-where';
+import { dataSelectFields, NONE, doneDays } from '@/lib/items-where';
 import { teamOf } from '@/lib/teams';
 import { loadTeams } from '@/server/teams';
 import { relayHolders } from '@/server/relay-holder';
@@ -140,6 +140,7 @@ export default async function ItemsPage({ params, searchParams }: { params: Prom
           { name: 'cat', label: 'Stage', multi: true, options: stages },
           ...(sp.user ? [{ name: 'user', label: 'User', options: userChoices }] : []),
           ...(sp.holder ? [{ name: 'holder', label: 'Work of', options: userChoices }] : []),
+          ...(doneDays(sp.done) ? [{ name: 'done', label: 'Finished in', options: [{ value: sp.done!, label: `Last ${doneDays(sp.done)} days` }] }] : []),
           ...(teams.length ? [{ name: 'team', label: 'Team', multi: true, options: teams.map(t => ({ value: t.id, label: t.name })) }] : []),
           ...(grades.length ? [{ name: 'grade', label: 'Grade', multi: true, options: grades.map(g => ({ value: String(g), label: `Grade ${g}` })) }] : []),
           { name: 'scope', label: 'Show', options: [{ value: 'mine', label: 'Mine' }, ...(hasTeam ? [{ value: 'team', label: 'My team' }] : []), { value: 'review', label: 'Waiting for review' }, { value: 'overdue', label: 'Overdue' }] },
