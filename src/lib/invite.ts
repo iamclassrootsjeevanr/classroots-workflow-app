@@ -8,6 +8,12 @@ export function emailDomain(email: string) {
 
 export const isOfficeEmail = (email: string, officeDomains: string[]) => officeDomains.includes(emailDomain(email));
 
+/**
+ * Who changes a password in the app: a person who signs in with one. An office email signs in with Google when Google is set up, so
+ * it has no password to change here; an email from outside the office domains does.
+ */
+export const canChangePassword = (p: { email: string | null | undefined; googleEnabled: boolean; officeDomains: string[] }) => !(p.googleEnabled && Boolean(p.email) && isOfficeEmail(p.email!, p.officeDomains));
+
 /** Office emails (and anyone who already linked a Google account) use Google when it is set up; everyone else email + password. */
 export function signInMethod(p: { email: string; googleEnabled: boolean; officeDomains: string[]; hasGoogleAccount: boolean }): SignInMethod {
   return p.googleEnabled && (p.hasGoogleAccount || isOfficeEmail(p.email, p.officeDomains)) ? 'google' : 'password';

@@ -3,8 +3,9 @@ import { FilterableTable } from '@/components/table-filters';
 import { notFound } from 'next/navigation';
 import { Card, Empty } from '@/components/ui';
 import { BOARD_COLUMNS, columnTotals, FRESH_DAYS, OLD_DAYS, type BoardChip } from '@/lib/relay-board';
+import { boardView } from '@/lib/access-core';
 import { getModule } from '@/modules/registry';
-import { requireWorkTypePage, scopeWhere } from '@/server/access';
+import { requireAccess, scopeWhere } from '@/server/access';
 import { loadRelayBoard } from '@/server/services/relay-board';
 
 export async function generateMetadata({ params }: { params: Promise<{ workType: string }> }) {
@@ -23,10 +24,13 @@ const TONE: Record<BoardChip['tone'], string> = {
 /** Who holds which journey at which creation stage, and for how many days. Shows only the journeys the viewer's role may see. */
 export default async function RelayBoardPage({ params }: { params: Promise<{ workType: string }> }) {
   const { workType: key } = await params;
-  const { access, wt } = await requireWorkTypePage(key, 'reports');
+  const { access } = await requireAccess();
+  const wt = access.byKey.get(key);
   const mod = getModule(key);
-  if (!mod?.relayBoard) notFound();
-  const { rows, total } = await loadRelayBoard(key, scopeWhere(access, [wt]));
+  const view = boardView(access.isAdmin, wt);
+  if (!wt || !mod?.relayBoard || !view) notFound();
+  // A steward, a reviewer, QA and an admin see every journey; anyone else sees what their role shows them.
+  const { rows, total } = await loadRelayBoard(key, view === 'all' ? { workTypeId: wt.workTypeId } : scopeWhere(access, [wt]));
   const totals = columnTotals(rows);
 
   return (
@@ -35,7 +39,7 @@ export default async function RelayBoardPage({ params }: { params: Promise<{ wor
         One row per creator, one column per creation stage. A chip is a journey with the days it has sat there
         (<span className="text-ok">{FRESH_DAYS} or fewer</span>, <span className="text-warn">{FRESH_DAYS + 1}–{OLD_DAYS - 1}</span>, <span className="text-bad">{OLD_DAYS}+</span>).
         <b> r</b> = up for review, <b>c</b> = corrections. Fed by the relay; journeys past review leave the board.
-        {!access.isAdmin && wt.dataScope === 'OWN' && ' You see your own journeys.'}
+        {view === 'scoped' && wt.dataScope === 'OWN' && ' You see your own journeys.'}
       </p>
       {rows.length === 0 ? (
         <Empty>No journeys to show.</Empty>

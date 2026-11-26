@@ -29,8 +29,8 @@ import { dueDateToInstant } from '@/lib/time';
 import { capabilitiesIn } from '@/lib/access-core';
 import { getModule } from '@/modules/registry';
 import { hashPassword, passwordProblem, verifyPassword } from '@/lib/password';
-import { isOfficeEmail, missingPasswordProblem } from '@/lib/invite';
-import { env } from '@/server/env';
+import { canChangePassword, isOfficeEmail, missingPasswordProblem } from '@/lib/invite';
+import { env, googleEnabled } from '@/server/env';
 import { sendAccessEmail } from '@/server/invites';
 import { COOKIE_MAX_AGE, PREFS_COOKIE, PrefsSchema, serializePrefsCookie } from '@/lib/prefs';
 
@@ -717,6 +717,7 @@ export async function changeMyPasswordAction(input: { current: string; next: str
   return run(async () => {
     const me = await requireUser();
     const user = await db.user.findUniqueOrThrow({ where: { id: me.id } });
+    if (!canChangePassword({ email: user.email, googleEnabled: googleEnabled(), officeDomains: env().OFFICE_DOMAINS })) throw new Error('Office accounts sign in with Google and have no password here.');
     if (user.passwordHash && !(await verifyPassword(input.current, user.passwordHash))) throw new Error('Current password is incorrect.');
     if (input.next !== input.confirm) throw new Error('The new passwords don’t match.');
     const problem = passwordProblem(input.next, user.email);

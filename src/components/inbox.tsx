@@ -7,7 +7,6 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { deleteNotificationsAction, loadInboxAction, markNotificationsAction } from '@/app/actions';
 import { timeAgo, undoMinutesLeft, undoOpen, type NotificationView } from '@/lib/notifications-core';
-import { useSidebar } from './sidebar';
 import { UndoButton, UndoVersionButton } from './undo-toasts';
 
 const ICONS: Record<string, typeof Bell> = {
@@ -93,15 +92,16 @@ export function NotificationRow({ n, selected, onSelect, onChanged, compact }: {
   );
 }
 
-/** Inbox entry in the sidebar: unread badge, and a popover with the latest messages. */
+/**
+ * The bell in the top bar: unread count on it, and the latest messages in a card under it. "View all" opens the Inbox page.
+ */
 export function InboxMenu({ unread }: { unread: number }) {
-  const { collapsed } = useSidebar();
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationView[] | null>(null);
   const [count, setCount] = useState(unread);
   const btn = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState({ left: 0, bottom: 0 });
+  const [pos, setPos] = useState({ right: 0, top: 0 });
   useEffect(() => setCount(unread), [unread]);
   useEffect(() => setOpen(false), [path]);
 
@@ -115,14 +115,18 @@ export function InboxMenu({ unread }: { unread: number }) {
   const toggle = () => {
     if (!open && btn.current) {
       const r = btn.current.getBoundingClientRect();
-      setPos({ left: r.right + 10, bottom: Math.max(12, window.innerHeight - r.bottom - 4) });
+      setPos({ right: Math.max(8, window.innerWidth - r.right - 4), top: r.bottom + 8 });
       void load();
     }
     setOpen(o => !o);
   };
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      btn.current?.focus();
+    };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
@@ -136,27 +140,26 @@ export function InboxMenu({ unread }: { unread: number }) {
         onClick={toggle}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title={collapsed ? 'Inbox' : undefined}
-        className={`relative flex min-h-9 w-full items-center gap-2.5 rounded-lg transition-colors hover:bg-surface-2 ${collapsed ? 'justify-center px-0' : 'px-2.5'} ${open ? 'bg-surface-2 text-ink' : 'text-ink/90'}`}
+        aria-label={count > 0 ? `Inbox, ${count} unread` : 'Inbox'}
+        title="Inbox"
+        className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none ${open || path === '/inbox' ? 'bg-surface-2 text-ink' : 'text-muted'}`}
       >
-        <Bell size={17} strokeWidth={1.8} className="shrink-0 text-muted" aria-hidden="true" />
-        {!collapsed && <span className="flex-1 truncate text-left">Inbox</span>}
-        {count > 0 &&
-          (collapsed ? (
-            <span className="absolute top-1 right-2.5 size-2 rounded-full bg-brand" aria-label={`${count} unread`} />
-          ) : (
-            <span className="rounded-full bg-brand px-1.5 py-px text-2xs font-semibold text-white tabular-nums" aria-label={`${count} unread`}>
-              {count > 99 ? '99+' : count}
-            </span>
-          ))}
+        <Bell size={18} strokeWidth={1.8} aria-hidden="true" />
+        {count > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[1.125rem] rounded-full bg-brand px-1 text-center text-[0.625rem] leading-[1.125rem] font-semibold text-white tabular-nums ring-2 ring-surface" aria-hidden="true">
+            {count > 99 ? '99+' : count}
+          </span>
+        )}
       </button>
       {open &&
         createPortal(
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <div role="dialog" aria-label="Inbox" className="fixed z-50 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line bg-surface text-left shadow-[var(--shadow-pop)]" style={{ left: pos.left, bottom: pos.bottom }}>
+            <div role="dialog" aria-label="Inbox" className="fixed z-50 w-[min(24rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-line bg-surface text-left shadow-[var(--shadow-pop)]" style={{ right: pos.right, top: pos.top }}>
               <div className="flex items-center justify-between border-b border-line px-4 py-3">
-                <h2 className="text-md font-semibold text-ink">Inbox</h2>
+                <h2 className="text-md font-semibold text-ink">
+                  Inbox {count > 0 && <span className="ml-1 rounded-full bg-brand-soft px-1.5 py-px text-2xs font-semibold text-brand tabular-nums">{count} new</span>}
+                </h2>
                 <div className="flex items-center gap-1.5">
                   {count > 0 && (
                     <button type="button" className="btn-ghost min-h-7 px-2 text-xs" onClick={() => start(async () => { await markNotificationsAction(true); await load(); })}>

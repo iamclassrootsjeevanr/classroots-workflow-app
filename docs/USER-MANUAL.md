@@ -18,8 +18,11 @@ Live address: **https://classroots-workflow-app.onrender.com**
   - **My dashboard**: your own work, deadlines and recent activity.
   - **Work types** (Journey, APK Testing): each has tabs. Open one to see its pages.
   - **Reports**: charts and totals (only for some roles).
-  - **Inbox**: the bell icon at the top shows your latest messages; **View all** (or Inbox in the phone menu) opens the full list. Open a message to jump to the item.
-- **Your name**: opens **My account**: your **Profile**, **Appearance** (light, dark or system theme, saved for every device) and **Ways to sign in** (set or change your password).
+- **Top bar** (right side):
+  - **Bell**: the number is your unread messages. Press it for the latest ones; **View all** opens the full Inbox. Open a message to jump to the item.
+  - **Your name**: opens a menu. **Profile** (who you are here and your access), **Settings** (light, dark or system theme, text size, saved for every device), **Change password**, and **Sign out**.
+  - **Change password** shows only if you sign in with an email and a password. An office account signs in with Google and has no password here.
+- **Sidebar button** (top bar, left) or the `[` key: collapses the sidebar to icons. Point at an icon to see its name and its pages.
 - On a phone, the menu is behind the menu button at the top.
 
 ### Words used in this manual
@@ -131,7 +134,7 @@ Your chapters come from RELAY: the chapter's owner on RELAY is its steward here,
 | User testing and QA | QA or the steward. **→ Mark done**, or raise a ticket and press **Send to creator** (content fix: the creator corrects it and the SME reviewer verifies it) or **Send to developer** (design fix: design standardization, last look, design check). After the fix the journey goes to **UAT → prod migration** again and comes back to QA. |
 
 **Watch**
-- **Relay board** tab: every creator in your scope, each stage, days waiting, and `r` (up for review) / `c` (corrections) marks from RELAY.
+- **Relay board** tab (the last tab; stewards, SME reviewers, QA and admins see every journey): every creator, each stage, days waiting, and `r` (up for review) / `c` (corrections) marks from RELAY.
 - **Reports** and **My dashboard** for overdue, stuck and workload.
 - Your **Inbox** for stuck and overdue alerts.
 
