@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { TICKET_FIELD } from './feedback';
 import { journeyKeyOf } from './journey';
 import { DASHBOARD_STATUSES } from './relay-contract';
 
@@ -81,6 +82,8 @@ export function dashEventFor(row: EventRow, ctx: PushContext): DashEvent | { ski
       return people('creator');
     case 'FEEDBACK': {
       const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? (row.meta as Record<string, unknown>) : {};
+      // A ticket closed or reopened: an update of that ticket (`data.ticket`), so the relay can tell which asks are still open.
+      if (row.field === TICKET_FIELD && (row.toValue === 'closed' || row.toValue === 'open')) return { ...base, entity: 'feedback', action: 'update', from: cut(row.fromValue), to: row.toValue, data: { ...data, ...meta } };
       return { ...base, entity: 'feedback', action: 'create', data: { ...data, ...meta } };
     }
     case 'FIELD_CHANGED': {

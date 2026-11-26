@@ -3,6 +3,18 @@ import { hasCap, type ActorContext } from './workflow';
 
 export const ticketCode = (n: number) => `TICK-${String(n).padStart(5, '0')}`;
 
+/** The field name a ticket's close or reopen is logged under in the item's history. */
+export const TICKET_FIELD = 'ticket';
+
+/**
+ * What the history (and through it the relay) keeps when a ticket is closed or reopened: the ticket's number and title, its new state,
+ * and when it was raised, so a ticket raised before numbers were sent can still be matched to its "raised" event by that time.
+ * `with` is the move that closed it, when a stage move did.
+ */
+export function ticketStateMeta(t: { ticketNo: number; title: string | null; body: string; round: number; createdAt: Date }, state: 'closed' | 'open', role: string, how?: string | null) {
+  return { ticket: ticketCode(t.ticketNo), title: ticketTitle(t.title, t.body), state, round: t.round, raised_at: t.createdAt.toISOString(), role, ...(how ? { with: how } : {}) };
+}
+
 /** Severity as raised today (Low / Medium / High); older tickets may carry Minor / Major / Blocker. */
 export const SEVERITIES = ['Low', 'Medium', 'High'] as const;
 export const severityTone = (s: string | null | undefined): 'bad' | 'warn' | 'neutral' => {

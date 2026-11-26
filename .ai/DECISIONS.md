@@ -242,3 +242,8 @@ Why: with the old name only, a journey the relay marked `ready_from_content` did
 - **Feedback tab** (`/w/journey-applet/feedback`, `mod.pages.feedback`): Assigned to me, Opened by me, and All tickets for admins. Shown to admins and to anyone who can make changes in the work type; not to view-only roles.
 - **Links**: `linkParts` turns `http(s)` links in a ticket body or chat message into chips (`RichText`); nothing else becomes a link.
 - Relay: the writer role `qa` goes out in the feedback event's `data.role` (free text there; the contract's role list is for assignment events only). The contract fixture is unchanged.
+
+## 2026-11-26 · Ticket closes and reopens go to the relay
+- Closing or reopening a ticket (by hand, or with a stage move that settles the stage) writes a history line: a `FEEDBACK` event with `field: 'ticket'`, `open → closed` or `closed → open`, note "TICK-00012 · title" (`ticketStateEvent`, `ticketStateMeta`). The journey page reads "closed ticket" / "reopened ticket".
+- `dashEventFor` sends it as `entity: feedback`, `action: update`, `from`/`to` the state, `data` = `{ticket, title, state, round, raised_at, role, with?}`. The "raised" event now carries `ticket` and `title` too. `raised_at` equals the `at` of the ticket's raised event, so a ticket raised before 26 Nov 2026 (no number sent) can still be matched.
+- No contract change: `feedback` with `update` was already allowed, and the relay's own validator accepts the three events (checked 26 Nov 2026). The relay only stores them: it does not yet work out which asks are open; a seat reads them with `dashboard_log`. Chat replies are still not sent.
