@@ -1,9 +1,9 @@
 'use client';
 
-import { Bell, Menu, X } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavGlyph, type NavIcon } from './icons';
 import { activeChild } from '@/app/(app)/nav-link';
 
@@ -11,7 +11,7 @@ export type NavChildLink = { href: string; label: string; icon: NavIcon };
 export type NavGroup = { title?: string; links: { href: string; label: string; icon: NavIcon; badge?: string; exact?: boolean; children?: NavChildLink[] }[] };
 
 /** Top bar + slide-over menu below 1024px (phones, tablets, small windows); the sidebar takes over above that. */
-export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups: NavGroup[]; name: string; unread: number; subtitle: string; signOut: React.ReactNode }) {
+export function MobileNav({ groups, subtitle, right }: { groups: NavGroup[]; subtitle: string; /** The bell and the person, as in the desktop top bar. */ right: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname();
   const openBtn = useRef<HTMLButtonElement>(null);
@@ -49,7 +49,7 @@ export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups:
           <div className="truncate text-sm font-semibold">{current?.label ?? 'Classroots Work'}</div>
           <div className="truncate text-2xs text-muted">{subtitle}</div>
         </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white">C</div>
+        <div className="flex shrink-0 items-center gap-1">{right}</div>
       </header>
 
       <div
@@ -72,7 +72,7 @@ export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups:
               <X size={18} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-2 text-sm">
+          <div className="safe-bottom flex-1 overflow-y-auto px-3 py-2 text-sm">
             {groups.map((g, i) => (
               <div key={`${g.title ?? 'group'}-${i}`}>
                 {g.title && <div className="px-2 pt-4 pb-1 text-2xs font-semibold tracking-wide text-muted uppercase">{g.title}</div>}
@@ -111,21 +111,6 @@ export function MobileNav({ groups, name, unread, subtitle, signOut }: { groups:
                 })}
               </div>
             ))}
-          </div>
-          <div className="safe-bottom border-t border-line p-3">
-            <Link href="/inbox" aria-current={path === '/inbox' ? 'page' : undefined} className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm ${path === '/inbox' ? 'bg-brand-soft font-medium text-brand' : ''}`}>
-              <Bell size={17} strokeWidth={1.8} className="text-muted" aria-hidden="true" />
-              <span className="flex-1">Inbox</span>
-              {unread > 0 && <span className="rounded-full bg-brand px-1.5 py-px text-2xs font-semibold text-white tabular-nums">{unread > 99 ? '99+' : unread}</span>}
-            </Link>
-            <Link href="/account" aria-current={path.startsWith('/account') ? 'page' : undefined} className={`mt-1 flex min-h-12 items-center gap-3 rounded-lg px-3 ${path.startsWith('/account') ? 'bg-brand-soft' : ''}`}>
-              <span className="grid size-8 place-items-center rounded-full bg-brand-soft text-sm font-semibold text-brand">{(name.trim()[0] ?? '?').toUpperCase()}</span>
-              <span className="min-w-0 leading-tight">
-                <span className="block truncate text-sm font-medium">{name}</span>
-                <span className="block text-2xs text-muted">My account</span>
-              </span>
-            </Link>
-            <Fragment key="sign-out">{signOut}</Fragment>
           </div>
         </nav>
       </div>

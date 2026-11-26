@@ -11,7 +11,8 @@ export function workTypeTabs(mod: Pick<WorkTypeDefinition, 'key' | 'groupSummary
   tabs.push({ href: `${base}/items`, label: mod.pages?.items ?? 'Items', icon: 'execution' });
   if (mod.versions) tabs.push({ href: `${base}/cases`, label: mod.pages?.cases ?? 'Cases', icon: 'cases' });
   if (mod.teams) tabs.push({ href: `${base}/teams`, label: mod.pages?.teams ?? 'Teams', icon: 'people' });
-  if (mod.relayBoard && opts.board !== false) tabs.push({ href: `${base}/board`, label: mod.pages?.board ?? 'Relay board', icon: 'route' });
   if (mod.pages?.feedback && opts.feedback) tabs.push({ href: `${base}/feedback`, label: mod.pages.feedback, icon: 'tickets' });
+  // The Relay board is always the last tab.
+  if (mod.relayBoard && opts.board !== false) tabs.push({ href: `${base}/board`, label: mod.pages?.board ?? 'Relay board', icon: 'route' });
   return tabs;
 }

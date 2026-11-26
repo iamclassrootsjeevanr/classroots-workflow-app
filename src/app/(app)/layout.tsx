@@ -1,10 +1,14 @@
 import { cookies } from 'next/headers';
-import { workTypesWith } from '@/lib/access-core';
+import { boardView, workTypesWith } from '@/lib/access-core';
 import { NAV_COOKIE, normalizePrefs, PREFS_COOKIE } from '@/lib/prefs';
 import { MobileNav, type NavGroup } from '@/components/mobile-nav';
 import { UndoToasts } from '@/components/undo-toasts';
 import { PrefsSync } from '@/components/prefs-sync';
-import { Sidebar, SignOutButton, WhenExpanded } from '@/components/sidebar';
+import { Sidebar, SidebarProvider, WhenExpanded } from '@/components/sidebar';
+import { TopBar } from '@/components/topbar';
+import { UserMenu } from '@/components/user-menu';
+import { canChangePassword } from '@/lib/invite';
+import { env, googleEnabled } from '@/server/env';
 import { getAccess } from '@/server/access';
 import { signOut } from '@/server/auth';
 import { requireUser } from '@/server/rbac';
@@ -12,7 +16,7 @@ import { InboxMenu } from '@/components/inbox';
 import { ExitViewAs, ViewAsPicker } from '@/components/view-as';
 import { viewAsPeople } from '@/server/view-as';
 import { unreadCount } from '@/server/services/notifications';
-import { AccountLink, NavGroupLink, NavLink } from './nav-link';
+import { NavGroupLink, NavLink } from './nav-link';
 import { getModule } from '@/modules/registry';
 import { workTypeTabs } from '@/lib/work-type-tabs';
 
@@ -48,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           label: t.workTypeName,
           icon: mod?.icon ?? ('items' as const),
           badge: t.state === 'PAUSED' ? 'paused' : !t.canEdit ? 'view' : undefined,
-          children: mod ? workTypeTabs(mod, { board: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.pages.has('reports')), feedback: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.canEdit) }) : [],
+          children: mod ? workTypeTabs(mod, { board: Boolean(boardView(user.isAdmin, access.byKey.get(t.workTypeKey))), feedback: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.canEdit) }) : [],
         };
       }),
     },
@@ -72,7 +76,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
 
   const brand = (
-    <div className="flex items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-2.5">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white shadow-sm">C</div>
       <WhenExpanded>
         <div className="min-w-0 leading-tight">
@@ -85,78 +89,82 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     </div>
   );
 
-  const footer = (
+  const name = user.name ?? user.email ?? 'Account';
+  // The bell and the person: the same on the desktop top bar and on the phone bar.
+  const userTools = (
     <>
       <InboxMenu unread={unread} />
-      <div className="my-1.5 border-t border-line" />
-      <AccountLink name={user.name ?? user.email ?? 'Account'} />
-      <form action={signOutAction}>
-        <SignOutButton />
-      </form>
+      <span className="mx-1 hidden h-6 w-px bg-line sm:block" aria-hidden="true" />
+      <UserMenu name={name} subtitle={subtitle} canChangePassword={canChangePassword({ email: user.email, googleEnabled: googleEnabled(), officeDomains: env().OFFICE_DOMAINS })} signOut={signOutAction} />
     </>
   );
 
   return (
-    <div className="flex min-h-screen">
-      <UndoToasts />
-      <PrefsSync prefs={normalizePrefs(user.prefs)} cookie={jar.get(PREFS_COOKIE)?.value} />
-      <Sidebar initialCollapsed={collapsed} brand={brand} footer={footer}>
-        {groups.map((g, i) => (
-          <div key={i}>
-            {g.title && (
-              <WhenExpanded>
-                <div className="px-2.5 pt-4 pb-1 text-2xs font-semibold tracking-wide text-muted uppercase">{g.title}</div>
-              </WhenExpanded>
-            )}
-            {!g.title && i > 0 && <div className="my-2 border-t border-line" />}
-            {g.links.map(l =>
-              'children' in l && l.children?.length ? (
-                <NavGroupLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={l.badge} children={l.children} />
-              ) : (
-                <NavLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={'badge' in l ? l.badge : undefined} exact={'exact' in l ? l.exact : undefined} />
-              ),
-            )}
-          </div>
-        ))}
-        {!groups.length && (
-          <WhenExpanded>
-            <p className="px-2 pt-2 text-xs text-muted">You don’t have access to any work yet. Ask an admin.</p>
-          </WhenExpanded>
-        )}
-      </Sidebar>
+    <SidebarProvider initialCollapsed={collapsed}>
+      <div className="flex min-h-screen">
+        <UndoToasts />
+        <PrefsSync prefs={normalizePrefs(user.prefs)} cookie={jar.get(PREFS_COOKIE)?.value} />
+        <Sidebar brand={brand}>
+          {groups.map((g, i) => (
+            <div key={i}>
+              {g.title && (
+                <WhenExpanded>
+                  <div className="px-2.5 pt-4 pb-1 text-2xs font-semibold tracking-wide text-muted uppercase">{g.title}</div>
+                </WhenExpanded>
+              )}
+              {i > 0 && <div className={`my-2 border-t border-line ${g.title ? 'hidden group-data-collapsed/sb:block' : ''}`} />}
+              <div className="space-y-0.5">
+                {g.links.map(l =>
+                  'children' in l && l.children?.length ? (
+                    <NavGroupLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={l.badge} children={l.children} />
+                  ) : (
+                    <NavLink key={l.href} href={l.href} label={l.label} icon={l.icon} badge={'badge' in l ? l.badge : undefined} exact={'exact' in l ? l.exact : undefined} />
+                  ),
+                )}
+              </div>
+            </div>
+          ))}
+          {!groups.length && (
+            <WhenExpanded>
+              <p className="px-2 pt-2 text-xs text-muted">You don’t have access to any work yet. Ask an admin.</p>
+            </WhenExpanded>
+          )}
+        </Sidebar>
 
-      <div className="min-w-0 flex-1">
-        {viewAs && (
-          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-1.5 text-xs sm:px-6 ${user.viewAsBy ? 'border-warn/30 bg-warn-soft text-ink' : 'border-line bg-surface-2/60 text-muted'}`}>
-            {user.viewAsBy ? (
-              <>
-                <span>
-                  Viewing as <b>{user.name ?? user.email}</b> ({subtitle}). You are signed in as {user.viewAsBy}.
+        <div className="min-w-0 flex-1">
+          {viewAs && user.viewAsBy && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-warn/30 bg-warn-soft px-4 py-1.5 text-xs text-ink sm:px-6">
+              <span>
+                Viewing as <b>{user.name ?? user.email}</b> ({subtitle}). You are signed in as {user.viewAsBy}.
+              </span>
+              <ViewAsPicker people={viewAs} currentId={user.id} />
+              <ExitViewAs />
+            </div>
+          )}
+          {/* Admin testing sits in the top bar on a desktop; on a phone it keeps its own line. */}
+          {viewAs && !user.viewAsBy && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-surface-2/60 px-4 py-1.5 text-xs text-muted sm:px-6 lg:hidden">
+              <span>Admin testing:</span>
+              <ViewAsPicker people={viewAs} />
+            </div>
+          )}
+          <TopBar
+            groups={groups}
+            left={
+              viewAs && !user.viewAsBy ? (
+                <span className="flex items-center gap-2 text-xs text-muted">
+                  Admin testing
+                  <ViewAsPicker people={viewAs} />
                 </span>
-                <ViewAsPicker people={viewAs} currentId={user.id} />
-                <ExitViewAs />
-              </>
-            ) : (
-              <>
-                <span>Admin testing:</span>
-                <ViewAsPicker people={viewAs} />
-              </>
-            )}
-          </div>
-        )}
-        <MobileNav
-          groups={groups}
-          name={user.name ?? user.email ?? ''}
-          unread={unread}
-          subtitle={subtitle}
-          signOut={
-            <form key="sign-out" action={signOutAction}>
-              <button className="mt-2 flex min-h-10 w-full items-center rounded-lg px-3 text-left text-xs text-muted hover:bg-surface-2 hover:text-ink">Sign out</button>
-            </form>
-          }
-        />
-        <main className="safe-bottom mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7 2xl:px-12 2xl:py-8">{children}</main>
+              ) : undefined
+            }
+          >
+            {userTools}
+          </TopBar>
+          <MobileNav groups={groups} subtitle={subtitle} right={userTools} />
+          <main className="safe-bottom mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7 2xl:px-12 2xl:py-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

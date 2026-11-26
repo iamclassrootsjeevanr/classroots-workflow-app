@@ -198,3 +198,14 @@ export function canSeeItem(access: Access, workTypeKey: string, item: ItemOwners
   if (!a) return false;
   return a.dataScope === 'ALL' || isOwnItem(item, access.userId);
 }
+
+/**
+ * The Relay board. An admin, a steward, a reviewer and QA (the assign, review and qa capabilities) see every journey on it, whatever
+ * the role's own data scope. Anyone else with the reports page sees it through their own scope, as before. Null = no board.
+ */
+export function boardView(isAdmin: boolean, a: Pick<WorkTypeAccess, 'capabilities' | 'pages'> | undefined): 'all' | 'scoped' | null {
+  if (isAdmin) return 'all';
+  if (!a) return null;
+  if (a.capabilities.has('assign') || a.capabilities.has('review') || a.capabilities.has('qa')) return 'all';
+  return a.pages.has('reports') ? 'scoped' : null;
+}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildAccess, canSeeItem, capabilitiesIn, type RoleLite } from '@/lib/access-core';
+import { boardView, buildAccess, canSeeItem, capabilitiesIn, type RoleLite } from '@/lib/access-core';
+import { canChangePassword } from '@/lib/invite';
+import { workTypeTabs } from '@/lib/work-type-tabs';
 import { applyStageConfig, landingStage, stageAfterOwnCheck } from '@/lib/stages';
 import { canChat, writerRole, writerRoleLabel } from '@/lib/feedback';
 import { actorMatches, allowedTransitions, canDeleteItem, canEditField, canGiveFeedback, hasCap, type ActorContext } from '@/lib/workflow';
@@ -287,6 +289,38 @@ describe('QA (26 Nov 2026)', () => {
     expect(settling).toEqual(['correction_verification → closed', 'design_check → video_replacement', 'last_look → design_check', 'review_in_progress → closed', 'user_testing_qa → done']);
     // The fixer's hand-backs are not: the ticket's writer still has to look.
     for (const [from, to] of [['changes_asked', 'correction_verification'], ['design_standardization', 'last_look']]) expect(mod.transitions.find(t => t.from === from && t.to === to)!.settles, from).toBeUndefined();
+  });
+});
+
+describe('the Relay board (26 Nov 2026)', () => {
+  const accessOf = (keys: string[]) => buildAccess('me', false, [WT], new Map([['wt', { roles: keys.map(roleLite) }]])).byKey.get('journey-applet');
+
+  it('a steward, a reviewer, QA and an admin see every journey on it', () => {
+    for (const key of ['coordinator', 'sme-reviewer', 'qa']) expect(boardView(false, accessOf([key])), key).toBe('all');
+    expect(boardView(true, undefined)).toBe('all');
+  });
+  it('a creator and a program manager see it as before, through their own role; a developer does not', () => {
+    expect(boardView(false, accessOf(['sme-creator']))).toBe('scoped');
+    expect(boardView(false, accessOf(['program-manager']))).toBe('scoped');
+    expect(boardView(false, accessOf(['developer']))).toBe(template('developer').pages.includes('reports') ? 'scoped' : null);
+    expect(boardView(false, undefined)).toBeNull();
+  });
+  it('is the last tab, after Feedback', () => {
+    const tabs = workTypeTabs(base, { board: true, feedback: true }).map(t => t.label);
+    expect(tabs.slice(-2)).toEqual(['Feedback', 'Relay board']);
+    expect(workTypeTabs(base, { board: false, feedback: true }).map(t => t.label).at(-1)).toBe('Feedback');
+  });
+});
+
+describe('changing a password in the app', () => {
+  const office = ['classrootsedu.com'];
+  it('is for a person who signs in with one: an email outside the office domains', () => {
+    expect(canChangePassword({ email: 'someone@gmail.com', googleEnabled: true, officeDomains: office })).toBe(true);
+    expect(canChangePassword({ email: 'arjun@classrootsedu.com', googleEnabled: true, officeDomains: office })).toBe(false);
+  });
+  it('is for everyone while Google sign-in is not set up', () => {
+    expect(canChangePassword({ email: 'arjun@classrootsedu.com', googleEnabled: false, officeDomains: office })).toBe(true);
+    expect(canChangePassword({ email: null, googleEnabled: true, officeDomains: office })).toBe(true);
   });
 });
 

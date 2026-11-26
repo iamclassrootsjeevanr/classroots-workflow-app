@@ -432,7 +432,7 @@ Click-by-click: `docs/NEXT-STEPS.md` § 7.
 
 ## Appearance: theme, text size, density, sidebar
 
-Every signed-in person has their own appearance settings under **My account → Appearance**:
+Every signed-in person has their own appearance settings under **My account → Settings**:
 
 | Setting | Options | Notes |
 | --- | --- | --- |
@@ -448,7 +448,7 @@ Changes apply instantly (no reload) and are saved on the user (`User.prefs`), so
 - Icons come from `lucide-react`; nav icons are looked up by key in `src/components/icons.tsx`.
 - Shared controls (`src/components/form.tsx`): `Checkbox`, `Radio`, `Switch` (one row each: control · label · help), `Segmented`, `OptionList`. Use them for every tick in the app.
 
-**Sidebar.** On screens 1024px and wider the sidebar collapses to an icon rail with the button at its top or the `[` key; the state is kept in the `cr_nav` cookie so the next page loads with the same width. Below 1024px the menu is a slide-over drawer (Escape closes it).
+**Top bar and sidebar.** On screens 1024px and wider a top bar holds the sidebar button, the section name, admin testing (View as), the Inbox bell and the person's menu (Profile, Settings, Change password, Sign out; `UserMenu`, `TopBar`). Change password is offered only to a person who signs in with a password (`canChangePassword`: not an office email when Google is set up). The sidebar collapses to an icon rail with that button or the `[` key, and a rail icon opens its name and pages beside it (`RailFlyout`); the state is kept in the `cr_nav` cookie so the next page loads with the same width. Below 1024px the menu is a slide-over drawer (Escape closes it).
 
 ---
 
@@ -512,7 +512,7 @@ A run is still a `WorkItem`, so status, assignment, comments, bug, developer rem
 
 The item lists, the per-group summary (for example By APK version) and the report tables share one grid (`<Sheet>` in `src/components/sheet.tsx` with the `.sheet` styles in `globals.css`). It has no gridlines; it behaves like a spreadsheet instead. Columns keep their natural width and the grid scrolls sideways with always-visible scrollbars and a fade at the right edge. The header row, the first column and the Actions column stay pinned. Click a cell, then use the arrow keys, Home or End to move; Ctrl or Cmd plus C copies the cell. To use it on a new table: wrap it in `<Sheet>`, give the table `className="sheet"`, and put `className="pin"` on the first column's cells (and `pin-end` on an actions column).
 
-**Inbox and undo.** After a delete, a toast (bottom left) offers Undo for 5 seconds, then the message lives in your **Inbox** (sidebar, above your name) where Undo stays for 30 minutes: click the message to show its Undo button. After Undo, or when the 30 minutes are over, the message moves to Read. The Inbox popover shows the latest unread messages and links to the full `/inbox` page (All / Unread / Read, search, select, mark read, delete). The same inbox also tells you when you are assigned something or get feedback. To notify someone from new code call `notify(db, userId, { kind, title, body, href, data })` from `src/server/services/notifications.ts`; new kinds need no migration. After 30 minutes a row can no longer be restored from the app (`UNDO_DELETE_MINUTES` in `src/lib/workflow.ts`).
+**Inbox and undo.** After a delete, a toast (bottom left) offers Undo for 5 seconds, then the message lives in your **Inbox** (the bell in the top bar) where Undo stays for 30 minutes: click the message to show its Undo button. After Undo, or when the 30 minutes are over, the message moves to Read. The Inbox popover shows the latest unread messages and links to the full `/inbox` page (All / Unread / Read, search, select, mark read, delete). The same inbox also tells you when you are assigned something or get feedback. To notify someone from new code call `notify(db, userId, { kind, title, body, href, data })` from `src/server/services/notifications.ts`; new kinds need no migration. After 30 minutes a row can no longer be restored from the app (`UNDO_DELETE_MINUTES` in `src/lib/workflow.ts`).
 
 **Speed.** Item tables are paged (50 per page on the Items page; the first 50 per work type on My dashboard, with an Open all link). The Edit dialog loads a row's fields only when opened, and status and assignee selects update instantly while the save finishes. Dev mode (`npm run dev`) is slower than the real thing; check speed with `npm run build && npm start`.
 
