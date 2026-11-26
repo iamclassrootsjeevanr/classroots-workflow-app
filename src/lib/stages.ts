@@ -64,7 +64,8 @@ export function landingStage(statuses: StatusDef[], to: string, data: Record<str
   let at = to;
   for (let i = 0; i < statuses.length; i++) {
     const s = statuses.find(x => x.key === at);
-    if (!s?.skipWhen || String(data[s.skipWhen.field] ?? '') !== s.skipWhen.equals) return at;
+    const rules = s?.skipWhen ? (Array.isArray(s.skipWhen) ? s.skipWhen : [s.skipWhen]) : [];
+    if (!rules.some(r => String(data[r.field] ?? '') === r.equals)) return at;
     const next = nextActiveAfter(statuses, at);
     if (!next) return at;
     at = next;
@@ -125,7 +126,7 @@ export function applyStageConfig(base: WorkTypeDefinition, rows: StageRow[]): Wo
     if (!s.next || (s.line ?? 'main') !== 'main') continue;
     const to = nextActiveAfter(statuses, s.key);
     if (!to || explicit.some(t => t.from === s.key && t.to === to)) continue;
-    generated.push({ from: s.key, to, by: [...s.next.by], label: s.next.label, ...(s.next.stamp ? { stamp: s.next.stamp } : {}), ...(s.next.set ? { set: s.next.set } : {}) });
+    generated.push({ from: s.key, to, by: [...s.next.by], label: s.next.label, ...(s.next.stamp ? { stamp: s.next.stamp } : {}), ...(s.next.set ? { set: s.next.set } : {}), ...(s.next.settles ? { settles: true } : {}) });
   }
   const paused = new Set(statuses.filter(s => s.state === 'paused').map(s => s.key));
   const transitions = [...explicit, ...generated].filter(t => !paused.has(t.from));

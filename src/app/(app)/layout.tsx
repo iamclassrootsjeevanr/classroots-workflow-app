@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           label: t.workTypeName,
           icon: mod?.icon ?? ('items' as const),
           badge: t.state === 'PAUSED' ? 'paused' : !t.canEdit ? 'view' : undefined,
-          children: mod ? workTypeTabs(mod, { board: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.pages.has('reports')) }) : [],
+          children: mod ? workTypeTabs(mod, { board: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.pages.has('reports')), feedback: user.isAdmin || Boolean(access.byKey.get(t.workTypeKey)?.canEdit) }) : [],
         };
       }),
     },

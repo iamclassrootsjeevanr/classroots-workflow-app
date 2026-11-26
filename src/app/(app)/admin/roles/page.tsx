@@ -72,6 +72,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
                       capAssign: r.capAssign,
                       capCreate: r.capCreate,
                       capManageFields: r.capManageFields,
+                      capQa: r.capQa,
                       dataScope: r.dataScope,
                       canEdit: r.canEdit,
                       pageDashboard: r.pageDashboard,

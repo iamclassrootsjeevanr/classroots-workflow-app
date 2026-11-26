@@ -1,9 +1,10 @@
 'use client';
 
-import { CheckCircle2, MessageSquare, Plus, Send } from 'lucide-react';
+import { CheckCircle2, Link2, MessageSquare, Plus, Send } from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { feedbackAction, replyFeedbackAction, resolveFeedbackAction, type ActionResult } from '@/app/actions';
 import { SEVERITIES, severityTone } from '@/lib/feedback';
+import { linkParts } from '@/lib/links';
 import { ConfirmDialog } from './confirm';
 import { ActionMessage } from './controls';
 import { Segmented } from './form';
@@ -28,6 +29,39 @@ export type TicketView = {
   messages: TicketMessage[];
 };
 
+/** Who a new ticket can be addressed to, with the part they play ("Asha · SME reviewer"). The first one is the usual other side. */
+export type TicketReader = { id: string; label: string };
+/** A send-back this person may make with a ticket: the stage it goes to and the button's words. */
+export type SendBack = { to: string; label: string };
+
+/**
+ * Ticket and chat text: as typed, with each http(s) link as a chip that opens in a new tab. React escapes the text, and nothing but
+ * http and https becomes a link.
+ */
+export function RichText({ text, className = '' }: { text: string; className?: string }) {
+  return (
+    <p className={`break-words whitespace-pre-wrap ${className}`}>
+      {linkParts(text).map((p, i) =>
+        p.type === 'text' ? (
+          <span key={i}>{p.text}</span>
+        ) : (
+          <a
+            key={i}
+            href={p.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={p.url}
+            className="mx-0.5 inline-flex max-w-full items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 align-baseline text-xs font-medium text-brand no-underline transition-colors hover:border-brand/50 hover:bg-brand-soft focus-visible:ring-2 focus-visible:ring-brand/30 focus-visible:outline-none"
+          >
+            <Link2 size={12} className="shrink-0" aria-hidden="true" />
+            <span className="truncate">{p.label}</span>
+          </a>
+        ),
+      )}
+    </p>
+  );
+}
+
 function useRun() {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -49,14 +83,17 @@ export function FeedbackTickets({
   tickets,
   currentUserId,
   canRaise,
-  correctionsLabel,
+  readers = [],
+  sendBacks = [],
 }: {
   itemId: string;
   tickets: TicketView[];
   currentUserId: string;
   canRaise: boolean;
-  /** Set when this person can also send the journey back for corrections with a ticket. */
-  correctionsLabel?: string;
+  /** Who a new ticket can go to (the first is picked). */
+  readers?: TicketReader[];
+  /** The send-backs this person can make with a ticket (Journey QA has two: to the creator and to the developer). */
+  sendBacks?: SendBack[];
 }) {
   const openCount = tickets.filter(t => t.open).length;
   const [filter, setFilter] = useState<'open' | 'closed' | 'all'>(openCount || !tickets.length ? 'open' : 'all');
@@ -84,7 +121,7 @@ export function FeedbackTickets({
         )}
       </div>
 
-      {raising && <NewTicket itemId={itemId} correctionsLabel={correctionsLabel} onDone={() => (setRaising(false), setFilter('open'))} onCancel={() => setRaising(false)} />}
+      {raising && <NewTicket itemId={itemId} readers={readers} sendBacks={sendBacks} onDone={() => (setRaising(false), setFilter('open'))} onCancel={() => setRaising(false)} />}
 
       {shown.length ? (
         <ul className="space-y-3">
@@ -103,13 +140,14 @@ export function FeedbackTickets({
   );
 }
 
-function NewTicket({ itemId, correctionsLabel, onDone, onCancel }: { itemId: string; correctionsLabel?: string; onDone: () => void; onCancel: () => void }) {
+function NewTicket({ itemId, readers, sendBacks, onDone, onCancel }: { itemId: string; readers: TicketReader[]; sendBacks: SendBack[]; onDone: () => void; onCancel: () => void }) {
   const { pending, result, exec } = useRun();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [severity, setSeverity] = useState<(typeof SEVERITIES)[number]>('Medium');
   const [category, setCategory] = useState('');
-  const submit = (requestCorrections: boolean) => exec(() => feedbackAction(itemId, { title, body, severity, category, requestCorrections }), onDone);
+  const [toId, setToId] = useState(readers[0]?.id ?? '');
+  const submit = (sendBackTo?: string) => exec(() => feedbackAction(itemId, { title, body, severity, category, toId: toId || undefined, sendBackTo }), onDone);
   return (
     <section className="card space-y-3" aria-label="New ticket">
       <div>
@@ -132,16 +170,29 @@ function NewTicket({ itemId, correctionsLabel, onDone, onCancel }: { itemId: str
             <option key={c}>{c}</option>
           ))}
         </select>
+        {readers.length > 0 && (
+          <label className="flex items-center gap-2 text-xs font-medium text-muted">
+            To
+            <select className="input w-auto" value={toId} onChange={e => setToId(e.target.value)} aria-label="To">
+              {readers.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
+      {sendBacks.length > 0 && <p className="text-xs text-muted">A send-back ticket goes to the person who gets the work back.</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary" disabled={pending || !body.trim()} onClick={() => submit(false)}>
+        <button type="button" className="btn-primary" disabled={pending || !body.trim()} onClick={() => submit()}>
           {pending ? 'Raising…' : 'Raise ticket'}
         </button>
-        {correctionsLabel && (
-          <button type="button" className="btn-danger" disabled={pending || !body.trim()} onClick={() => submit(true)}>
-            {correctionsLabel}
+        {sendBacks.map(s => (
+          <button key={s.to} type="button" className="btn-danger" disabled={pending || !body.trim()} onClick={() => submit(s.to)}>
+            {s.label}
           </button>
-        )}
+        ))}
         <button type="button" className="btn-ghost" disabled={pending} onClick={onCancel}>
           Cancel
         </button>
@@ -181,7 +232,7 @@ function Ticket({ t, currentUserId, defaultOpen }: { t: TicketView; currentUserI
             {t.category && <> · {t.category}</>}
             {t.closedAt && <> · Closed {t.closedAt}</>}
           </p>
-          <p className="text-sm whitespace-pre-wrap">{t.body}</p>
+          <RichText text={t.body} className="text-sm" />
 
           <Thread t={t} currentUserId={currentUserId} />
 
@@ -238,7 +289,7 @@ function Thread({ t, currentUserId }: { t: TicketView; currentUserId: string }) 
                   <p className="mb-0.5 text-2xs text-muted">
                     <b className="font-semibold text-ink">{me ? 'You' : m.authorName}</b> · {m.at}
                   </p>
-                  <p className="whitespace-pre-wrap">{m.body}</p>
+                  <RichText text={m.body} />
                 </div>
               </li>
             );

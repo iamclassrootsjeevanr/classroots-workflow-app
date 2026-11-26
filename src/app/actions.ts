@@ -10,7 +10,7 @@ import { db } from '@/server/db';
 import { getAccess, itemActorContext } from '@/server/access';
 import { requireAdmin, requireUser, ForbiddenError } from '@/server/rbac';
 import { startViewAs, stopViewAs } from '@/server/view-as';
-import { addComment, addFeedback, assign, changeStatus, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
+import { addComment, addFeedback, assign, changeStatus, openTicketsOf, createItem, deleteItem, replyFeedback, resolveFeedback, restoreItem, setOwner, setVersionClosed, setDeveloper, updateFields, type ChangeActor, type FieldValue, type SyncDirection } from '@/server/services/work-items';
 import { createApkVersion, deleteApkVersion, restoreApkVersion, updateApkVersion, updateTestCase, type TestCasePatch, type VersionMeta } from '@/server/services/apk-versions';
 import { enableModule, resetSystemRole, setWorkTypeState, updateSyncConfig } from '@/server/services/work-types';
 import { addChapter, addTeamMember, deleteTeam, fillMissingReviewers, moveChapter, removeChapter, removeTeamMember, saveTeam, setTeamDeveloper, setTeamReviewer } from '@/server/services/teams';
@@ -57,8 +57,14 @@ async function itemActor(itemId: string): Promise<ChangeActor> {
 
 // ─── Work items ─────────────────────────────────────────────────
 
-export async function changeStatusAction(itemId: string, to: string, version?: number, note?: string) {
-  return run(async () => changeStatus(await itemActor(itemId), itemId, to, { expectedVersion: version, note }));
+export async function changeStatusAction(itemId: string, to: string, version?: number, note?: string, opts: { closeTickets?: boolean } = {}) {
+  return run(async () => changeStatus(await itemActor(itemId), itemId, to, { expectedVersion: version, note, closeTickets: opts.closeTickets === true }));
+}
+
+/** The open tickets of an item: a move that settles its stage shows them before it goes ahead. Only for people who can see the item. */
+export async function openTicketsAction(itemId: string): Promise<{ code: string; title: string }[]> {
+  await itemActor(itemId);
+  return openTicketsOf(itemId);
 }
 
 export async function setVersionClosedAction(itemId: string, closed: boolean) {
@@ -145,10 +151,10 @@ export async function restoreItemAction(itemId: string) {
   });
 }
 
-export async function feedbackAction(itemId: string, input: { title?: string; body: string; category?: string; severity?: string; requestCorrections?: boolean }) {
+export async function feedbackAction(itemId: string, input: { title?: string; body: string; category?: string; severity?: string; toId?: string; sendBackTo?: string }) {
   return run(async () => {
     await addFeedback(await itemActor(itemId), itemId, input);
-    return input.requestCorrections ? 'Ticket raised and changes asked' : 'Ticket raised';
+    return input.sendBackTo ? 'Ticket raised and sent back' : 'Ticket raised';
   });
 }
 
@@ -517,6 +523,7 @@ const roleInput = z.object({
   capAssign: z.boolean(),
   capCreate: z.boolean(),
   capManageFields: z.boolean(),
+  capQa: z.boolean().default(false),
   dataScope: z.enum(['OWN', 'ALL']),
   canEdit: z.boolean(),
   pageDashboard: z.boolean(),

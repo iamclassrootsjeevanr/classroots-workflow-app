@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildAccess, canSeeItem, capabilitiesIn, type RoleLite } from '@/lib/access-core';
-import { applyStageConfig, stageAfterOwnCheck } from '@/lib/stages';
-import { writerRole, writerRoleLabel } from '@/lib/feedback';
+import { applyStageConfig, landingStage, stageAfterOwnCheck } from '@/lib/stages';
+import { canChat, writerRole, writerRoleLabel } from '@/lib/feedback';
 import { actorMatches, allowedTransitions, canDeleteItem, canEditField, canGiveFeedback, hasCap, type ActorContext } from '@/lib/workflow';
 import { journeyApplet as base } from '@/modules/journey-applet/definition';
 import { rightsDrift, rolesForModule, templateColumns } from '@/modules/roles';
@@ -118,7 +118,7 @@ describe('Coordinator', () => {
     expect(moves(inChapter, 'video_replacement')).toEqual(['uat_to_prod']);
     expect(moves(inChapter, 'uat_to_prod')).toEqual(['published_prod']);
     expect(moves(inChapter, 'published_prod')).toEqual(['user_testing_qa']);
-    expect(moves(inChapter, 'user_testing_qa').sort()).toEqual(['changes_asked', 'done']);
+    expect(moves(inChapter, 'user_testing_qa').sort()).toEqual(['changes_asked', 'design_standardization', 'done']); // 26 Nov 2026: QA sends to the creator or the developer
     expect(moves(inChapter, 'ready_for_review')).toEqual([]);
   });
   it('outside their chapter: looks only', () => {
@@ -247,3 +247,46 @@ describe('the last look by three roles (24 Nov 2026)', () => {
     expect([writerRoleLabel('reviewer', base), writerRoleLabel('steward', base), writerRoleLabel('creator', base), writerRoleLabel('developer', base)]).toEqual(['SME reviewer', 'Steward', 'SME creator', 'Developer']);
   });
 });
+
+describe('QA (26 Nov 2026)', () => {
+  const qa = ctxFor(['qa']);
+  const at = (from: string) => allowedTransitions(mod, from, qa);
+
+  it('acts at User testing and QA only: marks done, or sends back with a ticket to the creator or the developer', () => {
+    expect(hasCap(qa, 'qa')).toBe(true);
+    expect(moves(qa, 'user_testing_qa').sort()).toEqual(['changes_asked', 'design_standardization', 'done']);
+    expect(at('user_testing_qa').filter(t => t.requires === 'feedback').map(t => [t.label, t.to])).toEqual([
+      ['Send to creator', 'changes_asked'],
+      ['Send to developer', 'design_standardization'],
+    ]);
+    for (const s of mod.statuses.map(x => x.key).filter(k => k !== 'user_testing_qa')) expect(moves(qa, s), s).toEqual([]);
+    expect(editable(qa)).toEqual([]);
+  });
+  it('writes a ticket as QA and can chat', () => {
+    expect(writerRole(qa)).toBe('qa');
+    expect(writerRoleLabel('qa', base)).toBe('QA');
+    expect(canChat(qa)).toBe(true);
+    expect(canChat(ctxFor(['program-manager']))).toBe(false);
+  });
+  it('a creator fix after QA goes to prod again: the review handoff and the design steps are not repeated', () => {
+    const toCreator = at('user_testing_qa').find(t => t.to === 'changes_asked')!;
+    expect(toCreator.set).toEqual({ qaFix: 'Yes' });
+    // Close review from correction verification aims at Closed; with the mark it lands at the migration.
+    expect(landingStage(mod.statuses, 'closed', { qaFix: 'Yes', needsVideoReplacement: 'Yes' })).toBe('uat_to_prod');
+    expect(landingStage(mod.statuses, 'closed', {})).toBe('closed');
+    expect(mod.statuses.find(s => s.key === 'uat_to_prod')!.clears).toEqual(['qaFix']);
+  });
+  it('a developer fix after QA walks the design steps, then prod', () => {
+    const toDeveloper = at('user_testing_qa').find(t => t.to === 'design_standardization')!;
+    expect(toDeveloper.set).toBeUndefined();
+    expect(landingStage(mod.statuses, 'design_standardization', {})).toBe('design_standardization');
+    expect(landingStage(mod.statuses, 'video_replacement', { needsVideoReplacement: 'No' })).toBe('uat_to_prod');
+  });
+  it('the moves that settle a stage are marked: open tickets are closed with them', () => {
+    const settling = mod.transitions.filter(t => t.settles).map(t => `${t.from} → ${t.to}`).sort();
+    expect(settling).toEqual(['correction_verification → closed', 'design_check → video_replacement', 'last_look → design_check', 'review_in_progress → closed', 'user_testing_qa → done']);
+    // The fixer's hand-backs are not: the ticket's writer still has to look.
+    for (const [from, to] of [['changes_asked', 'correction_verification'], ['design_standardization', 'last_look']]) expect(mod.transitions.find(t => t.from === from && t.to === to)!.settles, from).toBeUndefined();
+  });
+});
+

@@ -16,6 +16,7 @@ const CAP_FIELD: Record<Capability, keyof RoleInput> = {
   assign: 'capAssign',
   create: 'capCreate',
   manageFields: 'capManageFields',
+  qa: 'capQa',
 };
 
 const PAGE_FIELD: Record<PageKey, keyof RoleInput> = {
@@ -34,6 +35,7 @@ const blank: Omit<RoleInput, 'workTypeId'> = {
   capAssign: false,
   capCreate: false,
   capManageFields: false,
+  capQa: false,
   dataScope: 'OWN',
   canEdit: true,
   pageDashboard: true,
