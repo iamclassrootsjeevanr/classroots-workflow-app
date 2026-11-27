@@ -530,6 +530,7 @@ const roleInput = z.object({
   pageItems: z.boolean(),
   pageReports: z.boolean(),
   pageExport: z.boolean(),
+  pageBoard: z.boolean().default(false),
 });
 
 export type RoleInput = z.infer<typeof roleInput>;

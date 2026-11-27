@@ -15,6 +15,8 @@ export type FlowLite = {
   statuses: StatusLite[];
   transitions: { from: string; to: string; by: Actor[]; label?: string }[];
   fields: { key: string; label: string; editableBy: Actor[] }[];
+  /** The work type has a Relay board tab, so a role can be given it. */
+  relayBoard?: boolean;
 };
 
 /** Serialisable slice of a module definition (no functions or schemas), safe to pass to client components. */
@@ -27,6 +29,7 @@ export function flowLite(mod: WorkTypeDefinition): FlowLite {
     statuses: mod.statuses.map(s => ({ key: s.key, label: s.label, color: s.color })),
     transitions: mod.transitions.map(t => ({ from: t.from, to: t.to, by: [...t.by], label: t.label })),
     fields: mod.fields.map(f => ({ key: f.key, label: f.label, editableBy: [...f.editableBy] })),
+    relayBoard: Boolean(mod.relayBoard),
   };
 }
 

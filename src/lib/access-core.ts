@@ -15,7 +15,7 @@ export const CAPABILITY_LABELS: Record<Capability, { label: string; help: string
   qa: { label: 'Test finished items', help: 'Check an item at its QA stage: mark it done, or send it back with a ticket.' },
 };
 
-export const PAGES = ['dashboard', 'items', 'reports', 'export'] as const;
+export const PAGES = ['dashboard', 'items', 'reports', 'export', 'board'] as const;
 export type PageKey = (typeof PAGES)[number];
 
 export const PAGE_LABELS: Record<PageKey, string> = {
@@ -23,6 +23,7 @@ export const PAGE_LABELS: Record<PageKey, string> = {
   items: 'Items list & pages',
   reports: 'Reports',
   export: 'Export (CSV / Excel)',
+  board: 'Relay board',
 };
 
 export type DataScope = 'OWN' | 'ALL';
@@ -44,6 +45,8 @@ export type RoleLite = {
   pageItems: boolean;
   pageReports: boolean;
   pageExport: boolean;
+  /** The Relay board tab. Optional so role rows read before the column existed still fit. */
+  pageBoard?: boolean;
 };
 
 /** A person's membership of one work type: the roles they hold there, and the groups their steward rights are limited to. */
@@ -91,12 +94,13 @@ export function roleCapabilities(r: Pick<RoleLite, 'capWork' | 'capReview' | 'ca
   return out;
 }
 
-export function rolePages(r: Pick<RoleLite, 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport'>): PageKey[] {
+export function rolePages(r: Pick<RoleLite, 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport' | 'pageBoard'>): PageKey[] {
   const out: PageKey[] = [];
   if (r.pageDashboard) out.push('dashboard');
   if (r.pageItems) out.push('items');
   if (r.pageReports) out.push('reports');
   if (r.pageExport && r.pageReports) out.push('export');
+  if (r.pageBoard) out.push('board');
   return out;
 }
 
@@ -200,12 +204,12 @@ export function canSeeItem(access: Access, workTypeKey: string, item: ItemOwners
 }
 
 /**
- * The Relay board. An admin, a steward, a reviewer and QA (the assign, review and qa capabilities) see every journey on it, whatever
- * the role's own data scope. Anyone else with the reports page sees it through their own scope, as before. Null = no board.
+ * The Relay board. It shows only to an admin and to a person with a role that has the "Relay board" page ticked (Admin → Roles).
+ * Of those, an admin, a steward, a reviewer and QA (the assign, review and qa capabilities) see every journey on it, whatever the
+ * role's own data scope; anyone else sees it through their own scope. Null = no board.
  */
 export function boardView(isAdmin: boolean, a: Pick<WorkTypeAccess, 'capabilities' | 'pages'> | undefined): 'all' | 'scoped' | null {
   if (isAdmin) return 'all';
-  if (!a) return null;
-  if (a.capabilities.has('assign') || a.capabilities.has('review') || a.capabilities.has('qa')) return 'all';
-  return a.pages.has('reports') ? 'scoped' : null;
+  if (!a || !a.pages.has('board')) return null;
+  return a.capabilities.has('assign') || a.capabilities.has('review') || a.capabilities.has('qa') ? 'all' : 'scoped';
 }

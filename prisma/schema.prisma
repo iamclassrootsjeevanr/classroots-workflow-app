@@ -216,6 +216,8 @@ model AccessRole {
   pageItems       Boolean              @default(true)
   pageReports     Boolean              @default(false)
   pageExport      Boolean              @default(false)
+  /// The Relay board tab (work types that have one).
+  pageBoard       Boolean              @default(false)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   members         WorkTypeMemberRole[]

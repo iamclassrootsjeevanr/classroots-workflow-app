@@ -36,6 +36,7 @@ function toRoleLite(r: RoleOption): RoleLite {
     pageItems: r.pages.includes('items'),
     pageReports: r.pages.includes('reports'),
     pageExport: r.pages.includes('export'),
+    pageBoard: r.pages.includes('board'),
   };
 }
 

@@ -55,10 +55,11 @@ export function templateColumns(t: RoleTemplate) {
     pageItems: t.pages.includes('items'),
     pageReports: t.pages.includes('reports'),
     pageExport: t.pages.includes('export'),
+    pageBoard: t.pages.includes('board'),
   };
 }
 
-type RightKey = 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'capQa' | 'dataScope' | 'canEdit' | 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport';
+type RightKey = 'capWork' | 'capReview' | 'capAssign' | 'capCreate' | 'capManageFields' | 'capQa' | 'dataScope' | 'canEdit' | 'pageDashboard' | 'pageItems' | 'pageReports' | 'pageExport' | 'pageBoard';
 const RIGHTS: { key: RightKey; label: string }[] = [
   { key: 'capWork', label: 'work' },
   { key: 'capReview', label: 'review' },
@@ -72,6 +73,7 @@ const RIGHTS: { key: RightKey; label: string }[] = [
   { key: 'pageItems', label: 'Items page' },
   { key: 'pageReports', label: 'Reports page' },
   { key: 'pageExport', label: 'Export' },
+  { key: 'pageBoard', label: 'Relay board page' },
 ];
 
 /** Where a saved role's rights differ from the flow's default (names and colours don't count). */
