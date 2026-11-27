@@ -38,7 +38,7 @@ describe('access map', () => {
     const j = a.byKey.get('journey-applet')!;
     expect(j.dataScope).toBe('ALL');
     expect(j.canEdit).toBe(true);
-    expect([...j.pages]).toEqual(['dashboard', 'items', 'reports', 'export']);
+    expect([...j.pages]).toEqual(['dashboard', 'items', 'reports', 'export', 'board']);
   });
 
   it('only includes ticked, active work types for members', () => {

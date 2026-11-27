@@ -32,8 +32,8 @@ describe('who sees which journeys', () => {
   });
   it('pages: everyone gets the dashboard, list and reports; coordinators and program managers also export', () => {
     expect(template('sme-creator').pages).toEqual(['dashboard', 'items', 'reports']);
-    expect(template('sme-reviewer').pages).toEqual(['dashboard', 'items', 'reports']);
-    expect(template('coordinator').pages).toEqual(['dashboard', 'items', 'reports', 'export']);
+    expect(template('sme-reviewer').pages).toEqual(['dashboard', 'items', 'reports', 'board']);
+    expect(template('coordinator').pages).toEqual(['dashboard', 'items', 'reports', 'export', 'board']);
     expect(template('program-manager').pages).toEqual(['dashboard', 'items', 'reports', 'export']);
   });
 });
@@ -292,23 +292,33 @@ describe('QA (26 Nov 2026)', () => {
   });
 });
 
-describe('the Relay board (26 Nov 2026)', () => {
+describe('the Relay board (27 Nov 2026: a page a role opts into)', () => {
   const accessOf = (keys: string[]) => buildAccess('me', false, [WT], new Map([['wt', { roles: keys.map(roleLite) }]])).byKey.get('journey-applet');
 
-  it('a steward, a reviewer, QA and an admin see every journey on it', () => {
-    for (const key of ['coordinator', 'sme-reviewer', 'qa']) expect(boardView(false, accessOf([key])), key).toBe('all');
+  it('shows only to an admin and to a role with the Relay board page ticked', () => {
+    expect(rolesForModule(base).filter(r => r.pages.includes('board')).map(r => r.key).sort()).toEqual(['coordinator', 'qa', 'sme-reviewer']);
+    for (const key of ['developer', 'sme-creator', 'program-manager']) expect(boardView(false, accessOf([key])), key).toBeNull();
+    expect(boardView(false, undefined)).toBeNull();
     expect(boardView(true, undefined)).toBe('all');
   });
-  it('a creator and a program manager see it as before, through their own role; a developer does not', () => {
-    expect(boardView(false, accessOf(['sme-creator']))).toBe('scoped');
-    expect(boardView(false, accessOf(['program-manager']))).toBe('scoped');
-    expect(boardView(false, accessOf(['developer']))).toBe(template('developer').pages.includes('reports') ? 'scoped' : null);
-    expect(boardView(false, undefined)).toBeNull();
+  it('a steward, a reviewer and QA see every journey on it', () => {
+    for (const key of ['coordinator', 'sme-reviewer', 'qa']) expect(boardView(false, accessOf([key])), key).toBe('all');
+    // A second role does not take it away: a developer who is also a reviewer keeps the board.
+    expect(boardView(false, accessOf(['developer', 'sme-reviewer']))).toBe('all');
+  });
+  it('a role an admin ticks it for sees it through its own data scope', () => {
+    const ticked: RoleLite = { ...roleLite('developer'), pageBoard: true };
+    const a = buildAccess('me', false, [WT], new Map([['wt', { roles: [ticked] }]])).byKey.get('journey-applet');
+    expect(boardView(false, a)).toBe('scoped');
   });
   it('is the last tab, after Feedback', () => {
     const tabs = workTypeTabs(base, { board: true, feedback: true }).map(t => t.label);
     expect(tabs.slice(-2)).toEqual(['Feedback', 'Relay board']);
     expect(workTypeTabs(base, { board: false, feedback: true }).map(t => t.label).at(-1)).toBe('Feedback');
+  });
+  it('the tick is one of the rights a saved role is compared on', () => {
+    const saved = { ...templateColumns(template('coordinator')), pageBoard: false };
+    expect(rightsDrift(saved, template('coordinator'))).toEqual(['Relay board page']);
   });
 });
 

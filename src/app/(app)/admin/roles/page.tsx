@@ -79,6 +79,7 @@ export default async function RolesPage({ searchParams }: { searchParams: Promis
                       pageItems: r.pageItems,
                       pageReports: r.pageReports,
                       pageExport: r.pageExport,
+                      pageBoard: r.pageBoard,
                     }}
                   />
                 ))}

@@ -24,6 +24,7 @@ const PAGE_FIELD: Record<PageKey, keyof RoleInput> = {
   items: 'pageItems',
   reports: 'pageReports',
   export: 'pageExport',
+  board: 'pageBoard',
 };
 
 const blank: Omit<RoleInput, 'workTypeId'> = {
@@ -42,6 +43,7 @@ const blank: Omit<RoleInput, 'workTypeId'> = {
   pageItems: true,
   pageReports: false,
   pageExport: false,
+  pageBoard: false,
 };
 
 const capsOf = (v: RoleInput) => CAPABILITIES.filter(c => Boolean(v[CAP_FIELD[c]]));
@@ -151,14 +153,14 @@ export function RoleForm({
             <div>
               <GroupLabel>Pages they can open</GroupLabel>
               <OptionList>
-                {(Object.keys(PAGE_FIELD) as PageKey[]).map(p => (
+                {(Object.keys(PAGE_FIELD) as PageKey[]).filter(p => p !== 'board' || flows.some(f => f.relayBoard)).map(p => (
                   <Checkbox
                     key={p}
                     checked={Boolean(v[PAGE_FIELD[p]]) && (p !== 'export' || v.pageReports)}
                     disabled={p === 'export' && !v.pageReports}
                     onChange={on => setV({ ...v, [PAGE_FIELD[p]]: on })}
                     label={PAGE_LABELS[p]}
-                    help={p === 'export' && !v.pageReports ? 'Needs Reports' : undefined}
+                    help={p === 'export' && !v.pageReports ? 'Needs Reports' : p === 'board' ? 'The Relay board tab. Without it the tab is hidden.' : undefined}
                   />
                 ))}
               </OptionList>

@@ -90,7 +90,7 @@ RELAY (creation)                    DASHBOARD
    - The SME reviewer or the steward can do the last look instead of you. Then the journey also passes the Design check.
 
 **Useful**
-- **Relay board** tab (Journey): shows your journeys by stage and how many days each has waited. Red chips are 5 days or more.
+- **Relay board** tab (Journey): shown only if an admin ticks the **Relay board** page for your role. It shows journeys by stage and how many days each has waited. Red chips are 5 days or more.
 - Your journeys do not count against you once the review is closed.
 - You cannot create, delete or re-assign journeys. Ask your Steward.
 
@@ -134,7 +134,7 @@ Your chapters come from RELAY: the chapter's owner on RELAY is its steward here,
 | User testing and QA | QA or the steward. **→ Mark done**, or raise a ticket and press **Send to creator** (content fix: the creator corrects it and the SME reviewer verifies it) or **Send to developer** (design fix: design standardization, last look, design check). After the fix the journey goes to **UAT → prod migration** again and comes back to QA. |
 
 **Watch**
-- **Relay board** tab (the last tab; stewards, SME reviewers, QA and admins see every journey): every creator, each stage, days waiting, and `r` (up for review) / `c` (corrections) marks from RELAY.
+- **Relay board** tab (the last tab; shown only to admins and to roles with the **Relay board** page ticked in Admin → Roles: Steward, SME reviewer and QA by default, and they see every journey): every creator, each stage, days waiting, and `r` (up for review) / `c` (corrections) marks from RELAY.
 - **Reports** and **My dashboard** for overdue, stuck and workload.
 - Your **Inbox** for stuck and overdue alerts.
 
